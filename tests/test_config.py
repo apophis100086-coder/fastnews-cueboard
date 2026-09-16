@@ -1,5 +1,7 @@
 """Offline configuration acceptance and corruption tests."""
 from pathlib import Path
+import hashlib
+import json
 import shutil
 import tempfile
 import unittest
@@ -42,10 +44,15 @@ class ConfigTests(unittest.TestCase):
         self.assertIsNone(config["source_runtime"]["trendforce"]["last_success_at"])
 
     def test_original_three_files_are_byte_identical_to_handoff(self):
-        with zipfile.ZipFile(ROOT / "references/inputs/SOURCE_HANDOFF_V1.zip") as archive:
-            for filename in ("sources.yaml", "topic_taxonomy.yaml", "products.example.yaml"):
-                member = next(n for n in archive.namelist() if n.endswith("/config/" + filename))
-                self.assertEqual((ROOT / "config" / filename).read_bytes(), archive.read(member), filename)
+        expected = json.loads((ROOT / "tests/fixtures/original_config_sha256.json").read_text(encoding="utf-8"))
+        for filename, digest in expected.items():
+            self.assertEqual(hashlib.sha256((ROOT / "config" / filename).read_bytes()).hexdigest(), digest, filename)
+        original = ROOT / "references/inputs/SOURCE_HANDOFF_V1.zip"
+        if original.is_file():
+            with zipfile.ZipFile(original) as archive:
+                for filename in expected:
+                    member = next(n for n in archive.namelist() if n.endswith("/config/" + filename))
+                    self.assertEqual((ROOT / "config" / filename).read_bytes(), archive.read(member), filename)
 
     def test_original_routing_weights_and_steps(self):
         routing = load_config()["routing"]
