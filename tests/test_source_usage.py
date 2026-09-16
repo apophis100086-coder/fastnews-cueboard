@@ -32,12 +32,13 @@ class SourceUsageTests(unittest.TestCase):
         self.assertTrue(fda['collector_available'])
         self.assertTrue(fda['url'].startswith('https://www.fda.gov/'))
 
-    def test_manual_sites_leave_query_plan_but_remain_explicit_reference_links(self):
+    def test_index_only_sites_enter_host_plan_without_permission_to_open_body(self):
         config = configured_view(self.conn, self.base)
         plan = build_search_plan(config, '517120')
-        self.assertIn('cde', {s['source_id'] for s in plan['manual_sources']})
-        self.assertNotIn('cde', {s['source_id'] for s in plan['selected_sources']})
-        self.assertFalse(any('cde.org.cn' in q['query'] for q in plan['queries']))
+        self.assertIn('dxy_insight', {s['source_id'] for s in plan['manual_sources']})
+        cde = next(s for s in plan['selected_sources'] if s['source_id']=='cde')
+        self.assertFalse(cde['host_read_allowed'])
+        self.assertTrue(any('cde.org.cn' in q['query'] for q in plan['queries']))
         self.assertTrue({'cls_innovative_drug', 'wscn_medicine'} <= {s['source_id'] for s in plan['selected_sources']})
         self.assertTrue(any(q['lane'] == 'keywords' for q in plan['queries']))
 

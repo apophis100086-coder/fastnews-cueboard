@@ -75,6 +75,9 @@ def refresh_fixed_sources(conn, config, code, cutoff, budget, *, mode, adapter=N
               'is_fixture':mode=='fixture', 'sources':[], 'articles_new':0, 'versions_new':0,
               'request_count':0, 'status':'offline_disabled' if mode=='fixture' and adapter is None else 'partial',
               'network_usage':{}, 'note':'当前固定来源列表的有限补取；不是全网搜索，不抓全文，不修改晨检游标。'}
+    if config.get('reader_web_search_enabled') is False:
+        report['status']='network_disabled'
+        return report
     if mode == 'fixture' and adapter is None:
         return report
     if adapter is None:
@@ -84,12 +87,12 @@ def refresh_fixed_sources(conn, config, code, cutoff, budget, *, mode, adapter=N
                                    config.get('discovery',{}).get('supplemental_sources',[])))
     if config.get('reader_sources'):
         from .search_plan import build_search_plan
-        targets = build_search_plan(config, code)['selected_sources']
-        source_ids = list(dict.fromkeys([s['source_id'] for s in targets] +
+        plan = build_search_plan(config, code)
+        source_ids = list(dict.fromkeys(plan['local_source_ids'] +
                                        config.get('discovery', {}).get('supplemental_sources', [])))
-        # Manual reference links stay in the catalog; routine research spends
-        # requests on automatic collectors and the user's custom search links.
-        manual_ids = {s['source_id'] for s in config['reader_sources'] if s.get('usage_mode') == 'manual'}
+        # Reference links stay in the catalog; routine listing requests use
+        # automatic collectors, including enabled custom feeds.
+        manual_ids = {s['source_id'] for s in config['reader_sources'] if s.get('usage_mode') != 'automatic'}
         source_ids = [sid for sid in source_ids if sid not in manual_ids]
         priorities = {s['source_id']:s.get('discovery_priority', 50) for s in config['reader_sources']}
         source_ids.sort(key=lambda sid: (sid not in getattr(adapter, 'supported_sources', source_ids),

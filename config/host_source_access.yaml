@@ -1,0 +1,35 @@
+version: host-source-access-v1
+note: 仅产品宿主通道覆盖；不改变程序采集器的 metadata_allowed/fulltext_allowed。允许项只限公开资料，遇登录、付费、验证码、robots或明确条款限制即停止相应读取。
+sources:
+  cls_morning: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开列表摘要；现有范围只允许元数据，不打开正文。}
+  cls_hk_morning: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开列表摘要；保留媒体归属，不打开正文。}
+  cls_southbound: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开南向报道摘要；正文路径未授权。}
+  cls_innovative_drug: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开药品进展摘要；正文路径未授权。}
+  cls_semiconductor_materials: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开材料报道摘要；正文路径未授权。}
+  wallstreetcn_breakfast: {search: allowed, read: blocked, reason: metadata_scope, note: 仅公开列表和搜索摘要；不打开付费或受限正文。}
+  wscn_technology: {search: allowed, read: blocked, reason: metadata_scope, note: 仅公开列表和搜索摘要；不打开付费或受限正文。}
+  wscn_medicine: {search: allowed, read: blocked, reason: metadata_scope, note: 仅公开列表和搜索摘要；不打开付费或受限正文。}
+  trendforce: {search: allowed, read: allowed, reason: public_press_release, note: 公开新闻稿可由宿主定点读短片段；不涉及付费报告，不复制整篇。}
+  miit: {search: allowed, read: allowed, reason: public_official, note: 宿主可尝试公开新闻政策片段；程序仍只采元数据，遇访问限制停止。}
+  nda: {search: allowed, read: allowed, reason: public_official, note: 宿主可尝试公开新闻政策片段；程序仍只采元数据，遇访问限制停止。}
+  fda: {search: allowed, read: allowed, reason: local_tls_failure, note: 本机TLS失败不等于宿主不可读；仅公开FDA页面，不关闭证书校验。}
+  csia: {search: allowed, read: allowed, reason: adapter_missing, note: 未适配脚本列表；可搜索并尝试公开协会新闻，不执行页面脚本或绕限制。}
+  clinicaltrials: {search: allowed, read: allowed, reason: local_network_failure, note: 官方公开研究记录可尝试；注册信息不等于研究结果或获批。}
+  medcube: {search: allowed, read: needs_review, reason: scope_unconfirmed, note: 可保留公开搜索线索；新闻与受限数据库范围未确认，暂停正文读取。}
+  semi: {search: allowed, read: blocked, reason: robots_unavailable, note: 原机robots返回403；只保留搜索索引线索，不重试受限正文。}
+  cde: {search: allowed, read: blocked, reason: robots_unavailable, note: 原机robots返回403；只保留搜索索引线索，不重试受限正文。}
+  nmpa: {search: allowed, read: blocked, reason: access_challenge, note: 原机返回412；只保留搜索索引线索，不处理访问挑战。}
+  gov_policy_library: {search: allowed, read: blocked, reason: robots_disallow, note: 已知目标路径robots受限；只查公开搜索摘要，可追溯其他获准公开出处。}
+  moa: {search: allowed, read: blocked, reason: robots_disallow, note: 已知目标路径robots受限；只保留搜索索引线索。}
+  moa_agri_market: {search: allowed, read: allowed, reason: metadata_adapter_missing, note: 原响应包含正文，晨扫未接入；宿主可尝试公开材料短片段。}
+  ubs_southbound: {search: allowed, read: needs_review, reason: scope_unconfirmed, note: 动态地区入口未核对公开资料范围；先查公开索引，不进入客户或登录资料。}
+  eastmoney_hsgt: {search: allowed, read: blocked, reason: statistics_scope, note: 保留公开统计搜索线索及本地已采元数据；不扩大当前数据读取范围。}
+  hkex_official_news: {search: allowed, read: blocked, reason: rss_scope, note: 现有授权限官方RSS；可检索交易所公开新闻线索，不扩为披露易正文。}
+  stcn_egs_morning: {search: blocked, read: blocked, reason: authorization_required, note: 已知条款要求书面授权，保留人工资料入口。}
+  yicai_overnight: {search: blocked, read: blocked, reason: authorization_required, note: 已知数据挖掘及AI使用需授权，保留人工资料入口。}
+  zhitong_hk_morning: {search: blocked, read: blocked, reason: authorization_required, note: 已知第三方自动访问需授权，保留人工资料入口。}
+  hkex_stock_connect_daily: {search: blocked, read: blocked, reason: authorization_required, note: 已知程序化统计访问需授权，不由宿主绕过。}
+  hkex_news: {search: blocked, read: blocked, reason: authorization_required, note: 已知程序化访问需授权，不由宿主绕过。}
+  smm: {search: blocked, read: blocked, reason: authorization_required, note: 已知未经书面授权的自动监测限制，保留人工资料入口。}
+  dxy_insight: {search: blocked, read: blocked, reason: login_required, note: 数据库需要登录及正式权限，保留人工资料入口。}
+  mysteel: {search: needs_review, read: needs_review, reason: scope_unconfirmed, note: 商业再利用及公开资料范围未确认，需补许可或明确公开入口。}

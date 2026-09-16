@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from . import editorial as ed
 from .metadata import normalize_url, time_bounds, parse_instant
+from .host_evidence import MATERIAL_LABELS
 
 NOTE_KINDS = {'product_turnover': '产品成交额', 'product_volume': '产品成交量',
               'product_flow': '产品份额 / 资金增持', 'market_flow': '市场资金',
@@ -28,7 +29,8 @@ def _report_snapshot(conn, path):
     if item:
         return {'title': item['title'], 'summary': item['summary'], 'why': item['why'],
                 'sources': item['sources'], 'origin': 'ai_research', 'date_state': item['date_state'],
-                'report_id': parts[1], 'item_id': parts[2], 'fact_verified': False}
+                'report_id': parts[1], 'item_id': parts[2], 'fact_verified': False,
+                **{k:item.get(k) for k in ('claims','missing_items','research_identity','event_identity','material_fingerprints')}}
 
 
 def snapshot_event(conn, config, edition_id, event_id, *, retained=False):
@@ -227,6 +229,27 @@ def markdown_materials(materials):
                   '材料身份：' + clue['usage'], '日期状态：' + ('来源报道位于窗口内，首次公开仍待核实' if clue['date_state'] == 'reported_in_window' else '公开时间待核实'), '']
         for s in clue['sources']:
             lines += [f"- 出处：{s.get('source_name') or s.get('title') or '未提供'}；链接：{s.get('url') or '本地材料'}；报道日期：{s.get('published_at') or '未知'}；读取身份：{s.get('evidence_level') or '未知'}。"]
+            # Frozen selections exported by earlier versions keep their exact
+            # renderer, otherwise their immutable MD path would conflict.
+            if not clue.get('research_material_version'):
+                continue
+            identity = s.get('material_identity') or s.get('evidence_level')
+            lines += [f"  材料类型：{MATERIAL_LABELS.get(identity,identity or '未知')}；取得时间：{s.get('retrieved_at') or '未知'}；首次公开：{s.get('first_published_at') or '待核实'}。"]
+            if s.get('excerpt'):
+                lines += ['  保存片段（按上述材料身份使用）：' + s['excerpt'].replace('\n','\n  ')]
+            if s.get('original_url'):
+                lines += ['  转述页面声称的原始出处（未必已读取）：' + s['original_url']]
+            if s.get('tool_ref') or s.get('observed_action_ids'):
+                lines += [f"  工具引用：{s.get('tool_ref') or '未知'}（{s.get('tool_ref_basis') or '未独立核对'}）；可观察动作：{', '.join(s.get('observed_action_ids',[])) or '无对应打开记录'}。"]
+            if any(s.get(k) for k in ('occurred_at','effective_at','data_period_start','data_period_end')):
+                lines += [f"  发生：{s.get('occurred_at') or '未知'}；实施：{s.get('effective_at') or '未知'}；统计期：{s.get('data_period_start') or '未知'} 至 {s.get('data_period_end') or '未知'}。"]
+        for claim in (clue.get('claims') or []) if clue.get('research_material_version') else []:
+            lines += ['', '- 待核对陈述：' + claim['statement'],
+                      f"  类型：{claim['kind']}；支持状态：{claim['support_state']}；出处：{claim['source_url']}。"]
+            if claim.get('quote'):
+                lines += ['  对应短摘录：' + claim['quote']]
+        if clue.get('research_material_version') and clue.get('missing_items'):
+            lines += ['', '具体缺项：' + '；'.join(clue['missing_items'])]
         lines += [f"追溯：{clue['event_id']}；报告：{clue.get('report_id') or '无'}；条目：{clue.get('item_id') or '无'}。", '']
     if not materials['selected_research_clues']:
         lines.append('本次未选择研究线索，或已选线索均超出截点。')

@@ -152,8 +152,10 @@ class ReaderDatabaseTests(unittest.TestCase):
         edition=self.edition('517120')
         payload=build_input(self.conn,self.view(),'default','product','2026-09-15',edition)
         self.assertNotIn('manual_sources',payload['search_plan'])
-        self.assertNotIn('cde.org.cn',json.dumps(payload,ensure_ascii=False))
-        self.assertNotIn('cde',{s['source_id'] for s in payload['selected_sources']})
+        self.assertIn('cde',{s['source_id'] for s in payload['selected_sources']})
+        self.assertNotIn('dxy_insight',{s['source_id'] for s in payload['selected_sources']})
+        restricted = next(s for s in payload['source_constraints'] if s['source_id']=='dxy_insight')
+        self.assertFalse(restricted['search_enabled'])
         self.assertTrue(any('手动参考入口' in note for note in payload['coverage_notes']))
         self.assertTrue(any(q['lane']=='keywords' for q in payload['search_plan']['queries']))
 

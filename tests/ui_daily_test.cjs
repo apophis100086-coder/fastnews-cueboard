@@ -504,3 +504,42 @@ test('morning chart counts come from the saved report and empty data remains exp
  assert.equal(app.read('basket'),null);
  assert.ok(app.calls.every(c=>c.method==='GET'));
 });
+
+
+test('targeted evidence cards escape quotes and retain pending material identity', async () => {
+  const app=await harness({reader:true,workflow:true});
+  const source={url:'https://example.org/public',title:'来源',excerpt:'<script>bad()</script>',
+    material_identity:'host_report_pending',retrieved_at:'2026-09-15T00:00:00Z',tool_ref:'unverified_ref',source_excerpt_verified:false};
+  const card=app.evaluate('evidenceDetails('+JSON.stringify({sources:[source],claims:[],missing_items:['缺少原文核对']})+')');
+  assert.match(card,/宿主报告待复核/);
+  assert.match(card,/&lt;script&gt;/);
+  assert.doesNotMatch(card,/<script>/);
+  assert.match(card,/缺少原文核对/);
+});
+
+test('same event offers explicit merge for new evidence or claims', async () => {
+  const app=await harness({reader:true,workflow:true});
+  app.evaluate(`detail={candidate_pool:[{event_id:'event-1',active:true,research_identity:'identity-1',material_fingerprints:['a'],claims:[]}]}`);
+  let markup=app.evaluate(`reportPoolButton({report_id:'new'},{item_id:'item_1',research_identity:'identity-1',material_fingerprints:['a','b']})`);
+  assert.match(markup,/合并新增依据到原线索/);
+  markup=app.evaluate(`reportPoolButton({report_id:'new'},{item_id:'item_1',research_identity:'identity-1',material_fingerprints:['a'],claims:[{claim_fingerprint:'c',evidence_fingerprint:'a'}]})`);
+  assert.match(markup,/合并新增依据到原线索/);
+  markup=app.evaluate(`reportPoolButton({report_id:'new'},{item_id:'item_1',research_identity:'identity-1',material_fingerprints:['a'],claims:[]})`);
+  assert.match(markup,/已加入候选池/);
+});
+
+test('failed refresh keeps the previous usable report visible', async () => {
+  const app=await harness({reader:true,workflow:true});
+  const previous={status:'partial',host:'codex',report_id:'old',output:{items:[{item_id:'item_1',title:'原有研究线索',summary:'先前可用结果',sources:[],rank:1}],gaps:[],coverage:[]}};
+  const markup=app.evaluate('reportHTML('+JSON.stringify({status:'failed',previous_report:previous})+',"product")');
+  assert.match(markup,/本次宿主任务未完成/);
+  assert.match(markup,/原有研究线索/);
+  assert.match(markup,/以下保留上次可用结果/);
+});
+
+test('technical source failure can display host search without a morning badge', async () => {
+  const app=await harness({reader:true});
+  const markup=app.evaluate('sourceCard('+JSON.stringify({source_id:'fda',name:'FDA',url:'https://www.fda.gov',categories:['medicine'],usage_mode:'search_only',search_enabled:true,host_read_allowed:true})+')');
+  assert.match(markup,/产品定点补搜/);
+  assert.doesNotMatch(markup,/程序晨扫/);
+});

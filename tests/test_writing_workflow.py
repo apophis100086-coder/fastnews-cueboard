@@ -87,7 +87,7 @@ class WritingWorkflowTests(unittest.TestCase):
         self.assertIn('hkex_news', {s['source_id'] for s in plans['513130']['manual_sources']})
         self.assertNotIn('fda', ids('513130'))
         self.assertIn('cls_innovative_drug', ids('517120'))
-        self.assertIn('fda', {s['source_id'] for s in plans['517120']['manual_sources']})
+        self.assertIn('fda', ids('517120'))
         self.assertNotIn('trendforce', ids('513530'))
         self.assertNotIn('hkex_stock_connect_daily', ids('588710'))
         for plan in plans.values():

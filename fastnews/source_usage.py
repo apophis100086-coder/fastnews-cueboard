@@ -22,9 +22,9 @@ def apply_usage(sources):
         # FDA has a parser but repeated real TLS failures. Keep an explicit
         # diagnostic retry available, while ordinary scans use the curated set.
         automatic = source['collector_available'] and source['source_id'] != 'fda'
+        source['program_scan_enabled'] = automatic and source['enabled']
         source['usage_mode'] = ('automatic' if automatic else 'search_only'
-            if source['kind'] == 'custom' else 'manual')
-        source['search_enabled'] = source['usage_mode'] != 'manual'
+            if source.get('search_enabled') else 'manual')
     available = {s['source_id']: s for s in sources
                  if s['enabled'] and s['usage_mode'] == 'automatic'}
     for source in sources:

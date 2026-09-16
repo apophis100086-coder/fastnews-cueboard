@@ -120,7 +120,7 @@ def _urls(value):
 
 
 def parse_codex_output(output, final):
-    usage, searches, urls = {}, [], set()
+    usage, searches, urls, actions = {}, [], set(), []
     for line in output.splitlines():
         try:
             # CLI telemetry can contain repeated flattened fields in some
@@ -136,10 +136,20 @@ def parse_codex_output(output, final):
         if event.get('type')=='item.completed' and item.get('type')=='web_search':
             action = item.get('action') or {}
             searches.append(action.get('type','search'))
-            urls |= _urls(action)
+            action_urls = sorted(_urls(action))
+            if action.get('type') in {'open_page', 'open', 'find_in_page', 'find'}:
+                urls.update(action_urls)
+            actions.append({'action_id': item.get('id') or 'web_action_'+str(len(actions)+1),
+                'type': action.get('type','search'), 'status':item.get('status','completed'),
+                'urls':action_urls, 'query':action.get('query') or item.get('query'),
+                'queries':action.get('queries') if isinstance(action.get('queries'),list) else [],
+                'ref_id':action.get('ref_id'),
+                'result_content_available':False})
         if event.get('type') in {'turn.failed','error'}:
             raise HostUnavailable('Codex 任务未完成；请在 Codex 中检查登录、网络或剩余额度')
-    return HostResult(loads(final),usage,{'web_actions':len(searches),'visited_urls':sorted(urls)})
+    return HostResult(loads(final),usage,{'web_actions':len(searches),'visited_urls':sorted(urls),
+        'actions':actions, 'tool_excerpts':[],
+        'content_observability':'CLI action records do not establish returned page text or successful retrieval'})
 
 
 def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None):
