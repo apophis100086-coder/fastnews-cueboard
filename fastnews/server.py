@@ -1,0 +1,410 @@
+"""Local single-page interface. Business rules remain in the CLI services."""
+from contextlib import closing
+from datetime import timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+from pathlib import Path
+import secrets
+import sqlite3
+import threading
+from urllib.parse import parse_qs, urlsplit
+import uuid
+from zoneinfo import ZoneInfo
+
+from . import editorial
+from .config import load_config
+from .db import connect, sync_registry
+from .pipeline import scan_morning, collection_window
+from .daily import daily_news
+from .routing import route_product, working_now
+from .strict_json import loads
+
+STATIC = Path(__file__).with_name('static')
+
+
+class LocalApplication:
+    def __init__(self, database, config, offline=False, output_dir=None):
+        self.database = str(Path(database).resolve())
+        self.config, self.offline = config, offline
+        self.output_dir = Path(output_dir or 'exports').resolve()
+        self.token = secrets.token_urlsafe(32)
+        self.guard = threading.RLock()
+        self.jobs = {}
+        self.active_job = None
+
+    def connection(self):
+        return connect(self.database, mode='fixture' if self.offline else 'live')
+
+    def state(self, profile_id='default'):
+        from .__main__ import source_status, capabilities
+        with closing(self.connection()) as conn:
+            from .source_catalog import catalog, profiles, profile, CATEGORIES
+            from .host_provider import host_status
+            from .source_catalog import configured_view
+            from .search_plan import build_search_plan
+            reader_config = configured_view(conn, self.config, profile_id)
+            reader_sources = catalog(conn,self.config,profile_id)
+            selected = {s['source_id']:s for s in reader_sources}
+            source_summary = source_status(conn)
+            source_summary['sources'] = [s for s in source_summary['sources'] if s['source_id'] in selected]
+            present = {s['source_id'] for s in source_summary['sources']}
+            for sid, item in selected.items():
+                if sid not in present:
+                    source_summary['sources'].append({'source_id':sid,'capability_status':'needs_probe',
+                        'last_success_at':None,'last_run':None})
+            for item in source_summary['sources']:
+                source = selected[item['source_id']]
+                item.update(name=source['name'],expected_enabled=source['enabled'],
+                            expected_morning_scan=source['enabled'] and 'morning' in source['sections'])
+            source_summary['configured'] = len(source_summary['sources'])
+            source_summary['live_connected'] = 0 if self.offline else sum(s['capability_status'] in {'ready_metadata','ready_fulltext'} and bool(s['last_success_at']) for s in source_summary['sources'])
+            from .source_health import attach_health
+            attach_health(conn,reader_sources,source_summary)
+            clock = working_now(conn, self.offline).astimezone(ZoneInfo('Asia/Shanghai'))
+            latest = conn.execute('SELECT * FROM fn_scan_batches ORDER BY rowid DESC LIMIT 1').fetchone()
+            from .live_sources import load_live_config
+            live = load_live_config(self.config)['sources']
+            briefings = []
+            for source in reader_sources:
+                if not source['enabled'] or 'morning' not in source['sections']:
+                    continue
+                sid = source['source_id']
+                entry = live.get(sid,{})
+                briefings.append({'source_id':sid,'name':source['name'],
+                    'url':source['url'],
+                    'adapter_available':source['collector_available'],
+                    'note':('可读取公开栏目元数据，具体结果见所选日期' if entry.get('metadata_allowed') else
+                            '站点限制自动读取，需授权供稿或手工材料' if entry else '晨报栏目采集器尚未接通')})
+            return {'csrf_token': self.token, 'workspace_id': self.database, 'is_fixture': self.offline,
+                    'reader_sources':reader_sources,'reader_profiles':profiles(conn),'reader_profile':profile(conn,profile_id),
+                    'source_categories':CATEGORIES,'host_status':host_status(),
+                    'search_plans': {code: build_search_plan(reader_config, code) for code in self.config['products']},
+                    'morning_briefings':briefings,
+                    'products': list(self.config['products'].values()), 'sources': source_summary,
+                    'capabilities': capabilities(conn), 'editions': editorial.list_editions(conn),
+                    'default_day': clock.date().isoformat(),
+                    'server_now':clock.isoformat(),
+                    'default_cutoff': (clock.date() - timedelta(days=1)).isoformat() + 'T23:59:59+08:00',
+                    'latest_scan': dict(latest) if latest else None, 'active_job': self.active_job}
+
+    def detail(self, edition_id, profile_id='default'):
+        with closing(self.connection()) as conn:
+            from .source_catalog import configured_view,section_ids
+            config=configured_view(conn,self.config,profile_id)
+            result = editorial.edition_detail(conn, edition_id)
+            edition = result['edition']
+            result['route'] = route_product(conn, config, edition['product_code'],
+                edition_date=edition['edition_date'], news_cutoff=edition['news_cutoff'],
+                market_cutoffs=edition['market_cutoffs'], now=working_now(conn, self.offline))
+            enabled=set(section_ids(config,'all'))
+            retained={r['event_id'] for r in result['evidence']}
+            if result.get('decision'):
+                retained.add(result['decision'].get('selected_event_id'))
+            result['route']['groups']={group:[e for e in events if e['event_id'] in retained or
+                any(s['source_id'] in enabled for s in e['source_chain'])]
+                for group,events in result['route']['groups'].items()}
+            result['route']['event_count']=sum(len(v) for v in result['route']['groups'].values())
+            latest = conn.execute("SELECT report_json FROM fn_research_runs WHERE edition_id=? AND status IN ('partial','complete') ORDER BY rowid DESC LIMIT 1",(edition_id,)).fetchone()
+            result['latest_research'] = json.loads(latest[0]) if latest and latest[0] else None
+            from .reading_reports import latest_report
+            result['reading_report'] = latest_report(conn,profile_id,'product',edition['edition_date'],edition_id)
+            from .writing_background import pool_items
+            result['candidate_pool'] = pool_items(conn, config, edition_id, include_inactive=True)
+            return result
+
+    def daily(self, day, profile_id='default'):
+        with closing(self.connection()) as conn:
+            from .source_catalog import configured_view, section_ids
+            from .reading_reports import latest_report
+            config = configured_view(conn,self.config,profile_id)
+            result = daily_news(conn, config, day, offline=self.offline)
+            enabled = set(section_ids(config,'all'))
+            result['items'] = [s for s in result['items'] if s['source_id'] in enabled]
+            result['undated_items'] = [s for s in result['undated_items'] if s['source_id'] in enabled]
+            result['counts'].update(items=len(result['items']),undated=len(result['undated_items']),
+                                    sources_with_items=len({s['source_id'] for s in result['items']}))
+            result['reading_report'] = latest_report(conn,profile_id,'morning',day)
+            return result
+
+    def _run_job(self, job_id, action, data):
+        try:
+            with closing(self.connection()) as conn:
+                from .source_catalog import configured_view, section_ids
+                from .custom_sources import ReaderAdapter
+                from .reading_reports import generate_report
+                profile_id = data.get('reader_profile','default')
+                config = configured_view(conn,self.config,profile_id)
+                sync_registry(conn,config)
+                if action in {'scan','digest'}:
+                    def progress(item):
+                        with self.guard:
+                            self.jobs[job_id]['progress'].append({k: item.get(k) for k in ('source_id', 'status', 'error_code','stage','message')})
+                    source_ids = section_ids(config,data.get('section','morning'),collect_only=True)
+                    if action == 'scan' and data.get('source_id'):
+                        source_ids = [data['source_id']]
+                    if not source_ids and action == 'scan':
+                        raise ValueError('此板块没有启用的自动采集来源。可打开手动查阅链接，或在来源设置中启用自动来源。')
+                    result = scan_morning(conn, config, offline=self.offline, progress=progress,
+                                          collection_date=data.get('date'),source_ids=source_ids,
+                                          adapter=None if self.offline else ReaderAdapter(config)) if source_ids else None
+                    if action=='digest':
+                        result = generate_report(conn,config,profile_id,'morning',data['date'],progress=progress)
+                elif action == 'probe':
+                    from types import SimpleNamespace
+                    from .cli_actions import dispatch
+                    result = dispatch(conn, self.config, SimpleNamespace(command='probe-sources', offline=self.offline, output=None))
+                elif action == 'research':
+                    from .research import research_product
+                    edition = editorial.get_edition(conn, data['edition_id'])
+                    def research_progress(item):
+                        with self.guard:
+                            self.jobs[job_id]['progress'].append(item)
+                    options = {'edition_id': edition['edition_id'], 'progress':research_progress}
+                    if data.get('fetch_public_text'):
+                        if self.offline:
+                            raise ValueError('合成模式不能访问真实网页')
+                        from .public_text import PublicTextProvider
+                        options.update(fulltext_provider=PublicTextProvider(self.config), external_calls_authorized=True)
+                    if not self.offline:
+                        options['discovery_adapter'] = ReaderAdapter(config)
+                    result = research_product(conn, config, edition['product_code'], **options)
+                    if data.get('use_host'):
+                        result['reading_report'] = generate_report(conn,config,profile_id,'product',edition['edition_date'],
+                                                                  edition=edition,progress=research_progress,
+                                                                  extra_keywords=data.get('extra_keywords'))
+                else:
+                    raise ValueError('Unknown job action')
+            with self.guard:
+                self.jobs[job_id].update(status='completed', result=result)
+        except Exception as exc:
+            with self.guard:
+                self.jobs[job_id].update(status='failed', error=str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
+        finally:
+            with self.guard:
+                self.active_job = None
+
+    def mutate(self, action, data):
+        if not isinstance(data, dict):
+            raise ValueError('JSON object required')
+        with self.guard:
+            if self.active_job:
+                raise ValueError('后台任务正在运行；完成后可保存或开始下一项操作，当前草稿会保留')
+            if action in {'scan', 'probe', 'research', 'digest'}:
+                if action == 'scan' and 'source_id' in data:
+                    from .source_catalog import catalog
+                    with closing(self.connection()) as conn:
+                        source = next((s for s in catalog(conn,self.config,data.get('reader_profile','default'))
+                                       if s['source_id'] == data['source_id']),None)
+                        if not source or not source['enabled'] or not source['collector_available']:
+                            raise ValueError('此来源未启用或尚无可重试的采集器，请查看来源状态')
+                if action == 'probe' and self.offline:
+                    raise ValueError('合成模式不执行真实来源探测')
+                if action in {'scan','digest'} and 'date' in data:
+                    with closing(self.connection()) as conn:
+                        collection_window(data['date'], working_now(conn, self.offline))
+                if action == 'research':
+                    with closing(self.connection()) as conn:
+                        edition = editorial.get_edition(conn,data['edition_id'])
+                        from .search_plan import build_search_plan
+                        from .source_catalog import configured_view
+                        build_search_plan(configured_view(conn,self.config,data.get('reader_profile','default')),
+                                          edition['product_code'], data.get('extra_keywords'))
+                        if data.get('product_code',edition['product_code']) != edition['product_code']:
+                            raise ValueError('当前选择的产品与已保存期次不同，请按当前产品建立本期后检索')
+                job_id = uuid.uuid4().hex
+                self.jobs[job_id] = {'job_id': job_id, 'action': action, 'date': data.get('date'),
+                                     'status': 'running', 'progress': []}
+                self.active_job = job_id
+                threading.Thread(target=self._run_job, args=(job_id, action, data), daemon=True).start()
+                return {'job_id': job_id}
+            with closing(self.connection()) as conn:
+                if action in {'pool-add', 'pool-remove'}:
+                    from .writing_background import add_candidate, remove_candidate
+                    from .source_catalog import configured_view
+                    if action == 'pool-add':
+                        return add_candidate(conn, configured_view(conn,self.config,data.get('reader_profile','default')),
+                                             data['edition_id'], data['event_id'])
+                    return remove_candidate(conn, data['edition_id'], data['event_id'], data['expected_revision'])
+                if action=='reading-adopt':
+                    from .reading_reports import adopt_report_item
+                    return adopt_report_item(conn,data.get('reader_profile','default'),data['report_id'],
+                                             data['item_id'],data['edition_id'])
+                if action=='reader-profile':
+                    from .source_catalog import save_profile
+                    return save_profile(conn,{k:v for k,v in data.items() if k!='reader_profile'})
+                if action=='reader-source':
+                    from .source_catalog import save_source
+                    return save_source(conn,self.config,data.get('reader_profile','default'),
+                                       {k:v for k,v in data.items() if k!='reader_profile'})
+                if action == 'edition':
+                    from .cli_actions import parse_markets
+                    return editorial.create_edition(conn, self.config, product_code=data['product_code'],
+                        edition_date=data['edition_date'], news_cutoff=data['news_cutoff'],
+                        market_cutoffs=parse_markets(data.get('market_cutoffs', [])))
+                if action == 'decision':
+                    background = {k: data[k] for k in ('selected_clue_ids', 'manual_notes') if k in data}
+                    return editorial.save_decision(conn, edition_id=data['edition_id'],
+                        selected_event_id=data.get('selected_event_id'), selected_fact_ids=data.get('selected_fact_ids', []),
+                        expected_revision=data['expected_revision'], actor_type='human', mainline_note=data.get('mainline_note') or None,
+                        config=self.config, **background)
+                if action == 'export':
+                    record = editorial.export_handoff(conn, self.config, edition_id=data['edition_id'],
+                        decision_revision=data['decision_revision'], output_dir=self.output_dir)
+                    return dict(record, markdown_preview=Path(record['paths']['markdown']).read_text(encoding='utf-8'))
+                if action == 'fact':
+                    return editorial.add_fact_from_evidence(conn, edition_id=data['edition_id'], event_id=data['event_id'],
+                        evidence_id=data['evidence_id'], statement=data['statement'], kind=data['kind'], actor_type='human')
+                if action == 'import':
+                    return self._import(conn, data)
+                raise ValueError('Unknown action')
+
+    def _import(self, conn, data):
+        content = data['content']
+        if not isinstance(content, str) or len(content.encode('utf-8')) > 2_000_000:
+            raise ValueError('材料须为不超过 2 MB 的 UTF-8 文本')
+        name = data.get('filename', 'pasted.txt')
+        if not isinstance(name, str) or Path(name).name != name or '/' in name or '\\' in name:
+            raise ValueError('Invalid upload filename')
+        editorial._reject_secrets(Path(name), content)
+        suffix = Path(name).suffix.lower()
+        if suffix not in {'.json', '.md', '.txt'}:
+            raise ValueError('目前支持 JSON、Markdown、TXT；PDF、图片和 Excel 尚未接入')
+        payload = loads(content) if suffix == '.json' else {
+            'title': data.get('title') or name, 'content': content, 'is_fixture': self.offline,
+            'source_type': 'user_document', 'first_published_at': data.get('first_published_at') or None,
+            'source_url': data.get('source_url') or None, 'facts': []}
+        kind = data.get('kind', 'evidence')
+        if kind == 'evidence':
+            result = editorial.import_evidence_payload(conn, payload, edition_id=data['edition_id'],
+                event_id=data.get('event_id') or None, actual_source_path='user:upload:' + name,
+                declared_source=data.get('declared_source') or None, privacy_class='private_local')
+            from .writing_background import add_candidate
+            add_candidate(conn, self.config, data['edition_id'], result['event_id'])
+            return result
+        # Product/history imports keep the exact uploaded file locally for provenance.
+        upload_dir = Path(self.database).parent / 'uploads'
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        path = upload_dir / (uuid.uuid4().hex + suffix)
+        with path.open('x', encoding='utf-8') as handle:
+            handle.write(content)
+        if kind == 'product':
+            return editorial.import_product_data(conn, path, authorized=True, product_code=data['product_code'], declared_source=data.get('declared_source') or None)
+        if kind == 'history':
+            return editorial.import_history(conn, path, authorized=True, product_code=data['product_code'],
+                publication_time=data.get('first_published_at') or None, title=data.get('title') or None,
+                completeness=data.get('completeness') or None)
+        raise ValueError('Unknown material type')
+
+    def download(self, export_id, kind):
+        if kind not in {'markdown', 'json'}:
+            raise ValueError('Unknown export format')
+        with closing(self.connection()) as conn:
+            row = conn.execute('SELECT data_json FROM fn_exports WHERE export_id=?', (export_id,)).fetchone()
+            if not row:
+                raise ValueError('Export not found')
+            record = json.loads(row[0])
+            path = Path(record['paths'][kind]).resolve()
+            if not path.is_relative_to(self.output_dir):
+                raise ValueError('Export belongs to another output directory')
+            return path.read_bytes(), path.name
+
+
+def make_server(app, port=8765):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass  # No material, path, token or content in access logs.
+
+        def _trusted(self, write=False):
+            hosts = {f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}'}
+            if self.headers.get('Host') not in hosts:
+                return False
+            if self.headers.get('Sec-Fetch-Site') == 'cross-site':
+                return False
+            origin = self.headers.get('Origin')
+            if origin and origin not in {'http://' + h for h in hosts}:
+                return False
+            if write:
+                return secrets.compare_digest(self.headers.get('X-Fastnews-CSRF', ''), app.token)
+            return True
+
+        def _send(self, code, body, mime='application/json; charset=utf-8', filename=None):
+            if not isinstance(body, bytes):
+                body = json.dumps(body, ensure_ascii=False, allow_nan=False).encode('utf-8')
+            self.send_response(code)
+            self.send_header('Content-Type', mime)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Referrer-Policy', 'no-referrer')
+            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+            if filename:
+                self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if not self._trusted():
+                return self._send(403, {'error': 'Only same-site local access is allowed'})
+            request = urlsplit(self.path)
+            query = parse_qs(request.query)
+            try:
+                if request.path in {'/', '/app.js', '/style.css', '/editorial.css'}:
+                    names = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/editorial.css': ('editorial.css', 'text/css')}
+                    filename, mime = names[request.path]
+                    return self._send(200, (STATIC / filename).read_bytes(), mime + '; charset=utf-8')
+                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js'}:
+                    return self._send(200,(STATIC/request.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
+                if request.path == '/api/state':
+                    result = app.state(query.get('profile',['default'])[0])
+                elif request.path == '/api/daily':
+                    result = app.daily(query['date'][0],query.get('profile',['default'])[0])
+                elif request.path == '/api/edition':
+                    result = app.detail(query['id'][0],query.get('profile',['default'])[0])
+                elif request.path == '/api/job':
+                    with app.guard:
+                        result = dict(app.jobs[query['id'][0]])
+                elif request.path == '/api/download':
+                    content, filename = app.download(query['id'][0], query['kind'][0])
+                    return self._send(200, content, 'application/octet-stream', filename)
+                else:
+                    return self._send(404, {'error': 'Not found'})
+                return self._send(200, result)
+            except (ValueError, KeyError, OSError, sqlite3.Error) as exc:
+                return self._send(400, {'error': str(exc) if isinstance(exc, ValueError) else type(exc).__name__})
+
+        def do_POST(self):
+            if not self._trusted(write=True):
+                return self._send(403, {'error': 'Local session token and same origin required'})
+            try:
+                if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                    raise ValueError('JSON request required')
+                size = int(self.headers.get('Content-Length', '-1'))
+                if not 0 < size <= 2_100_000:
+                    raise ValueError('Request size must be between 1 byte and 2 MB')
+                body = loads(self.rfile.read(size).decode('utf-8'))
+                path = urlsplit(self.path).path
+                if not path.startswith('/api/'):
+                    return self._send(404, {'error': 'Not found'})
+                result = app.mutate(path.removeprefix('/api/'), body)
+                return self._send(200, result)
+            except (ValueError, KeyError, TypeError, OSError, sqlite3.Error) as exc:
+                return self._send(400, {'error': str(exc) if isinstance(exc, ValueError) else type(exc).__name__})
+
+    return ThreadingHTTPServer(('127.0.0.1', port), Handler)
+
+
+def serve(database, config=None, *, offline=False, port=8765):
+    if type(port) is not int or not 0 <= port <= 65535:
+        raise ValueError('Invalid local port')
+    app = LocalApplication(database, config or load_config(), offline)
+    with closing(app.connection()) as conn:
+        from .source_catalog import configured_view
+        sync_registry(conn, configured_view(conn, app.config))
+    server = make_server(app, port)
+    print(f'本地看板：http://127.0.0.1:{server.server_port} · ' + ('合成测试' if offline else '真实数据模式') + ' · Ctrl+C 停止', flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()

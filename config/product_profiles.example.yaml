@@ -1,0 +1,76 @@
+version: 2.0-proposal
+status: routing_and_observation_only_not_verified_holdings
+routing_source: config/products.example.yaml
+pilot_codes:
+- '513130'
+- '513530'
+- '588710'
+profiles:
+- code: '513130'
+  name: 恒生科技ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 平台经营
+  - AI应用使用与收入
+  - 云与算力硬件
+  - 指数结构
+  - 估值与科技资产配置
+  relation_boundaries:
+  - 出现AI词语不自动高相关
+  - 公司次要业务不代表整个指数
+  - 南向总量不等于集中买入科技股
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: '513530'
+  name: 港股通红利ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 持续分红与现金流
+  - 股息率和估值
+  - 利率与配置需求
+  - 南向参与
+  - 重要行业经营
+  relation_boundaries:
+  - 南向整体变化可以成为主事件
+  - 没有去向依据不声称红利抢筹
+  - 不能用买盘证明分红能力改善
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: '588710'
+  name: 科创半导体设备ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 晶圆厂资本开支
+  - 设备订单与客户导入
+  - 材料供需
+  - 存储与封装
+  - 国产替代
+  relation_boundaries:
+  - 未上市厂商不自动成为ETF持仓
+  - 客户验证不等于已量产或订单
+  - 强事件只有一段也可以作为主事件
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: '517120'
+  name: 创新药ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 临床试验与终点
+  - 监管审批
+  - 医保及支付准入
+  - 商业化收入
+  - 授权交易
+  relation_boundaries:
+  - 首付款与潜在里程碑分开
+  - 研究阳性不等于批准上市
+  - 医保谈判资格不等于纳入或销售兑现
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false

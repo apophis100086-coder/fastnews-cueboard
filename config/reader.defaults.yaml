@@ -1,0 +1,9 @@
+# Host CLI runs use the host account's quota. These are local task limits;
+# internal model requests and token limits are controlled by the host.
+timeout_seconds: 300
+max_input_characters: 24000
+max_tasks_per_day: 12
+max_product_items: 10
+max_morning_items: 40
+max_web_sources: 20
+max_refs_per_item: 4

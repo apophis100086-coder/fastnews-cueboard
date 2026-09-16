@@ -1,0 +1,89 @@
+{
+  "schema_version": "2.0",
+  "candidate_id": "fixture_candidate_001",
+  "edition_id": "fixture_edition_001",
+  "run_id": "fixture_run_001",
+  "product_code": "513530",
+  "event_id": "fixture_event_001",
+  "is_fixture": true,
+  "headline": "【合成示例，非真实新闻】南向阶段总量出现变化，资金去向未分解",
+  "first_published_at": null,
+  "evidence_state": "pending",
+  "cutoff_state": "unknown",
+  "fact_refs": [
+    "fixture_fact_001"
+  ],
+  "evidence_refs": [
+    "fixture_evidence_001"
+  ],
+  "product_relation": {
+    "variable": "港股市场参与与配置环境",
+    "explanation": "只展示产品观察变量；无实际来源和统计期，不主张当前南向变化或流入红利。",
+    "scope": "market",
+    "profile_refs": [
+      "fixture_profile_513530"
+    ],
+    "fact_refs": [
+      "fixture_fact_001"
+    ]
+  },
+  "score_components": {
+    "core_variable": {
+      "level": null,
+      "rationale": "合成占位，未取得真实证据，不评分。",
+      "evidence_refs": [],
+      "profile_refs": []
+    },
+    "coverage": {
+      "level": null,
+      "rationale": "合成占位，未取得真实证据，不评分。",
+      "evidence_refs": [],
+      "profile_refs": []
+    },
+    "linkage": {
+      "level": null,
+      "rationale": "合成占位，未取得真实证据，不评分。",
+      "evidence_refs": [],
+      "profile_refs": []
+    },
+    "magnitude": {
+      "level": null,
+      "rationale": "合成占位，未取得真实证据，不评分。",
+      "evidence_refs": [],
+      "profile_refs": []
+    },
+    "timeliness": {
+      "level": null,
+      "rationale": "合成占位，未取得真实证据，不评分。",
+      "evidence_refs": [],
+      "profile_refs": []
+    },
+    "incrementality": {
+      "level": null,
+      "rationale": "合成占位，未取得真实证据，不评分。",
+      "evidence_refs": [],
+      "profile_refs": []
+    }
+  },
+  "score_total": null,
+  "score_version": "editorial-0.1-trial",
+  "readiness": "needs_evidence",
+  "possible_roles": [
+    "allocation"
+  ],
+  "suggested_group": "needs_evidence",
+  "novelty": {
+    "status": "unknown",
+    "difference": "未提供历史资料，不能判断是否已用。",
+    "history_completeness": "none",
+    "previous_doc_refs": []
+  },
+  "gaps": [
+    "需要实际统计原文、日期与比较基准",
+    "需要近期已发稿正文"
+  ],
+  "sentiment": "unclear",
+  "policy_flags": [
+    "fixture_must_not_export_as_live_fact"
+  ]
+}

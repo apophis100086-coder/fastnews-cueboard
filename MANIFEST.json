@@ -1,0 +1,206 @@
+{
+  "version": 2,
+  "purpose": "handoff_package_integrity_only",
+  "files": [
+    {
+      "path": ".env.example",
+      "bytes": 389,
+      "sha256": "f10bab47ff247f489981c9145525fe7474a7f0ccd70442cd94f513897e3e348e"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 101,
+      "sha256": "bde6b17ec7fce5554206fbdafd9137a7528441530fbee12c16b16b0be393bee8"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 2585,
+      "sha256": "cbd149380c08a428acff9a04fa3b5223aab2747d91da1d520e799a7ef8203f7a"
+    },
+    {
+      "path": "CODEX_MASTER_HANDOFF.md",
+      "bytes": 35896,
+      "sha256": "f97653214d4a45fcdb3acc71148a4ec9369485de24c6b20689a6369be69d9ee7"
+    },
+    {
+      "path": "INPUT_MANIFEST.json",
+      "bytes": 2108,
+      "sha256": "566d750a33e72fc50ed45aad30c961c9687a748ad0d6789910abf7e13d48ab25"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1973,
+      "sha256": "a8b1726e3f76bdcd470d0587f3180c79a0d5c26cd0dc95a70f023f5e0d8be822"
+    },
+    {
+      "path": "START_HERE.md",
+      "bytes": 1509,
+      "sha256": "bed96cba7f5227f525399ab99c24db3fb96e210ad445e146258dfd7fbb431425"
+    },
+    {
+      "path": "config/output_policy.example.yaml",
+      "bytes": 935,
+      "sha256": "dfcdb0c96ea694635bbdd51de300a5a3ad762622e7972abe11ee929efe592665"
+    },
+    {
+      "path": "config/product_profiles.example.yaml",
+      "bytes": 2251,
+      "sha256": "4712e8a2038c6c0fe51f6e414dfc7f4c7c1fd1d7a86bd32e21130cfe772592d0"
+    },
+    {
+      "path": "config/products.example.yaml",
+      "bytes": 1919,
+      "sha256": "e3727e7b9f6e6025f23148b43ed31d58c63a9efe37bd9bf710a93f52bc57c218"
+    },
+    {
+      "path": "config/runtime.defaults.yaml",
+      "bytes": 1622,
+      "sha256": "d82cae3d297d0baa8d38a86c27ef390bf4018ff44304309946522e3d08becd9e"
+    },
+    {
+      "path": "config/scoring.v2.yaml",
+      "bytes": 672,
+      "sha256": "37d66e1cd8feb0698f555afb510cc382eb71c33b5e4488d9868204951671c432"
+    },
+    {
+      "path": "config/source_runtime.example.yaml",
+      "bytes": 2090,
+      "sha256": "c5c7b9e7b0839d83a6af9b0c81b88cb5dc4ed4648d002222b07d363636859712"
+    },
+    {
+      "path": "config/sources.yaml",
+      "bytes": 7652,
+      "sha256": "b2fc4564833441eda30f9a8be396ad73a05686070607cbc5b56785c7a62fc8a8"
+    },
+    {
+      "path": "config/topic_taxonomy.yaml",
+      "bytes": 1960,
+      "sha256": "7049f38437ec4a9e7db1805f64404f65b7608eb7f0b084f76d549a67f60d9977"
+    },
+    {
+      "path": "contracts/README.md",
+      "bytes": 772,
+      "sha256": "3c37c21e5db6b5fe80ed648a5f2dadf0be29b5c8c352072b779ac5f027cd4308"
+    },
+    {
+      "path": "contracts/candidate.schema.json",
+      "bytes": 9912,
+      "sha256": "3e4a1c4c52ec8fcb7d95123b2697a319132fc017af05a66971a727d73a177493"
+    },
+    {
+      "path": "contracts/editorial_selection.schema.json",
+      "bytes": 808,
+      "sha256": "5aaec5f812b34830fbfe1b3c3cc273e6b47a5daf49815bfc1a51731fdca0e105"
+    },
+    {
+      "path": "db/README.md",
+      "bytes": 539,
+      "sha256": "49d226cacacca28c3b7cfdcddab12a7e2ec317f957e83561b574230b6787eaba"
+    },
+    {
+      "path": "db/schema.v1.reference.sql",
+      "bytes": 3781,
+      "sha256": "db4be82b0e9e1a668bd5db8135f66506211740ed99cf184b376b60ebcc20967a"
+    },
+    {
+      "path": "docs/ACCEPTANCE.md",
+      "bytes": 5319,
+      "sha256": "a6f31e3b3a8e2a97c275940551d60aacecb7620eb61463a86f926ab907b3f9a6"
+    },
+    {
+      "path": "docs/DATA_CONTRACTS.md",
+      "bytes": 6963,
+      "sha256": "606bc201dda1eaad9fbe3850202493140bd16716a6b7d5be03848a6c6bd119e6"
+    },
+    {
+      "path": "docs/IMPLEMENTATION_PLAN.md",
+      "bytes": 4884,
+      "sha256": "2d1f7629877e5b378ac01cb7292499d89ecd9ba7f6194d172f83a6f0283a7e57"
+    },
+    {
+      "path": "docs/INTEGRATION_DECISIONS.md",
+      "bytes": 4239,
+      "sha256": "cfadc4412f16ee418cfee2a7e51a5ab50851a2718e0179c7cbd3b2533af7cb04"
+    },
+    {
+      "path": "docs/PACKAGE_VALIDATION.md",
+      "bytes": 1367,
+      "sha256": "38bd20b05ea7c25b4636fa5e5285181021bb8f6352b9a6116061145b5624e2f1"
+    },
+    {
+      "path": "docs/SCORING_SPEC.md",
+      "bytes": 6079,
+      "sha256": "4524fdd93bd53b31ec172fb088e1f4d1e4e56b8953c90feef9d9042769b374e2"
+    },
+    {
+      "path": "docs/SOURCE_AUDIT.md",
+      "bytes": 5762,
+      "sha256": "8d5342e07d2f7e2e47ff1f1ced2f1db48fb150addaed30b5caac5f7acca98798"
+    },
+    {
+      "path": "examples/README.md",
+      "bytes": 757,
+      "sha256": "f9bc54dd48388fa9d4909ea6d2b36bfd646a3d24c23733b59efe5efbfa70a582"
+    },
+    {
+      "path": "examples/candidate.synthetic.json",
+      "bytes": 2504,
+      "sha256": "52e6812793bda682f3f0dd8b467053552330fa0bf87362b83b5ac9889e0eadde"
+    },
+    {
+      "path": "examples/editorial_selection.synthetic.json",
+      "bytes": 174,
+      "sha256": "04f1e916088b7f18162693a85052645979634c3e61b5ed085e3656caa5e20703"
+    },
+    {
+      "path": "prompts/01_extract_facts.md",
+      "bytes": 1778,
+      "sha256": "71f82d9a070428cb431ad2932e7232fcbebe97c2c12141ccc9920e77b8d5bb8c"
+    },
+    {
+      "path": "prompts/02_assess_candidates.md",
+      "bytes": 1768,
+      "sha256": "cba8eaa1c64a1c674fca61a164aa93fc95bb6baca98592c49d8df8e87b3a41ad"
+    },
+    {
+      "path": "prompts/03_compare_history.md",
+      "bytes": 952,
+      "sha256": "d4ff20558b7ef13433e2764ebbd7a3c6912159224c2345e4195ddb84cd3dcdbe"
+    },
+    {
+      "path": "prompts/04_export_handoff.md",
+      "bytes": 1897,
+      "sha256": "5704024ac857d5ae6ea41b5358cd8745df5ea29f3b0598e6be7969a5ff80e84b"
+    },
+    {
+      "path": "references/README.md",
+      "bytes": 1135,
+      "sha256": "4ae18f40b176df99ce1a70ec8325bf57b177ff3e072d302885a5ba0212577672"
+    },
+    {
+      "path": "references/inputs/EDITORIAL_PLAN_V0.1.md",
+      "bytes": 18737,
+      "sha256": "5ab539a9015980af22431d8e85a7b4f517dfffa94e96684668a8f16738ef44bb"
+    },
+    {
+      "path": "references/inputs/SOURCE_HANDOFF_V1.md",
+      "bytes": 9425,
+      "sha256": "21821010b2d4b9051e2b74c54f4ca1e760830d2c059fce6f843f1c3c41a83f7d"
+    },
+    {
+      "path": "references/inputs/SOURCE_HANDOFF_V1.zip",
+      "bytes": 16643,
+      "sha256": "26e25141088011a2cb19bc5e6fec15458d818a7f85cfd05273846f9d491f23f6"
+    },
+    {
+      "path": "references/inputs/WRITING_MANUAL_V5.reference.md",
+      "bytes": 11928,
+      "sha256": "075b99416df581cddab563dd59fc6acc030e7a42d64d1e20e1ac4bde62bb7b38"
+    },
+    {
+      "path": "tools/validate_handoff.py",
+      "bytes": 1875,
+      "sha256": "a8942d278c0978992a76dec32905ae4546c2fe097a80cacc0f5667bb0fd85752"
+    }
+  ]
+}

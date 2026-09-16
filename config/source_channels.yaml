@@ -1,0 +1,39 @@
+version: 1
+note: 原26入口不改；在原有发布者域名内追加已验证的领域栏目。栏目数不等于独立网站数，媒体报道不冒充监管原文。
+channels:
+  cls_southbound:
+    parent: cls_hk_morning
+    name: 财联社｜南向资金追踪
+    url: https://www.cls.cn/subject/9870
+    categories: [hk]
+    note: 南向资金报道列表；数值与去向仍需核对原文，不等于港交所直连行情。
+  cls_innovative_drug:
+    parent: cls_morning
+    name: 财联社｜创新药
+    url: https://www.cls.cn/subject/1207
+    categories: [medicine]
+    note: 创新药专题列表；批准、申请、临床、合作等阶段保留原报道措辞。
+  cls_semiconductor_materials:
+    parent: cls_morning
+    name: 财联社｜半导体材料
+    url: https://www.cls.cn/subject/11056
+    categories: [technology]
+    note: 半导体材料专题列表，不代表覆盖全部半导体新闻。
+  wscn_technology:
+    parent: wallstreetcn_breakfast
+    name: 华尔街见闻｜科技公开资讯
+    url: https://wallstreetcn.com/news/tmt
+    categories: [technology]
+    note: 公开资讯列表的标题、导语、时间；跳过付费条目，不采集全文。
+  wscn_medicine:
+    parent: wallstreetcn_breakfast
+    name: 华尔街见闻｜医药公开资讯
+    url: https://wallstreetcn.com/news/medicine
+    categories: [medicine]
+    note: 公开医药列表有限窗口；最新文章可能早于本期截点，不承诺每日都有新增。
+  hkex_official_news:
+    parent: hkex_stock_connect_daily
+    name: 港交所｜官方新闻RSS
+    url: https://www.hkex.com.hk/Services/RSS-Feeds/News-Releases?sc_lang=zh-HK
+    categories: [hk]
+    note: 港交所明确提供的RSS订阅；仅交易所自身新闻，不是上市公司公告或港股通资金数据库。

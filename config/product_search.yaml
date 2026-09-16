@@ -1,0 +1,21 @@
+version: product-search-v1
+note: 领域来源与关键词双路检索；分类和词表仅用于检索，不代表当前持仓。
+max_queries: 8
+site_queries: 4
+products:
+  "513130":
+    categories: [hk, technology]
+    background_sources: [gov_policy_library]
+    keyword_queries: [港股科技 平台经营 云计算 AI应用, 大模型 智能体 商业化 收入, 消费电子 自动驾驶 业务进展, 恒生科技 南向资金 监管 指数调整]
+  "513530":
+    categories: [hk]
+    background_sources: [gov_policy_library]
+    keyword_queries: [港股 高股息 分红 派息 现金流, 港股通 南向资金 净买入, 利率 国债收益率 红利 估值, 银行 运营商 能源 公用事业 经营]
+  "588710":
+    categories: [technology]
+    background_sources: [gov_policy_library]
+    keyword_queries: [半导体设备 晶圆厂 资本开支 订单, 光刻 刻蚀 薄膜沉积 客户验证, HBM DRAM NAND 先进封装, 半导体材料 供需 国产替代]
+  "517120":
+    categories: [medicine]
+    background_sources: [hkex_news]
+    keyword_queries: [创新药 临床 三期 研究终点, NMPA FDA 新药 批准 范围, 创新药 License-out 首付款 里程碑, 医保 支付准入 ADC 双抗 商业化]

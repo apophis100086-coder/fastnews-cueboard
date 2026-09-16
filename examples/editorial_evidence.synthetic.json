@@ -1,0 +1,18 @@
+{
+  "is_fixture": true,
+  "title": "合成测试：南向市场统计与产品数字过滤",
+  "note": "本文件全为合成测试，不是真实联网成果，也不是当前产品或市场数据；只能导入 fixture 数据库。",
+  "content": "合成测试：南向市场净买额为 100 亿港元。合成测试：某产品规模为 999.88 亿元。合成测试：某项规则将于2026年9月16日实施。",
+  "source_id": "hkex_news",
+  "source_url": "https://example.com/synthetic-editorial-test",
+  "source_type": "user_document",
+  "declared_source": "Synthetic test fixture",
+  "origin_role": "unknown",
+  "first_published_at": "2026-09-14T18:00:00+08:00",
+  "event": {"subject": "合成市场", "action": "测试统计披露", "object": "测试量值", "phase": "announcement"},
+  "facts": [
+    {"statement": "合成测试：南向市场净买额为 100 亿港元。", "excerpt": "合成测试：南向市场净买额为 100 亿港元。", "kind": "reported", "subject": "合成南向市场", "metric": "net_inflow", "observed_value": 100, "unit": "亿港元", "currency": "HKD", "metric_scope": "market", "market": "HK", "period_end": "2026-09-14", "qualification": "仅市场总量，无红利或科技去向证据。"},
+    {"statement": "合成测试：某产品规模为 999.88 亿元。", "excerpt": "合成测试：某产品规模为 999.88 亿元。", "kind": "reported", "metric": "aum", "observed_value": "999.88", "unit": "亿元", "currency": "CNY", "metric_scope": "product", "period_end": "2026-09-14"},
+    {"statement": "合成测试：某项规则将于2026年9月16日实施。", "excerpt": "合成测试：某项规则将于2026年9月16日实施。", "kind": "plan", "phase": "announcement", "effective_at": "2026-09-16", "qualification": "已公开计划，不能写成已实施。"}
+  ]
+}

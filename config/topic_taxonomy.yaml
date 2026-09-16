@@ -1,0 +1,131 @@
+version: 1
+
+topics:
+
+  AI:
+    keywords:
+      - 人工智能
+      - AI
+      - 大模型
+      - Agent
+      - 智能体
+      - 推理
+      - 云计算
+      - 数据中心
+      - AI服务器
+      - 算力
+      - 模型
+    entities: []
+
+  SEMICONDUCTOR:
+    keywords:
+      - 半导体
+      - 晶圆
+      - 光刻
+      - 刻蚀
+      - 薄膜沉积
+      - HBM
+      - DRAM
+      - NAND
+      - 先进制程
+      - 晶圆厂
+      - 半导体设备
+    entities: []
+
+  HK_TECH:
+    keywords:
+      - 港股科技
+      - 恒生科技
+      - 互联网平台
+      - 云服务
+      - 消费电子
+      - 自动驾驶
+      - AI应用
+    entities:
+      - 腾讯
+      - 阿里
+      - 小米
+      - 美团
+
+  SOUTHBOUND:
+    keywords:
+      - 南向资金
+      - 港股通
+      - 沪港通
+      - 深港通
+      - 成交净买额
+      - 净买入
+      - 活跃证券
+    entities: []
+
+  DIVIDEND:
+    keywords:
+      - 高股息
+      - 红利
+      - 分红
+      - 股息率
+      - 回购
+      - 央企
+      - 银行
+      - 运营商
+      - 公用事业
+      - 能源
+    entities: []
+
+  INNOVATIVE_DRUG:
+    keywords:
+      - 创新药
+      - 新药
+      - NMPA
+      - CDE
+      - FDA
+      - 临床
+      - 三期
+      - II期
+      - III期
+      - ADC
+      - 双抗
+      - License-out
+      - BD
+      - 医保目录
+    entities: []
+
+  AGRICULTURE:
+    keywords:
+      - 生猪
+      - 玉米
+      - 大豆
+      - 豆粕
+      - 粮食
+      - 种业
+      - 农产品
+      - 农业农村部
+      - 鸡蛋
+      - 水稻
+    entities: []
+
+  METALS:
+    keywords:
+      - 铜
+      - 铝
+      - 锂
+      - 镍
+      - 有色
+      - 库存
+      - 现货
+      - 冶炼
+      - 加工费
+    entities: []
+
+  MACRO_POLICY:
+    keywords:
+      - 国务院
+      - 发改委
+      - 财政部
+      - 央行
+      - 证监会
+      - 金融监管总局
+      - 政策
+      - 利率
+      - 流动性
+    entities: []

@@ -1,0 +1,12 @@
+{
+  "is_fixture": true,
+  "title": "合成测试产品身份资料",
+  "note": "全部为合成测试；不构成真实法律资料或结构依据。",
+  "product_code": "513530",
+  "content": "合成测试资料：测试产品观察港股市场配置环境。资料结构日期为2026年9月1日，公布日期为2026年9月2日。",
+  "snapshot_type": "product_identity",
+  "data_as_of": "2026-09-01",
+  "published_at": "2026-09-02",
+  "excerpt": "合成测试资料：测试产品观察港股市场配置环境。",
+  "identity": {"market": "HK", "status": "synthetic_test_only"}
+}

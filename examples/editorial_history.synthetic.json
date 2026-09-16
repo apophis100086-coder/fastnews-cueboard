@@ -1,0 +1,12 @@
+{
+  "is_fixture": true,
+  "title": "合成历史稿件：规则计划",
+  "note": "合成历史材料，不是实际已发快讯；不得据此宣称真实产品不撞题。",
+  "product_code": "513530",
+  "content": "合成历史稿件。合成测试：某项规则将于2026年9月16日实施。本样本只有测试用途。",
+  "publication_time": "2026-09-13T18:00:00+08:00",
+  "completeness": "full_text",
+  "used_claims": ["合成测试：某项规则将于2026年9月16日实施。"],
+  "conclusions": [],
+  "editor_tag": "synthetic_test_only"
+}
