@@ -38,6 +38,11 @@ class LocalApplication:
             with closing(self.connection()) as conn, conn:
                 from .budget import utc_now
                 conn.execute("UPDATE fn_reading_reports SET status='failed',error_code='interrupted',finished_at=? WHERE status='running'",(utc_now(),))
+                conn.execute("UPDATE fn_writing_runs SET status='interrupted',error_code='interrupted',finished_at=? WHERE status='running'",(utc_now(),))
+                from .writing import run_record
+                for row in conn.execute('SELECT * FROM fn_writing_runs ORDER BY rowid DESC LIMIT 200'):
+                    record=run_record(row)
+                    self.jobs[record['job_id']]=record
 
     def connection(self):
         return connect(self.database, mode='fixture' if self.offline else 'live')
@@ -119,6 +124,8 @@ class LocalApplication:
             result['product_clues'] = aggregate_reports(conn,profile_id,edition_id)
             from .writing_background import pool_items
             result['candidate_pool'] = pool_items(conn, config, edition_id, include_inactive=True)
+            from .writing import workflow
+            result['writing']=workflow(conn,edition_id)
             return result
 
     def daily(self, day, profile_id='default'):
@@ -143,8 +150,15 @@ class LocalApplication:
                 from .reading_reports import generate_report
                 profile_id = data.get('reader_profile','default')
                 config = data.get('_config') or configured_view(conn,self.config,profile_id)
-                sync_registry(conn,config)
-                if action in {'scan','digest'}:
+                if not action.startswith('writing-'):
+                    sync_registry(conn,config)
+                if action in {'writing-outline','writing-draft'}:
+                    from .writing import execute_run
+                    def writing_progress(item):
+                        with self.guard:
+                            self.jobs[job_id]['progress'].append(item)
+                    result=execute_run(conn,job_id,self.controls[job_id],progress=writing_progress)
+                elif action in {'scan','digest'}:
                     def progress(item):
                         with self.guard:
                             self.jobs[job_id]['progress'].append({k: item.get(k) for k in ('source_id', 'status', 'error_code','stage','message')})
@@ -173,7 +187,8 @@ class LocalApplication:
                         control.check()
                         result=generate_report(conn,config,profile_id,'product',edition['edition_date'],
                             edition=edition,request_mode='explore',research_question=data.get('research_question',''),
-                            request_id=data['request_id'],control=control,task_id=job_id,progress=research_progress)
+                            request_id=data['request_id'],control=control,task_id=job_id,progress=research_progress,
+                            writing_context=data.get('writing_context'))
                         with self.guard:
                             self.jobs[job_id].update(status='completed',result=result)
                         return
@@ -220,17 +235,51 @@ class LocalApplication:
             seconds=policy()['exploration_seconds']
             accepted_control=TaskControl(seconds)
             accepted_at=accepted_control.started_at
+        elif action in {'writing-outline','writing-draft'}:
+            from .task_control import TaskControl
+            from .writing import policy
+            accepted_control=TaskControl(policy()['deadline_seconds'])
         with self.guard:
+            if action in {'writing-outline','writing-draft'}:
+                from .writing import previous_request, accept_run, policy
+                from .source_catalog import configured_view, profile
+                from .task_control import TaskControl
+                control=accepted_control
+                with closing(self.connection()) as conn:
+                    previous=previous_request(conn,action.removeprefix('writing-'),data)
+                    if previous:
+                        self.jobs.setdefault(previous['job_id'],previous)
+                        return {'job_id':previous['job_id']}
+                    if self.active_job:
+                        raise ValueError('已有后台任务；可继续选材和保存，完成或停止后再生成')
+                    if self.offline:
+                        raise ValueError('合成模式不自动调用真实写作模型')
+                    frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
+                    frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
+                    record=accept_run(conn,frozen,action.removeprefix('writing-'),data,control)
+                jid=record['job_id']
+                self.jobs[jid]=record
+                self.controls[jid]=control
+                self.active_job=jid
+                threading.Thread(target=self._run_job,args=(jid,action,dict(data,_config=frozen)),daemon=True).start()
+                return {'job_id':jid}
             if action=='job-stop':
                 job=self.jobs.get(data.get('job_id'))
-                if not job or job['action']!='explore':
-                    raise ValueError('没有可停止的探查任务')
+                if not job or job['action'] not in {'explore','writing-outline','writing-draft'}:
+                    raise ValueError('没有可停止的探查或写作任务')
                 control=self.controls.get(data['job_id'])
                 if control:
                     control.cancelled.set()
                     job['stop_requested']=True
                 return {'job_id':data['job_id'],'status':job['status'],'stop_requested':bool(control)}
             if action=='explore':
+                if data.get('writing_context'):
+                    from .writing import version
+                    with closing(self.connection()) as conn:
+                        parent=version(conn,data['writing_context'].get('outline_version_id'))
+                        if parent['edition_id']!=data['edition_id'] or parent['stage']!='outline':
+                            raise ValueError('补搜需要本期框架')
+                    data=dict(data,writing_context={'outline_version_id':parent['version_id']})
                 rid=data.get('request_id')
                 if not isinstance(rid,str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
                     raise ValueError('继续探查需要有效的请求编号')
@@ -308,6 +357,15 @@ class LocalApplication:
                 threading.Thread(target=self._run_job, args=(job_id, action,job_data), daemon=True).start()
                 return {'job_id': job_id}
             with closing(self.connection()) as conn:
+                if action=='writing-confirm':
+                    from .writing import confirm_outline, public_version
+                    return public_version(confirm_outline(conn,data))
+                if action=='writing-export':
+                    from .writing import export_draft
+                    return export_draft(conn,data['version_id'])
+                if action=='writing-recheck':
+                    from .writing import recheck_draft
+                    return recheck_draft(conn,data)
                 if action in {'pool-add', 'pool-remove'}:
                     from .writing_background import add_candidate, remove_candidate
                     from .source_catalog import configured_view
@@ -332,7 +390,7 @@ class LocalApplication:
                         edition_date=data['edition_date'], news_cutoff=data['news_cutoff'],
                         market_cutoffs=parse_markets(data.get('market_cutoffs', [])))
                 if action == 'decision':
-                    background = {k: data[k] for k in ('selected_clue_ids', 'manual_notes') if k in data}
+                    background = {k: data[k] for k in ('selected_clue_ids', 'manual_notes','must_include_ids') if k in data}
                     return editorial.save_decision(conn, edition_id=data['edition_id'],
                         selected_event_id=data.get('selected_event_id'), selected_fact_ids=data.get('selected_fact_ids', []),
                         expected_revision=data['expected_revision'], actor_type='human', mainline_note=data.get('mainline_note') or None,
@@ -442,7 +500,7 @@ def make_server(app, port=8765):
                     names = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/editorial.css': ('editorial.css', 'text/css')}
                     filename, mime = names[request.path]
                     return self._send(200, (STATIC / filename).read_bytes(), mime + '; charset=utf-8')
-                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js','/exploration.js'}:
+                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js','/exploration.js','/writing.js'}:
                     return self._send(200,(STATIC/request.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
                 if request.path == '/api/state':
                     result = app.state(query.get('profile',['default'])[0])

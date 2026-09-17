@@ -35,5 +35,7 @@ deliverables/*.verification.json
 .codex/
 .vscode/
 .idea/
+output/
+.playwright-cli/
 .DS_Store
 Thumbs.db

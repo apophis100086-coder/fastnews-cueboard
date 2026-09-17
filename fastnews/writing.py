@@ -1,0 +1,658 @@
+"""Versioned outline -> human confirmation -> evidence-bound draft workflow."""
+from copy import deepcopy
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+import uuid
+from zoneinfo import ZoneInfo
+
+import yaml
+
+from . import editorial as ed
+from .budget import utc_now
+from .host_provider import run_host, ProcessGroup, clean_environment
+from .metadata import normalize_url, parse_instant, time_bounds
+from .reader_limits import reader_limits
+from .source_access import source_constraints, url_policy
+from .task_control import TaskControl
+from .writing_checks import issue, check_text, qualify_claim, numeric_tokens, number_units, within_cutoff, normalized, FUND_MANAGER_NAMES
+from .writing_contracts import OUTLINE, DRAFT
+
+ROOT=Path(__file__).resolve().parents[1]
+SKILL=ROOT/'skills'/'huatai-fastnews-writing'
+
+
+def dumps(value):
+    return json.dumps(value,ensure_ascii=False,sort_keys=True,allow_nan=False)
+
+
+def fingerprint(value):
+    return hashlib.sha256(dumps(value).encode()).hexdigest()
+
+
+def policy():
+    value=yaml.safe_load((ROOT/'config'/'writing.yaml').read_text(encoding='utf-8'))
+    if not 30<=value['deadline_seconds']<=480 or not 1<=value['max_pages']<=20:
+        raise ValueError('写作时限或页面预算配置无效')
+    if value['finalize_seconds']<30 or value['host_seconds']>450:
+        raise ValueError('写作任务必须预留保存和清理时间')
+    return value
+
+
+def instructions(stage):
+    return (SKILL/'SKILL.md').read_text(encoding='utf-8')+'\n'+(SKILL/'guides'/(stage+'.md')).read_text(encoding='utf-8')
+
+
+def task_attempts(conn):
+    today=parse_instant(utc_now()).astimezone(ZoneInfo('Asia/Shanghai')).date().isoformat()
+    lo,hi=time_bounds(today)
+    return sum(lo<=parse_instant(row[0])<=hi for table in ('fn_reading_reports','fn_writing_runs')
+               for row in conn.execute('SELECT created_at FROM '+table))
+
+
+def _decision(conn, edition_id, revision):
+    current=ed.latest_decision(conn,edition_id)
+    if not current or type(revision) is not int or current['decision_revision']!=revision:
+        raise ValueError('选材版本已改变，请保存并按当前材料重新整理框架')
+    return current
+
+
+def version(conn, identifier):
+    row=conn.execute('SELECT * FROM fn_writing_versions WHERE version_id=?',(identifier,)).fetchone()
+    if not row:
+        raise ValueError('写作版本不存在')
+    item=dict(row)
+    for key in ('content','snapshot','checks'):
+        item[key]=json.loads(item.pop(key+'_json'))
+    return item
+
+
+def _snapshot(conn, config, edition_id, revision):
+    decision=_decision(conn,edition_id,revision)
+    edition=ed.get_edition(conn,edition_id)
+    materials=[]
+    sources=[]
+    preferences=[]
+    selected_clues=deepcopy(decision.get('selected_clues',[]))
+    if decision.get('selected_event_id') and decision['selected_event_id'] not in {c['event_id'] for c in selected_clues}:
+        from .writing_background import snapshot_event
+        selected_clues.append(snapshot_event(conn,config,edition_id,decision['selected_event_id']))
+    for clue in selected_clues:
+        mid=clue['event_id']
+        materials.append(dict(id=mid,title=clue['title'],summary=clue['summary'],relation=clue.get('why',''),
+            origin=clue.get('origin'),must_include=mid in decision.get('must_include_ids',[])))
+        for source in clue.get('sources',[]):
+            text=source.get('excerpt','')
+            observed=source.get('source_excerpt_verified') is True
+            # Only the explicit original document kinds can supply local text.
+            if clue.get('origin')=='user_material':
+                docs=conn.execute('''SELECT d.content,d.metadata_json,e.data_json
+                  FROM fn_edition_evidence ee JOIN fn_evidence e USING(evidence_id)
+                  JOIN fn_documents d USING(document_id) WHERE ee.edition_id=? AND ee.event_id=? AND d.document_id=?''',
+                  (edition_id,mid,source.get('document_id'))).fetchall()
+                for doc in docs:
+                    evidence=json.loads(doc['data_json'])
+                    if evidence['source_type'] not in {'search_snippet','user_text'}:
+                        text=doc['content']; observed=True
+                        source=dict(source,published_at=evidence['first_published_at'])
+                        break
+            sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,
+                name=source.get('source_name') or source.get('title') or '公开资料',
+                url=source.get('url'),published_at=source.get('first_published_at') or source.get('published_at'),
+                text=text if observed else '',research_hint=text if not observed else '',
+                text_observed=observed,date_observed=observed and clue.get('origin')=='user_material',
+                identity=source.get('material_identity') or source.get('evidence_level') or clue.get('origin'),
+                source_id=source.get('source_id'),document_id=source.get('document_id'),error=None))
+    for note in decision.get('manual_notes',[]):
+        if not note['selected']:
+            continue
+        if note['kind']=='writing_note':
+            preferences.append({'id':note['note_id'],'content':note['content']})
+            continue
+        materials.append(dict(id=note['note_id'],title='人工补充',summary=note['content'],relation='',
+            origin='manual_note',must_include=note['note_id'] in decision.get('must_include_ids',[])))
+        sources.append(dict(id='src_'+str(len(sources)+1),material_id=note['note_id'],
+            name=note.get('source_name') or '人工补充，出处待核',url=note.get('source_url'),
+            published_at=note.get('published_at'),text='',research_hint=note['content'],
+            text_observed=False,date_observed=False,identity='manual_note',source_id=None,error=None))
+    # Legacy selected facts remain usable, with their frozen source evidence.
+    for fact in ed.edition_facts(conn,edition_id):
+        if fact['fact_id'] not in decision['selected_fact_ids']:
+            continue
+        mid=fact['fact_id']
+        materials.append(dict(id=mid,title='人工选择的事实',summary=fact['statement'],relation='',origin='fact',
+                             must_include=mid in decision.get('must_include_ids',[])))
+        for eid in fact.get('evidence_refs',[]):
+            ev=ed._evidence(conn,eid)
+            doc=conn.execute('SELECT content FROM fn_documents WHERE document_id=?',(ev['document_id'],)).fetchone()
+            original=ev.get('source_type') not in {'search_snippet','user_text'} and ev.get('access_status')!='search_snippet_only'
+            observed=bool(doc) and original and fact['evidence_state'] in {'reported','verified'}
+            sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,name=ev.get('declared_source') or '提供的原始资料',
+                url=ev.get('source_url'),published_at=ev.get('first_published_at'),text=doc[0] if observed else '',
+                research_hint='' if observed else ev.get('excerpt',''),text_observed=observed,date_observed=observed,
+                identity=ev.get('source_type') or 'selected_fact_evidence',source_id=ev.get('source_id'),error=None))
+    if not materials:
+        raise ValueError('请先选择事实材料；只有写作要求不能生成框架')
+    rules=policy()
+    return dict(edition_id=edition_id,product_code=edition['product_code'],product_name=edition['product_name'],
+        decision_revision=revision,news_cutoff=edition['news_cutoff'],market_cutoffs=edition['market_cutoffs'],
+        mainline_note=decision.get('mainline_note'),selected_event_id=decision.get('selected_event_id'),
+        materials=materials,sources=sources,preferences=preferences,rules=rules,
+        source_constraints=source_constraints(config.get('reader_sources',[])),
+        is_fixture=edition['is_fixture'],skill_version=fingerprint([instructions('outline'),instructions('draft'),rules]),
+        product_codes=list(config['products']))
+
+
+def request_signature(stage,data):
+    return fingerprint({'stage':stage,**{k:v for k,v in data.items() if not k.startswith('_')}})
+
+
+def previous_request(conn,stage,data):
+    rid=data.get('request_id')
+    if not isinstance(rid,str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
+        raise ValueError('写作任务需要有效的请求编号')
+    row=conn.execute('SELECT * FROM fn_writing_runs WHERE request_id=?',(rid,)).fetchone()
+    if row and row['request_hash']!=request_signature(stage,data):
+        raise ValueError('此请求编号已用于不同写作内容')
+    return run_record(row) if row else None
+
+
+def accept_run(conn,config,stage,data,control,run_id=None):
+    prior=previous_request(conn,stage,data)
+    if prior:
+        return prior
+    if stage not in {'outline','draft'}:
+        raise ValueError('未知写作阶段')
+    pid=data.get('reader_profile','default')
+    from .source_catalog import profile
+    settings=(config.get('_reader_profile') or profile(conn,pid))['settings']
+    if settings.get('host','none')=='none':
+        raise ValueError('请先在来源设置中选择已登录的宿主模型')
+    snapshot=_snapshot(conn,config,data['edition_id'],data['decision_revision'])
+    parent=None
+    feedback=data.get('feedback','')
+    if not isinstance(feedback,str) or len(feedback)>policy()['max_feedback_characters']:
+        raise ValueError('框架反馈最多2000字')
+    if stage=='draft':
+        parent=version(conn,data.get('confirmed_version_id'))
+        if parent['stage']!='confirmed_outline' or parent['edition_id']!=data['edition_id']:
+            raise ValueError('正文需要本期由用户确认的最终框架')
+        if parent['decision_revision']!=data['decision_revision'] or parent['snapshot']['skill_version']!=snapshot['skill_version']:
+            raise ValueError('选材或写作规则已更新，请重新核对并确认框架')
+        snapshot=deepcopy(parent['snapshot'])
+        if parent['checks']['errors']:
+            raise ValueError('关键事实或规则问题尚未解决，请先补充依据或修改框架')
+    elif data.get('parent_version_id'):
+        parent=version(conn,data['parent_version_id'])
+        if parent['edition_id']!=data['edition_id'] or parent['stage']!='outline':
+            raise ValueError('框架反馈必须关联本期框架')
+    content={'snapshot':snapshot,'host':settings['host'],'allow_verify':settings.get('web_search',True),
+        'feedback':feedback,'parent':parent['content'] if parent else None,
+        'parent_id':parent['version_id'] if parent else None,'instructions':instructions(stage)}
+    # Bound selected user content, not source retrieval or instruction overhead.
+    if len(dumps(snapshot['materials'])+dumps(snapshot['preferences'])+feedback)>reader_limits()['max_input_characters']:
+        raise ValueError('选材超出本次输入预算，请精简补充；未丢弃任何必写项')
+    identifier=run_id or 'writing_'+uuid.uuid4().hex
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        if task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
+            raise ValueError('今天宿主任务已达到共享预算12次（包括检索、写作及失败尝试）')
+        control.check()
+        conn.execute('''INSERT INTO fn_writing_runs(run_id,request_id,request_hash,edition_id,decision_revision,stage,
+            profile_id,status,input_json,created_at,deadline_at) VALUES(?,?,?,?,?,?,?,'running',?,?,?)''',
+            (identifier,data['request_id'],request_signature(stage,data),data['edition_id'],data['decision_revision'],
+             stage,pid,dumps(content),control.started_at,control.deadline_at))
+        conn.commit()
+    except BaseException:
+        conn.rollback(); raise
+    return run_record(conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(identifier,)).fetchone())
+
+
+def _read_source(url,control,seconds):
+    flags={'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {}
+    process=subprocess.Popen([sys.executable,'-m','fastnews.writing_fetch'],cwd=ROOT,env=clean_environment(),
+        stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8',**flags)
+    group=ProcessGroup(process)
+    end=min(time.monotonic()+seconds,control.deadline-30)
+    try:
+        first=True
+        while True:
+            control.check()
+            remaining=end-time.monotonic()
+            if remaining<=0:
+                return {'error':'source_timeout'}
+            try:
+                output,_=process.communicate(dumps({'url':url}) if first else None,timeout=min(.25,remaining))
+                return json.loads(output) if process.returncode==0 else {'error':'read_failed'}
+            except subprocess.TimeoutExpired:
+                first=False
+    finally:
+        group.close()
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+
+
+def verify_sources(snapshot,control,progress=None,fetcher=None):
+    fetcher=fetcher or _read_source
+    rules=snapshot['rules']; until=min(time.monotonic()+rules['verification_seconds'],control.deadline-60)
+    seen={}; counts={}; total=0
+    from .live_sources import load_live_config
+    program_rules=load_live_config()['sources']
+    for source in snapshot['sources']:
+        control.check()
+        if source['text_observed']:
+            continue
+        mid=source['material_id']
+        url=source.get('url')
+        if not url:
+            source['error']='missing_source_url'; continue
+        try:
+            url=normalize_url(url)
+            access=url_policy(url,snapshot['source_constraints'],source.get('source_id'))
+        except ValueError:
+            source['error']='unsafe_url'; continue
+        if not access['host_read_allowed']:
+            source['error']='source_restricted'; continue
+        # Known collector restrictions remain separate from host permissions.
+        sid=source.get('source_id')
+        from urllib.parse import urlsplit
+        host=urlsplit(url).hostname.removeprefix('www.')
+        matching=[r for key,r in program_rules.items() if key==sid or
+            urlsplit(r.get('listing_url','')).hostname and urlsplit(r['listing_url']).hostname.removeprefix('www.')==host]
+        if any(r.get('fulltext_allowed') is not True for r in matching):
+            source['error']='program_read_restricted'; continue
+        if time.monotonic()>=until or total>=rules['max_pages'] or counts.get(mid,0)>=rules['pages_per_material']:
+            source['error']='verification_budget'; continue
+        if progress:
+            progress({'stage':'writing_verify','message':'核对已选材料出处 '+str(total+1)})
+        if url not in seen:
+            seen[url]=fetcher(url,control,max(.1,min(rules['page_seconds'],until-time.monotonic())))
+            total+=1; counts[mid]=counts.get(mid,0)+1
+        result=seen[url]
+        if result.get('error'):
+            source['error']=result['error']; continue
+        source.update(text=result['text'],text_observed=True,identity='program_fragment',
+                      retrieved_at=result.get('retrieved_at'),error=None)
+        observed_date=result.get('published_at')
+        try:
+            if observed_date:
+                time_bounds(observed_date)
+                source.update(published_at=observed_date,date_observed=True)
+        except ValueError:
+            pass
+    # Excerpts are explicitly bounded; missing passages remain a visible gap.
+    per_source=max(600,min(5000,14000//max(1,len(snapshot['sources']))))
+    for source in snapshot['sources']:
+        full=source.get('text','')
+        source['document_hash']=hashlib.sha256(full.encode()).hexdigest() if source['text_observed'] else None
+        source['text_truncated']=len(full)>per_source
+        material=next((m for m in snapshot['materials'] if m['id']==source['material_id']),{})
+        focus=' '.join([snapshot.get('mainline_note') or '',material.get('title',''),material.get('summary','')])
+        source['text_segments']=source_segments(full,per_source,focus)
+        source['text']='\n【分段摘录：中间有省略】\n'.join(source['text_segments'])
+        source['fingerprint']=fingerprint(source)
+    return snapshot
+
+
+def source_segments(text,limit,focus):
+    """Keep the lead and located passages; never pretend disjoint text is whole."""
+    if len(text)<=limit:return [text] if text else []
+    lead=limit//2; ranges=[(0,lead)]; remaining=limit-lead
+    terms=list(dict.fromkeys(re.findall(r'\d+(?:\.\d+)?\s*(?:%|亿元|亿美元|亿港元)',focus)))
+    terms+=['Phase 2b','Phase 3','首付款','里程碑','跟踪','业绩比较基准']
+    for term in terms:
+        at=text.find(term,lead)
+        if at<0 or remaining<100 or any(start<=at<end for start,end in ranges):continue
+        start=max(lead,at-250);end=min(len(text),start+min(900,remaining))
+        # Adjacent windows merge so every quoted passage remains a real substring.
+        if any(start<e and end>s for s,e in ranges):continue
+        ranges.append((start,end));remaining-=end-start
+    if remaining>0:ranges[0]=(0,min(lead+remaining,min((s for s,e in ranges if s>0),default=len(text))))
+    return [text[start:end] for start,end in sorted(ranges)]
+
+
+def _validate_shape(raw,schema):
+    ed._validate_schema(raw,schema,'writing')
+    if len(dumps(raw))>85000:
+        raise ValueError('写作结果超过保存上限')
+    if len(raw.get('paragraphs',[]))>12 or len(raw.get('claims',[]))>50 or len(raw.get('entities',[]))>80:
+        raise ValueError('写作结果条目过多')
+
+
+def _entities(raw,sources):
+    errors=[]
+    for e in raw:
+        source=sources.get(e['source_id'])
+        if not e['name'] or not source or not source.get('text_observed') or not e['quote'] or e['quote'] not in source['text'] or e['name'] not in e['quote']:
+            errors.append(issue('entity_identity','具体公司缺少可核对的身份依据',e.get('name','')))
+        if e['market']=='UNKNOWN' and e['name'] not in FUND_MANAGER_NAMES:
+            errors.append(issue('entity_identity','公司上市身份待核实',e['name']))
+    return errors
+
+
+def validate_outline(raw,snapshot):
+    _validate_shape(raw,OUTLINE)
+    materials={m['id']:m for m in snapshot['materials']}
+    sources={s['id']:s for s in snapshot['sources']}
+    claims={}; errors=[]
+    if not raw['mainline'].strip() or not 1<=len(raw['paragraphs'])<=12 or not 1<=len(raw['title_directions'])<=3:
+        raise ValueError('框架缺少主线、标题方向或段落')
+    for c in raw['claims']:
+        if not c['id'] or c['id'] in claims or c['material_id'] not in materials:
+            raise ValueError('陈述编号重复或引用了未选材料')
+        checks=qualify_claim(c,sources,snapshot['news_cutoff'],snapshot['product_code'])
+        c=deepcopy(c); c.update(checks=checks,usable=not checks)
+        claims[c['id']]=c
+    seen=set(); used=set(); required_claims=set()
+    for p in raw['paragraphs']:
+        if not p['id'] or p['id'] in seen or set(p['material_ids'])-set(materials) or set(p['claim_ids'])-set(claims):
+            raise ValueError('段落编号或材料引用无效')
+        seen.add(p['id']); used.update(p['material_ids']); required_claims.update(p['claim_ids'])
+        if not p['claim_ids']:
+            errors.append(issue('paragraph_evidence','拟写段落缺少事实依据',p['id']))
+        if any(claims[c]['material_id'] not in p['material_ids'] for c in p['claim_ids']):
+            raise ValueError('段落的陈述与材料映射不一致')
+    for cid in required_claims:
+        errors.extend(claims[cid]['checks'])
+    dispositions=[d['material_id'] for d in raw['dispositions']]
+    if len(dispositions)!=len(set(dispositions)) or set(dispositions)!=set(materials):
+        raise ValueError('框架必须说明每条已选材料的安排或未用原因')
+    for mid,m in materials.items():
+        if m['must_include'] and mid not in used:
+            errors.append(issue('must_include','框架遗漏必须体现的材料',mid))
+    if snapshot.get('selected_event_id') and snapshot['selected_event_id'] in materials and snapshot['selected_event_id'] not in used:
+        errors.append(issue('main_event','框架遗漏人工主事件',snapshot['selected_event_id']))
+    # Unused unavailable research may remain in the ledger without blocking a valid mainline.
+    errors.extend(_entities(raw['entities'],sources))
+    for p in raw['paragraphs']:
+        errors.extend(check_text('。'.join(p['points'])+'。'+p['product_connection'],location=p['id'],
+            entities=raw['entities'],product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff'],editorial=True))
+    for title in raw['title_directions']:
+        errors.extend(check_text(title,location='title',entities=raw['entities'],product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff']))
+    if raw['blocking_gaps']:
+        errors.extend(issue('model_gap',g) for g in raw['blocking_gaps'])
+    if len(raw['supplement_queries'])>3 or any(len(q)>500 for q in raw['supplement_queries']):
+        raise ValueError('补搜问题最多3条、每条500字')
+    content=deepcopy(raw); content['claims']=list(claims.values())
+    content['text']=outline_text(content)
+    return content,dict(errors=errors,status='needs_materials' if errors else 'ready_to_confirm')
+
+
+def outline_text(content):
+    parts=['主线：'+content['mainline'],'标题方向：'+' / '.join(content['title_directions'])]
+    for i,p in enumerate(content['paragraphs'],1):
+        parts.append(f"第{i}段｜{p['purpose']}\n"+'\n'.join('- '+t for t in p['points'])+
+                     '\n分析：'+p['analysis']+'\n产品承接：'+p['product_connection'])
+    return '\n\n'.join(parts)
+
+
+def confirm_outline(conn,data):
+    rid=data.get('request_id','')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
+        raise ValueError('确认框架需要请求编号')
+    body=data.get('text')
+    if not isinstance(body,str) or not body.strip() or len(body)>policy()['max_outline_characters']:
+        raise ValueError('请粘贴最终框架，最多10000字')
+    parent=version(conn,data['outline_version_id'])
+    if parent['stage']!='outline' or parent['edition_id']!=data['edition_id']:
+        raise ValueError('请选择本期的框架版本')
+    identity=fingerprint([parent['version_id'],body,data['decision_revision']])
+    old=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()
+    if old:
+        if old['input_hash']!=identity:
+            raise ValueError('此确认请求编号已用于其他框架')
+        return version(conn,old['version_id'])
+    ed._reject_secrets(Path('confirmed-outline.txt'),body)
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        _decision(conn,data['edition_id'],data['decision_revision'])
+        if parent['decision_revision']!=data['decision_revision']:
+            raise ValueError('框架对应旧选材，请先按当前材料更新框架')
+        snapshot=deepcopy(parent['snapshot'])
+        snapshot['rules']=policy()
+        snapshot['skill_version']=fingerprint([instructions('outline'),instructions('draft'),snapshot['rules']])
+        proposal={key:deepcopy(parent['content'].get(key,[])) for key in OUTLINE['properties']}
+        for claim in proposal['claims']:
+            claim.pop('checks',None);claim.pop('usable',None)
+        if 'blocking_gaps' not in parent['content']:
+            proposal['blocking_gaps']=parent['content'].get('gaps',[])
+        reviewed,checks=validate_outline(proposal,snapshot)
+        checks['errors']+=check_text(body,location='confirmed_outline',entities=parent['content']['entities'],
+            product_codes=parent['snapshot']['product_codes'],cutoff=parent['snapshot']['news_cutoff'],editorial=True)
+        if checks['errors']:
+            raise ValueError('框架仍有关键依据或规则问题，请先补齐材料并更新框架')
+        result=_save_version(conn,snapshot,'confirmed_outline',
+            dict(reviewed,confirmed_text=body),checks,parent_id=parent['version_id'],request_id=rid,input_hash=identity)
+        conn.commit()
+    except BaseException:
+        conn.rollback(); raise
+    return result
+
+
+def validate_draft(raw,snapshot,outline):
+    _validate_shape(raw,DRAFT)
+    errors=[issue('model_review',t) for t in raw['issues']]
+    if raw['status']!='ready':
+        errors.append(issue('needs_materials','最终框架有事实缺口，未生成可复制稿'))
+    if not all(raw['review'].values()):
+        errors.append(issue('semantic_review','模型检查发现框架、证据或必写项未满足'))
+    claims={c['id']:c for c in outline['claims']}
+    sources={s['id']:s for s in snapshot['sources']}
+    errors+=_entities(raw['entities'],sources)
+    seen=set(); used=set(); rendered=[]
+    allowed_title=set()
+    for index,p in enumerate(raw['paragraphs'],1):
+        ids=p['claim_ids']; mid=p['material_ids']; oid=p['outline_paragraph_id']
+        if not ids or set(ids)-set(claims) or not oid or not p['outline_anchor'].strip() or p['outline_anchor'] not in outline['confirmed_text']:
+            errors.append(issue('paragraph_citation','段落缺少有效事实或框架引用',str(index))); continue
+        if any(not claims[c]['usable'] for c in ids):
+            errors.append(issue('unverified_fact','段落引用了尚待核实的陈述',str(index)))
+        if set(mid)!={claims[c]['material_id'] for c in ids}:
+            errors.append(issue('outline_mapping','段落的材料与事实引用不一致',str(index)))
+        used.update(mid); seen.add(oid)
+        evidence=' '.join(claims[c]['quote']+' '+claims[c]['statement'] for c in ids)
+        citation_dates=' '.join((claims[c]['published_at'] or '')+' '+claims[c]['data_period'] for c in ids if claims[c]['usable'])
+        allowed=numeric_tokens(evidence+' '+citation_dates+' '+snapshot['product_name']+' '+snapshot['product_code'])
+        allowed_title.update(allowed)
+        if numeric_tokens(p['text'])-allowed:
+            errors.append(issue('new_number','正文包含所引事实没有的数字',str(index)))
+        if number_units(p['text'])-number_units(evidence):
+            errors.append(issue('new_unit','正文的数值、单位或币种组合不对应所引事实',str(index)))
+        errs=check_text(p['text'],location=str(index),entities=outline['entities']+raw['entities'],
+                        product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff'])
+        errors.extend(errs)
+        refs=list(dict.fromkeys(claims[c]['source_id'] for c in ids))
+        citation=[]
+        for sid in refs:
+            s=sources[sid]; cited=[claims[c] for c in ids if claims[c]['source_id']==sid]
+            periods=list(dict.fromkeys(c['data_period'] for c in cited if c['data_period']))
+            dates=list(dict.fromkeys(c['published_at'] or s.get('published_at') or '日期待核' for c in cited))
+            citation.append(dict(source_id=sid,name=s['name'],url=s.get('url'),published_at='、'.join(dates),
+                                 data_period='；'.join(periods)))
+        rendered.append(dict(p,sources=citation))
+    if raw['status']=='ready' and (not raw['title'].strip() or not raw['paragraphs']):
+        errors.append(issue('empty_draft','正文为空'))
+    for m in snapshot['materials']:
+        if m['must_include'] and m['id'] not in used:
+            errors.append(issue('must_include','正文遗漏必须体现的材料',m['id']))
+    if numeric_tokens(raw['title'])-allowed_title:
+        errors.append(issue('title_number','标题数字缺少正文依据'))
+    errors.extend(check_text(raw['title'],location='title',entities=outline['entities']+raw['entities'],
+        product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff']))
+    content=dict(raw,paragraphs=rendered,risk_notice=risk_notice(snapshot),news_cutoff=snapshot['news_cutoff'],
+                 body_characters=sum(len(p['text']) for p in raw['paragraphs']))
+    content['text']=render_draft(content)
+    return content,dict(errors=errors,status='needs_changes' if errors else 'ready')
+
+
+def risk_notice(snapshot):
+    templates=yaml.safe_load((ROOT/'config'/'writing_risk.yaml').read_text(encoding='utf-8'))
+    general=templates['general']; product=templates['products'].get(snapshot['product_code'])
+    sources=[s for s in (general,product) if s and within_cutoff(s['source_date'],snapshot['news_cutoff'])]
+    return dict(version=templates['version'],text='\n'.join(s['text'] for s in sources),
+        source_url=(sources[-1] if sources else general)['source_url'],sources=sources,
+        status='sourced_template_formal_appendix_pending' if product in sources else 'general_template_product_appendix_pending',
+        missing=[templates['missing']]+([] if product in sources else ['本产品特殊风险模板尚未取得本期可用出处，请补充正式备注。']))
+
+
+def render_draft(content):
+    lines=[content['title']]
+    for p in content['paragraphs']:
+        refs=[]
+        for s in p.get('sources',[]):
+            refs.append(s['name']+'；公开日期：'+s['published_at']+
+                ('；统计期：'+s['data_period'] if s['data_period'] else '')+
+                ('；'+s['url'] if s.get('url') else '；用户提供的原始资料'))
+        lines.extend(['',p['text'],'','资料／数据来源：'+'；'.join(refs)+'；本期新闻截点：'+content['news_cutoff']])
+    return '\n'.join(lines)
+
+
+def _save_version(conn,snapshot,stage,content,checks,*,parent_id=None,run_id=None,request_id=None,input_hash=None):
+    identifier='wv_'+uuid.uuid4().hex
+    conn.execute('''INSERT INTO fn_writing_versions VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+        (identifier,snapshot['edition_id'],snapshot['decision_revision'],stage,parent_id,run_id,request_id,
+         input_hash or fingerprint(snapshot),dumps(content),dumps(snapshot),dumps(checks),utc_now()))
+    return version(conn,identifier)
+
+
+def run_record(row):
+    result=dict(row)
+    saved=json.loads(result.pop('input_json'))
+    result.update(job_id=result['run_id'],action='writing-'+result['stage'],reader_profile=result['profile_id'],
+        product_code=saved['snapshot']['product_code'],news_cutoff=saved['snapshot']['news_cutoff'],
+        started_at=result['created_at'],progress=[],usage=json.loads(result.pop('usage_json') or 'null'))
+    return result
+
+
+def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=None):
+    row=conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(identifier,)).fetchone()
+    if not row or row['status']!='running':
+        raise ValueError('任务不存在或已经结束')
+    data=json.loads(row['input_json']); snapshot=data['snapshot']; stage=row['stage']; response=None
+    try:
+        control.check()
+        if snapshot['is_fixture'] and runner is run_host:
+            raise ValueError('合成测试不能调用真实写作宿主')
+        if stage=='outline':
+            if data['allow_verify']:
+                verify_sources(snapshot,control,progress,fetcher)
+            previous={k:v for k,v in (data['parent'] or {}).items() if k not in {'claims','text'}} or None
+            raw=dict(snapshot,stage=stage,feedback=data['feedback'],previous_outline=previous)
+            raw['materials']=deepcopy(snapshot['materials'])
+            for material in raw['materials']:
+                if material['origin']=='user_material' and any(s['material_id']==material['id'] and s['text_observed'] for s in snapshot['sources']):
+                    # This generated summary repeats the imported document. Keep
+                    # its selected identity and the bounded, auditable source text.
+                    material['summary']='所选原始资料见本条对应 sources.text；摘录范围及截断标记随来源提供。'
+                    material['summary_compacted']=True
+        else:
+            raw=dict(snapshot,stage=stage,confirmed_outline=data['parent']['confirmed_text'],
+                     outline={k:v for k,v in data['parent'].items() if k not in {'claims','text','confirmed_text'}},
+                     claims=data['parent']['claims'])
+            raw['materials']=[{k:m[k] for k in ('id','title','must_include')} for m in snapshot['materials']]
+            raw['sources']=deepcopy(snapshot['sources'])
+            for source in raw['sources']:
+                # Drafting needs located evidence, not whole pages or duplicate hints.
+                source['text']='\n'.join(dict.fromkeys(c['quote'] for c in raw['claims'] if c['source_id']==source['id']))
+                source.pop('research_hint',None)
+        # Source constraints are enforced in the reader, never extra writing material.
+        raw.pop('source_constraints',None)
+        raw['sources']=deepcopy(raw['sources'])
+        for source in raw['sources']:
+            source.pop('text_segments',None)  # server audit, duplicate of rendered excerpts
+        context=dumps(raw)
+        if len(context)>reader_limits()['max_input_characters']:
+            raise ValueError('本次选材及原文超过24000字符预算，请精简选材；必写项未被自动丢弃')
+        if progress:
+            progress({'stage':'writing_model','message':'正在整理框架与证据' if stage=='outline' else '正在按确认框架生成正文并检查'})
+        response=runner(data['host'],data['instructions']+'\nINPUT_JSON:\n'+context,
+            OUTLINE if stage=='outline' else DRAFT,web_search=False,
+            timeout=control.host_timeout(snapshot['rules']['host_seconds'],snapshot['rules']['finalize_seconds']),
+            control=control,progress=progress)
+        control.check()
+        content,checks=validate_outline(response.payload,snapshot) if stage=='outline' else validate_draft(response.payload,snapshot,data['parent'])
+        control.check()
+        usage=dict(response.usage,total_elapsed_seconds=round(time.monotonic()-control.started,2))
+        with conn:
+            saved=_save_version(conn,snapshot,stage,content,checks,parent_id=data['parent_id'],run_id=identifier)
+            conn.execute("UPDATE fn_writing_runs SET status='completed',version_id=?,usage_json=?,finished_at=? WHERE run_id=?",(saved['version_id'],dumps(usage),utc_now(),identifier))
+        return public_version(saved)
+    except BaseException as exc:
+        code=getattr(exc,'code',None) or 'failed'
+        status=code if code in {'cancelled','timed_out','interrupted'} else 'failed'
+        usage=dict(response.usage if response else {},total_elapsed_seconds=round(time.monotonic()-control.started,2))
+        if not response:
+            usage.update(input_tokens=None,output_tokens=None,cost=None,usage_status='unknown')
+        with conn:
+            conn.execute('UPDATE fn_writing_runs SET status=?,error_code=?,usage_json=?,finished_at=? WHERE run_id=?',
+                (status,code,dumps(usage),utc_now(),identifier))
+        raise
+
+
+def public_version(record):
+    result={k:v for k,v in record.items() if k!='snapshot'}
+    result['product_code']=record['snapshot']['product_code']
+    result['news_cutoff']=record['snapshot']['news_cutoff']
+    result['skill_version']=record['snapshot']['skill_version']
+    result['source_evidence']=[{k:s.get(k) for k in ('id','material_id','name','url','published_at','text_observed','identity','error','text_truncated','fingerprint')} for s in record['snapshot']['sources']]
+    return result
+
+
+def workflow(conn,edition_id):
+    decision=ed.latest_decision(conn,edition_id)
+    versions=[public_version(version(conn,row[0])) for row in conn.execute('SELECT version_id FROM fn_writing_versions WHERE edition_id=? ORDER BY rowid',(edition_id,))]
+    current_skill=fingerprint([instructions('outline'),instructions('draft'),policy()])
+    for item in versions:
+        item['stale_selection']=item['decision_revision']!=(decision or {}).get('decision_revision')
+        item['stale_skill_version']=item['skill_version']!=current_skill
+    runs=[run_record(row) for row in conn.execute('SELECT * FROM fn_writing_runs WHERE edition_id=? ORDER BY rowid',(edition_id,))]
+    return {'versions':versions,'runs':runs,'rules_version':policy()['version']}
+
+
+def export_draft(conn,identifier):
+    record=version(conn,identifier)
+    if record['stage']!='draft' or record['checks']['errors']:
+        raise ValueError('当前稿件尚有检查问题，请修改框架或补齐依据后重新生成')
+    current_version=fingerprint([instructions('outline'),instructions('draft'),policy()])
+    if record['snapshot']['skill_version']!=current_version:
+        raise ValueError('写作规则已更新，请按新规则重新检查生成')
+    return dict(artifact_type='human_confirmed_news_draft',version_id=identifier,
+        markdown=record['content']['text'],risk_notice=record['content']['risk_notice'],
+        trace=public_version(record))
+
+
+def recheck_draft(conn,data):
+    """Re-run deterministic checks after a fix, retaining the original model review."""
+    parent=version(conn,data['version_id']);rid=data.get('request_id','')
+    if parent['stage']!='draft' or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
+        raise ValueError('重新检查需要稿件版本和有效请求编号')
+    current=fingerprint([instructions('outline'),instructions('draft'),policy()])
+    if parent['snapshot']['skill_version']!=current:
+        raise ValueError('写作技能或规则已更新，请回到框架确认后生成；程序复查不能代替新语义检查')
+    previous=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()
+    signature=fingerprint(['recheck',parent['version_id']])
+    if previous:
+        if previous['input_hash']!=signature:raise ValueError('此复查请求编号已用于其他稿件')
+        return public_version(version(conn,previous['version_id']))
+    confirmed=parent
+    while confirmed['stage']=='draft':confirmed=version(conn,confirmed['parent_id'])
+    if confirmed['stage']!='confirmed_outline':raise ValueError('稿件没有可追溯的确认框架')
+    outline=deepcopy(confirmed['content'])
+    sources={s['id']:s for s in parent['snapshot']['sources']}
+    for claim in outline['claims']:
+        claim['checks']=qualify_claim(claim,sources,parent['snapshot']['news_cutoff'],parent['snapshot']['product_code'])
+        claim['usable']=not claim['checks']
+    raw={key:deepcopy(parent['content'][key]) for key in DRAFT['properties']}
+    raw['paragraphs']=[{k:p[k] for k in DRAFT['properties']['paragraphs']['items']['properties']} for p in raw['paragraphs']]
+    content,checks=validate_draft(raw,parent['snapshot'],outline)
+    checks['review_kind']='program_recheck_original_model_review_preserved'
+    with conn:
+        return public_version(_save_version(conn,parent['snapshot'],'draft',content,checks,
+            parent_id=parent['version_id'],request_id=rid,input_hash=signature))

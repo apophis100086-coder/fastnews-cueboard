@@ -506,7 +506,7 @@ def latest_report(conn,profile_id,kind,day,edition_id=None):
 
 
 def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner=run_host, progress=None, extra_keywords=None,
-                    request_mode='baseline',research_question='',request_id=None,control=None,task_id=None):
+                    request_mode='baseline',research_question='',request_id=None,control=None,task_id=None,writing_context=None):
     if request_mode=='explore' and control is None:
         from .task_control import TaskControl
         control=TaskControl(product_reading.policy()['exploration_seconds'])
@@ -524,6 +524,8 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
         raise HostUnavailable('继续探查需要启用联网检索；现有材料仍可正常选用')
     if request_id:
         payload['request_id']=request_id
+    if writing_context:
+        payload['writing_context']=writing_context
     if control:
         payload['task']={'job_id':task_id or request_id,'started_at':control.started_at,'deadline_at':control.deadline_at}
     raw_input = json_text(payload)
@@ -550,7 +552,8 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
     from zoneinfo import ZoneInfo
     today=parse_instant(utc_now()).astimezone(ZoneInfo('Asia/Shanghai')).date().isoformat()
     lo,hi=time_bounds(today)
-    attempts=sum(lo<=parse_instant(r[0])<=hi for r in conn.execute('SELECT created_at FROM fn_reading_reports'))
+    from .writing import task_attempts
+    attempts=task_attempts(conn)
     if attempts>=reader_limits()['max_tasks_per_day']:
         raise ValueError('今天的宿主任务次数已达本地预算上限；可继续阅读已存结果，预算见 config/reader.defaults.yaml')
     rid = 'reading_'+uuid.uuid4().hex

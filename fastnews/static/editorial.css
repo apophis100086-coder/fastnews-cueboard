@@ -37,3 +37,19 @@ html{scroll-padding-top:126px}.workspace-screen{gap:20px}.panel{background:var(-
 .clue-new { border-left: 3px solid #36856b; }
 .clue-now { color: #37596a; }
 .clue-judgment { margin: 10px 0; font-size: 13px; }
+/* Human-led outline and draft workflow shares the existing editorial palette. */
+.writing-panel{margin-top:24px;padding:28px;max-width:1100px;margin-inline:auto}
+.writing-panel>details{border-top:1px solid var(--line,#d9e3e9);padding:18px 0;margin-top:18px}
+.writing-prose{font-family:inherit;font-size:16px;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9f8;border:1px solid #d9e3e9;border-radius:8px;padding:22px;margin:16px 0}
+.writing-prose.news-draft{background:#fff;font-size:17px;padding:28px}
+.writing-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}
+.writing-confirm{margin:28px 0;padding:24px;background:#f1f6f5;border-radius:10px;border-left:3px solid #207263}
+.writing-confirm textarea{min-height:210px;line-height:1.7;background:#fff}
+.writing-advice{font-size:14px;line-height:1.7;margin:16px 0}
+.writing-ready{color:#216857;font-weight:600;font-size:14px}
+.writing-gaps{background:#fff6e8;padding:18px 26px;border-radius:8px;color:#795226;line-height:1.7}
+.writing-evidence{padding:14px 0;border-bottom:1px solid #d9e3e9;font-size:14px}
+.writing-evidence blockquote{margin:10px 0;padding-left:14px;border-left:3px solid #bdccc7;color:#4f6264}
+.writing-task{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.6;color:#40645d}
+.writing-panel [hidden],.manual-note [hidden]{display:none!important}
+@media(max-width:760px){.writing-panel{padding:18px}.writing-confirm{padding:16px}.writing-prose.news-draft{padding:18px}.writing-panel .section-head{align-items:flex-start;flex-wrap:wrap}}

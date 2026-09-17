@@ -1,3 +1,4 @@
 # M0/M1 runtime versions verified locally; no network/LLM client required.
 PyYAML==6.0.3
 tzdata==2025.3
+pypdf==6.19.0

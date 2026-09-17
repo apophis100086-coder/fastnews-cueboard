@@ -51,7 +51,7 @@ class UpgradeTests(unittest.TestCase):
         tables,before = self.create_m1()
         with closing(db.connect(self.path,mode='fixture')) as upgraded:
             self.assert_original_data(upgraded,tables,before)
-            self.assertEqual([row[0] for row in upgraded.execute('SELECT version FROM fn_schema_migrations ORDER BY version')],[1,2,3,4,5,6])
+            self.assertEqual([row[0] for row in upgraded.execute('SELECT version FROM fn_schema_migrations ORDER BY version')],[1,2,3,4,5,6,7])
             self.assertTrue({'fn_editions','fn_research_runs','fn_pilot_feedback','fn_reader_profiles','fn_reading_reports','fn_source_preferences'} <= db._tables(upgraded))
             ledger = [tuple(row) for row in upgraded.execute('SELECT version,backup_path FROM fn_schema_migrations ORDER BY version')]
         backups = self.backups()
@@ -95,7 +95,7 @@ class UpgradeTests(unittest.TestCase):
         # Removing the injected failure permits a later normal additive upgrade.
         with closing(db.connect(self.path,mode='fixture')) as retried:
             self.assert_original_data(retried,tables,before)
-            self.assertEqual(retried.execute('SELECT max(version) FROM fn_schema_migrations').fetchone()[0],6)
+            self.assertEqual(retried.execute('SELECT max(version) FROM fn_schema_migrations').fetchone()[0],7)
         self.assertEqual(len(self.backups()),2)
 
     def test_mode_mismatch_does_not_upgrade_or_create_a_backup(self):

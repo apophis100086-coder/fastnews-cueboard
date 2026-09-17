@@ -126,6 +126,8 @@ def remove_candidate(conn, edition_id, event_id, expected_revision):
             if record['selected_event_id'] == event_id:
                 record['selected_event_id'] = None
             record['selected_fact_ids'] = [f for f in record['selected_fact_ids'] if f not in fact_ids]
+            if 'must_include_ids' in record:
+                record['must_include_ids']=[mid for mid in record['must_include_ids'] if mid!=event_id and mid not in fact_ids]
             if 'selected_clue_ids' in record:
                 record['selected_clue_ids'] = [e for e in record['selected_clue_ids'] if e != event_id]
                 record['selected_clues'] = [c for c in record['selected_clues'] if c['event_id'] != event_id]

@@ -846,7 +846,7 @@ def latest_decision(conn, edition_id):
 
 def save_decision(conn, *, edition_id, selected_event_id, selected_fact_ids, expected_revision,
                   actor_type, mainline_note=None, reason_code=None, selected_clue_ids=None,
-                  manual_notes=None, config=None):
+                  manual_notes=None, config=None, must_include_ids=None):
     get_edition(conn, edition_id)
     if actor_type != 'human':
         raise EditorialError('Only an explicit human action may save editorial choices')
@@ -879,6 +879,16 @@ def save_decision(conn, *, edition_id, selected_event_id, selected_fact_ids, exp
                 manual_notes if manual_notes is not None else (current or {}).get('manual_notes', []))
             background = {'background_version': 1, 'selected_clue_ids': [c['event_id'] for c in clues],
                           'selected_clues': clues, 'manual_notes': notes}
+        if must_include_ids is not None or (current and 'must_include_ids' in current):
+            required = must_include_ids if must_include_ids is not None else current['must_include_ids']
+            _ids(required, 'must_include_ids')
+            available = set(selected_fact_ids) | set(background.get('selected_clue_ids', [])) | {
+                n['note_id'] for n in background.get('manual_notes', []) if n['selected'] and n['kind']!='writing_note'}
+            if selected_event_id:
+                available.add(selected_event_id)
+            if set(required) - available:
+                raise EditorialError('必须体现的材料需要先纳入本次选材')
+            background['must_include_ids'] = required
         revision += 1
         record = {'decision_id': _id('decision_', [edition_id, revision]), 'edition_id': edition_id, 'actor_type': 'human',
                   'decision_revision': revision, 'selected_event_id': selected_event_id,

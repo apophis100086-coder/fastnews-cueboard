@@ -11,6 +11,16 @@ const root = path.resolve(__dirname, '..');
 const script = fs.readFileSync(path.join(root, 'fastnews/static/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'fastnews/static/index.html'), 'utf8');
 
+function writingOutline(id='outline-v1') {
+ return {version_id:id,stage:'outline',decision_revision:1,created_at:'2026-09-13T10:00:00Z',stale_selection:false,
+  checks:{errors:[],status:'ready_to_confirm'},source_evidence:[],content:{text:'合成框架，等待人工确认',suggestions:[],changes:[],
+   dispositions:[],claims:[],supplement_queries:['公开产业问题']}};
+}
+function writingEdition(id='ed-one') {
+ const value=edition();value.edition.edition_id=id;value.decision.decision_revision=1;
+ value.writing={versions:[writingOutline()],runs:[]};return value;
+}
+
 class Element {
   constructor(id) {
     this.id = id; this.value = ''; this.disabled = false; this.checked = false;
@@ -27,6 +37,7 @@ class Element {
   set innerHTML(value) { this._html = String(value); this._text = String(value).replace(/<[^>]+>/g, ''); }
   get innerHTML() { return this._html; }
   scrollIntoView() {}
+  focus() {}
   showModal() { this.open = true; }
   close() { this.open = false; }
   querySelectorAll() { return []; }
@@ -79,7 +90,7 @@ async function harness(options = {}) {
     document: {
       querySelectorAll() { return []; },
       getElementById(id) { assert.ok(elements.has(id), 'Unknown DOM id: ' + id); return elements.get(id); },
-      addEventListener(name, callback) { listeners.set(name, callback); },
+      addEventListener(name, callback) { listeners.set(name,[...(listeners.get(name)||[]),callback]); },
     },
     localStorage: {getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
     fetch: async (url, request) => {
@@ -102,11 +113,12 @@ async function harness(options = {}) {
   if(options.reader)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/reader.js'),'utf8'),context,{filename:'reader.js'});
   if(options.workflow)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workflow.js'),'utf8'),context,{filename:'workflow.js'});
   if(options.exploration)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/exploration.js'),'utf8'),context,{filename:'exploration.js'});
+  if(options.writing)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/writing.js'),'utf8'),context,{filename:'writing.js'});
   if(options.workspace)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workspace.js'),'utf8'),context,{filename:'workspace.js'});
   if(options.visuals)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/visuals.js'),'utf8'),context,{filename:'visuals.js'});
   return {
     el: id => elements.get(id), calls, state, storage,
-    on: (name, event) => listeners.get(name)(event),
+    on: async (name, event) => {for(const fn of listeners.get(name)||[])await fn(event);},
     route: value => { handler = value; },
     read: expression => JSON.parse(vm.runInContext('JSON.stringify(' + expression + ')', context)),
     evaluate: expression => vm.runInContext(expression,context),
@@ -649,4 +661,122 @@ test('stopped exploration preserves draft and exposes no fabricated results',asy
  await app.evaluate("pollExploration('stop-one')");
  assert.equal(app.read('basket.mainline_note'),'保留');assert.equal(app.read('dirty'),true);
  assert.match(app.el('message').textContent,/达到时间上限/);assert.equal(app.el('explore-stop').hidden,true);
+});
+const writingOptions={workflow:true,writing:true,exploration:true};
+test('writing renders a framework without copying it into the confirmation editor',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ assert.match(app.el('writing-outline-result').textContent,/合成框架/);
+ assert.equal(app.el('writing-final').value,'');assert.equal(app.el('writing-generate').disabled,true);
+ app.el('writing-final').value='人工改好的框架';app.el('writing-final').oninput();
+ assert.equal(app.el('writing-generate').disabled,false);
+});
+test('writing editor, feedback and material draft survive result completion',async()=>{
+ let polls=0;
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return writingEdition();
+  if(c.url==='/api/writing-outline')return {job_id:'w-one'};
+  if(c.url==='/api/job?id=w-one'){polls++;return {job_id:'w-one',action:'writing-outline',stage:'outline',edition_id:'ed-one',status:polls===1?'running':'completed',reader_profile:'default',progress:[]};}
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('writing-final').value='不能覆盖的最终框架';app.el('writing-final').oninput();
+ app.el('writing-feedback').value='请保留我的意见';app.el('writing-feedback').oninput();
+ await app.el('writing-outline').onclick();
+ assert.equal(app.el('writing-final').value,'不能覆盖的最终框架');
+ assert.equal(app.el('writing-feedback').value,'请保留我的意见');
+ assert.equal(polls,2);assert.equal(app.calls.filter(c=>c.url==='/api/writing-draft').length,0);
+});
+test('writing sends confirmation before draft and preserves pasted modifications',async()=>{
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return writingEdition();
+  if(c.url==='/api/writing-confirm')return {...writingOutline('confirmed'),stage:'confirmed_outline',content:{confirmed_text:c.body.text}};
+  if(c.url==='/api/writing-draft')return {job_id:'draft-task'};
+  if(c.url==='/api/job?id=draft-task')return {job_id:'draft-task',action:'writing-draft',stage:'draft',edition_id:'ed-one',status:'completed',progress:[]};
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('writing-final').value='用户粘贴并补充的最终框架';app.el('writing-final').oninput();
+ await app.el('writing-generate').onclick();
+ const writes=app.calls.filter(c=>c.method==='POST');
+ assert.equal(writes[0].url,'/api/writing-confirm');assert.equal(writes[0].body.text,'用户粘贴并补充的最终框架');
+ assert.equal(writes[1].url,'/api/writing-draft');assert.equal(writes[1].body.confirmed_version_id,'confirmed');
+});
+test('writing editor isolates Editions and restores unfinished text on return',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition(new URL('http://local'+c.url).searchParams.get('id')):undefined});
+ await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='一期未保存框架';app.el('writing-final').oninput();
+ await app.evaluate("loadEdition('ed-two')");assert.equal(app.el('writing-final').value,'');
+ app.el('writing-final').value='二期草稿';app.el('writing-final').oninput();
+ await app.evaluate("loadEdition('ed-one')");assert.equal(app.el('writing-final').value,'一期未保存框架');
+});
+test('writing jobs allow manual editing and switching while heavy controls stay disabled',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
+ await app.evaluate("loadEdition('ed-one');writingJob={job_id:'running'};setBusy(true)");
+ assert.equal(app.el('product').disabled,false);assert.equal(app.el('save').disabled,false);
+ assert.equal(app.el('writing-final').disabled,false);assert.equal(app.el('writing-outline').disabled,true);
+ assert.equal(app.el('research').disabled,true);
+});
+test('stale selection blocks writing from an older confirmed outline',async()=>{
+ const e=writingEdition();e.writing.versions[0].stale_selection=true;
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='旧框架';app.el('writing-final').oninput();
+ assert.equal(app.el('writing-generate').disabled,true);assert.match(app.el('writing-state').textContent,/旧选材/);
+});
+test('writing supplement sends only the visible public question and frame ID',async()=>{
+ const app=await harness({...writingOptions,reader:true,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return writingEdition();
+  if(c.url==='/api/explore')return {job_id:'gap-task'};
+  if(c.url==='/api/job?id=gap-task')return {job_id:'gap-task',action:'explore',edition_id:'ed-one',status:'completed',progress:[],result:{output:{items:[]}}};
+ }});
+ await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='私人草稿不应作为搜索词';app.el('writing-final').oninput();
+ app.el('writing-question').value='公开产业问题';app.el('writing-question').oninput();
+ await app.el('writing-supplement').onclick();
+ const body=app.calls.find(c=>c.url==='/api/explore').body;
+ assert.equal(body.research_question,'公开产业问题');assert.deepEqual(body.writing_context,{outline_version_id:'outline-v1'});
+ assert.doesNotMatch(JSON.stringify(body),/私人草稿/);
+});
+test('must-include flags are explicit and do not automatically select a material',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
+ await app.evaluate("loadEdition('ed-one')");await app.evaluate("basket.selected_clue_ids=['clue-one'];workflowChange({dataset:{mustMaterial:'clue-one'},checked:true})");
+ assert.deepEqual(app.read('basket.must_include_ids'),['clue-one']);
+ await app.evaluate("workflowChange({dataset:{clue:'clue-one'},checked:false})");
+ assert.deepEqual(app.read('basket.must_include_ids'),[]);
+});
+
+test('switching to a saved product restores its Edition without starting generation',async()=>{
+ const one=writingEdition(),two=writingEdition('ed-two');two.edition.product_code='588090';
+ const app=await harness({...writingOptions,products:[{code:'513130',name:'产品一'},{code:'588090',name:'产品二'}],
+  handler:c=>c.url.startsWith('/api/edition?')?(c.url.includes('ed-two')?two:one):undefined});
+ await app.evaluate('state.editions='+JSON.stringify([one.edition,two.edition]));
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('writing-final').value='产品一未确认的修改';app.el('writing-final').oninput();
+ app.el('product').value='588090';await app.el('product').onchange();
+ assert.equal(app.read('editionId'),'ed-two');assert.equal(app.el('writing-final').value,'');
+ app.el('product').value='513130';await app.el('product').onchange();
+ assert.equal(app.el('writing-final').value,'产品一未确认的修改');
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('older skill drafts remain readable but cannot be copied as currently checked output',async()=>{
+ const e=writingEdition();e.writing.versions.push({version_id:'draft-old',stage:'draft',decision_revision:1,
+  created_at:'2026-09-13T11:00:00Z',stale_skill_version:true,checks:{errors:[]},
+  content:{title:'历史标题',body_characters:10,paragraphs:[{text:'保留历史正文',sources:[{name:'实际出处',url:'https://example.org/article',published_at:'2026-09-12'}]}],risk_notice:{text:'风险提示',missing:[]}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/历史标题/);assert.match(output,/保留历史正文/);
+ assert.match(output,/旧版技能/);assert.match(output,/data-copy-draft="draft-old" disabled/);
+ assert.match(output,/<details class="paragraph-sources">/);
+ assert.equal(app.el('writing-framework-panel').open,false);
+});
+
+test('program recheck adds a version while preserving the final editor and avoiding a model task',async()=>{
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return writingEdition();
+  if(c.url==='/api/writing-recheck')return {...writingOutline('recheck-version'),parent_id:c.body.version_id};
+ }});
+ await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='尚未确认的人工修改';app.el('writing-final').oninput();
+ const button={dataset:{recheckDraft:'draft-one'}};
+ await app.on('click',{target:{closest:()=>button}});
+ assert.equal(app.el('writing-final').value,'尚未确认的人工修改');
+ assert.equal(app.read('detail.writing.versions').at(-1).parent_id,'draft-one');
+ assert.deepEqual(app.calls.filter(c=>c.method==='POST').map(c=>c.url),['/api/writing-recheck']);
 });
