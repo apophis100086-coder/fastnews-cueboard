@@ -38,7 +38,7 @@ class IndustryRecallTests(TestCase):
 
     def test_short_separate_site_queries_and_priority_axes_with_fallback_room(self):
         p = build_search_plan(self.view(), '588090', ['用户补充'])
-        self.assertEqual(len(p['observation_queries']), 5)
+        self.assertEqual(len(p['observation_queries']), 6)
         self.assertEqual(p['queries'][0]['lane'], 'observation')
         self.assertLessEqual(len(p['queries']) + p['fallback_queries'], p['max_queries'])
         for q in p['queries']:
@@ -100,9 +100,8 @@ class IndustryRecallTests(TestCase):
         self.assertFalse(item['fact_verified'])
         self.assertFalse(item['sources'][0]['source_excerpt_verified'])
 
-    def test_background_needs_period_approved_publisher_and_bounded_age(self):
-        for changes in ({'data_period_end':None}, {'published_at':'2025-09-03'},
-                        {'url':'https://example.org/old'}, {'first_published_at':'2026-09-16'},
+    def test_background_still_rejects_false_source_identity_and_future_publication(self):
+        for changes in ({'url':'https://example.org/old'}, {'first_published_at':'2026-09-16'},
                         {'published_at':'2026-09-16'}):
             s = self.background(); s.update(changes)
             with self.subTest(changes=changes):
@@ -124,12 +123,12 @@ class IndustryRecallTests(TestCase):
 
     def test_background_budget_and_mixed_chronology(self):
         raw = {'items':[], 'web_sources':[], 'coverage':[], 'gaps':[]}
-        for n in range(4):
+        for n in range(6):
             s = self.background(); s.update(id='web_'+str(n),url=f'https://www.semi.org.cn/site/semi/article/test{n}.html')
             one = report_raw(s,object='Synthetic series '+str(n))
             raw['items'] += one['items']; raw['web_sources'] += one['web_sources']
         result = validate_report(raw, self.payload(), trace('site:semi.org.cn 出货'))
-        self.assertEqual(len(result['items']), 3)
+        self.assertEqual(len(result['items']), 5)
         newer = source('https://www.stats.gov.cn/sj/zxfb/synthetic.html',sid='nbs_public')
         newer['id']='web_recent'
         raw = report_raw(self.background());raw['web_sources'].append(newer)

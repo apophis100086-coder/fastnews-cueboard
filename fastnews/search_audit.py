@@ -38,7 +38,7 @@ def audit_search(payload, trace):
             'observed_queries': individual or shared}
     directions = []
     for axis in plan.get('observation_queries', []):
-        matches = [q for q in queries if query_domains(q) == set(axis.get('domains', [])) and
+        matches = [q for q in queries if (not axis.get('domains') or query_domains(q) == set(axis.get('domains', []))) and
                    any(term.casefold() in q.casefold() for term in axis['match_terms'])]
         directions.append({'id': axis['id'], 'name': axis['name'], 'status':
             'source_disabled' if axis['status'] == 'source_disabled' else

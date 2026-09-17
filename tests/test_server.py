@@ -150,7 +150,7 @@ class ServerTests(unittest.TestCase):
         self.assertIn('id="product-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-product" hidden', page)
         self.assertLess(page.index('id="morning-workspace"'),page.index('id="product-workspace"'))
         self.assertLess(page.index('id="product-workspace"'),page.index('id="materials-workspace"'))
-        self.assertIn('原文核对与事实摘录（可选）',page)
+        self.assertIn('已采集资料与原文核对（可选）',page)
 
     def test_retry_rejects_unimplemented_source_without_scheduling(self):
         with self.assertRaisesRegex(ValueError,'可重试'):
@@ -233,17 +233,19 @@ class ServerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             live.mutate('import',{'kind':'evidence','edition_id':ed['edition_id'],'filename':'test.json','content':json.dumps(self.payload())})
 
-    def test_active_job_blocks_selection_without_changing_prior_state(self):
+    def test_active_job_allows_selection_and_export_but_blocks_another_job(self):
         _, imported, _ = self.upload()
         _, saved, _ = self.choose(imported)
         with patch('fastnews.server.threading.Thread.start'):
             status, job, _ = self.request('POST','/api/scan',{})
         self.assertEqual(status,200)
         self.assertEqual(self.app.active_job,job['job_id'])
-        self.assertEqual(self.choose(imported,revision=1)[0],400)
-        self.assertEqual(self.request('POST','/api/export',{'edition_id':self.eid,'decision_revision':1})[0],400)
+        self.assertEqual(self.choose(imported,revision=1)[0],200)
+        self.assertEqual(self.request('POST','/api/export',{'edition_id':self.eid,'decision_revision':2})[0],200)
+        self.assertEqual(self.request('POST','/api/scan',{})[0],400)
         with closing(self.app.connection()) as conn:
-            self.assertEqual(editorial.latest_decision(conn,self.eid),saved)
+            self.assertEqual(editorial.latest_decision(conn,self.eid)['decision_revision'],2)
+            self.assertEqual(editorial.latest_decision(conn,self.eid)['selected_event_id'],saved['selected_event_id'])
 
     def test_job_failure_is_recorded_and_unlocks(self):
         self.app.active_job='test-job'

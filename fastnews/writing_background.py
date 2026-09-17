@@ -195,7 +195,7 @@ def export_materials(decision, edition):
     for original in decision.get('selected_clues', []):
         item = deepcopy(original)
         item['date_state'] = _timing(item['sources'], edition['news_cutoff'])
-        if item['date_state']=='reported_in_window' and item.get('time_role')=='background':
+        if item['date_state']=='reported_in_window' and item.get('time_role')=='background' and (not item.get('why_now') or original.get('date_state')=='background_before_window'):
             item['date_state'] = 'background_before_window'
         if item['date_state'] == 'out_of_cutoff':
             excluded.append({'event_id': item['event_id'], 'reason': '线索来源报道在本期新闻截点之后；未输出摘要和数值',
@@ -229,8 +229,11 @@ def markdown_materials(materials):
     for i, clue in enumerate(materials['selected_research_clues'], 1):
         lines += [f"### {i}. {clue['title']}", '', clue['summary'], '', '产品关系 / 关注理由：' + clue['why'],
                   '材料身份：' + clue['usage'], '日期状态：' + ('来源报道位于窗口内，首次公开仍待核实' if clue['date_state'] == 'reported_in_window' else '早于新闻窗口的统计 / 预测背景' if clue['date_state']=='background_before_window' else '公开时间待核实'), '']
-        if clue.get('time_role'):
+        if clue.get('time_role') and not clue.get('why_now'):
             lines += ['时效用途：' + ('较早发布的背景资料，不能当作本窗口新增消息。' if clue['time_role']=='background' else '近期消息含较早发布的背景依据，请分别保留来源日期。'), '']
+        if clue.get('why_now'):
+            lines += ['编辑用途：'+('产品背景' if clue.get('editorial_role')=='background' else '近期线索'),
+                      '当前价值：'+clue['why_now'], '有效性判断：'+clue.get('validity_reason','待核对'), '']
         for s in clue['sources']:
             lines += [f"- 出处：{s.get('source_name') or s.get('title') or '未提供'}；链接：{s.get('url') or '本地材料'}；报道日期：{s.get('published_at') or '未知'}；读取身份：{s.get('evidence_level') or '未知'}。"]
             # Frozen selections exported by earlier versions keep their exact

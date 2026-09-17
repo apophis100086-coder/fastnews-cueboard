@@ -96,11 +96,12 @@ async function harness(options = {}) {
       return {ok: status >= 200 && status < 300, status, json: async () => clone(result.payload === undefined ? result : result.payload)};
     },
     setTimeout: (callback, delay) => setTimeout(callback, delay === 900 ? 0 : delay),
-    clearTimeout, AbortController, URL, Date, console, TypeError,
+    clearTimeout, AbortController, URL, Date, console, TypeError, crypto:require('node:crypto').webcrypto,
   });
   await vm.runInContext(script, context, {filename: 'fastnews/static/app.js'});
   if(options.reader)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/reader.js'),'utf8'),context,{filename:'reader.js'});
   if(options.workflow)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workflow.js'),'utf8'),context,{filename:'workflow.js'});
+  if(options.exploration)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/exploration.js'),'utf8'),context,{filename:'exploration.js'});
   if(options.workspace)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workspace.js'),'utf8'),context,{filename:'workspace.js'});
   if(options.visuals)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/visuals.js'),'utf8'),context,{filename:'visuals.js'});
   return {
@@ -582,4 +583,70 @@ test('technical source failure can display host search without a morning badge',
   const markup=app.evaluate('sourceCard('+JSON.stringify({source_id:'fda',name:'FDA',url:'https://www.fda.gov',categories:['medicine'],usage_mode:'search_only',search_enabled:true,host_read_allowed:true})+')');
   assert.match(markup,/产品定点补搜/);
   assert.doesNotMatch(markup,/程序晨扫/);
+});
+
+
+function semanticClue(index,role='recent'){
+ return {item_id:'item_'+index,report_id:'report-one',research_identity:'identity-'+index,title:'合成标题 '+index,
+ summary:'合成公开摘要',why:'合成产品关系',why_now:'仍能解释本期经营状态',editorial_role:role,
+ validity_state:'active',validity_reason:'合成有效性说明',sources:[{url:'https://example.org/'+index,published_at:'2026-09-10',source_name:'合成来源'}],
+ material_fingerprints:[],claims:[],missing_items:[],latest_increment:index===11};
+}
+function clueGroups(){return {recent:Array.from({length:11},(_,i)=>semanticClue(i+1)),background:[semanticClue(20,'background')],pending:[],
+ runs:[{report_id:'report-one',mode:'explore',finished_at:'2026-09-15T01:00:00Z',count:1,gaps:['合成覆盖缺口'],usage:{total_elapsed_seconds:12}}],limits:{recent_items:10,background_items:5}};}
+
+test('product groups retain two roles, collapsed extras, source dates and escaped text',async()=>{
+ const app=await harness({reader:true,workflow:true,exploration:true});
+ await app.evaluate("loadEdition('ed-one')");
+ const groups=clueGroups();groups.recent[0].why_now='<script>unsafe</script>';
+ await app.evaluate('detail.product_clues='+JSON.stringify(groups)+';renderReaderReports()');
+ const output=app.el('product-report').innerHTML;
+ assert.match(output,/近期线索/);assert.match(output,/产品背景/);assert.match(output,/data-extra-clues="recent"/);
+ assert.match(output,/本轮新增/);assert.match(output,/2026-09-10/);
+ assert.match(output,/&lt;script&gt;unsafe/);assert.doesNotMatch(output,/<script>unsafe/);
+});
+
+test('exploration completion refreshes only results while preserving unsaved text and editing controls',async()=>{
+ let finish;const gate=new Promise(resolve=>finish=resolve);let requested=false;
+ const updated=edition();updated.product_clues=clueGroups();
+ const app=await harness({reader:true,workflow:true,exploration:true,handler:async call=>{
+  if(call.url==='/api/explore'){requested=true;return {job_id:'explore-one'};}
+  if(call.url.startsWith('/api/job?')){await gate;return {job_id:'explore-one',action:'explore',status:'completed',edition_id:'ed-one',reader_profile:'default',progress:[],result:{output:{items:[semanticClue(11)]}}};}
+  if(call.url.startsWith('/api/edition?'))return updated;
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('explore-question').value='更多背景';
+ const running=app.el('explore').onclick();
+ for(let i=0;i<20&&!requested;i++)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(requested,true);assert.equal(app.el('product').disabled,false);assert.equal(app.el('save').disabled,false);
+ assert.equal(app.el('research').disabled,true);
+ app.el('mainline').value='探查期间正在编辑的主线';app.el('mainline').oninput();
+ const before=app.read('basket');finish();await running;
+ assert.deepEqual(app.read('basket'),before);assert.equal(app.read('dirty'),true);
+ assert.equal(app.el('mainline').value,'探查期间正在编辑的主线');
+ assert.match(app.el('product-report').innerHTML,/本轮新增/);
+ assert.equal(app.read('busy'),false);
+ const request=app.calls.find(c=>c.url==='/api/explore').body;
+ assert.equal(request.edition_id,'ed-one');assert.equal(request.research_question,'更多背景');assert.ok(request.request_id);
+ assert.equal(request.news_cutoff,undefined);
+});
+
+test('exploration result cannot overwrite another selected edition or its draft',async()=>{
+ const app=await harness({reader:true,workflow:true,exploration:true});
+ await app.evaluate("loadEdition('ed-one')");
+ await app.evaluate("editionId='ed-two';basket.mainline_note='另一产品草稿';dirty=true");
+ const before=app.calls.length;
+ await app.evaluate("refreshExplorationResults({edition_id:'ed-one',reader_profile:'default'})");
+ assert.equal(app.calls.length,before);assert.equal(app.read('basket.mainline_note'),'另一产品草稿');
+});
+
+test('stopped exploration preserves draft and exposes no fabricated results',async()=>{
+ const app=await harness({reader:true,workflow:true,exploration:true,handler:call=>{
+  if(call.url.startsWith('/api/job?'))return {job_id:'stop-one',action:'explore',status:'timed_out',edition_id:'ed-one',progress:[],error:'达到时间上限'};
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ await app.evaluate("basket.mainline_note='保留';persistDraft()");
+ await app.evaluate("pollExploration('stop-one')");
+ assert.equal(app.read('basket.mainline_note'),'保留');assert.equal(app.read('dirty'),true);
+ assert.match(app.el('message').textContent,/达到时间上限/);assert.equal(app.el('explore-stop').hidden,true);
 });

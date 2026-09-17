@@ -19,7 +19,7 @@ function renderProductPlan(resetWords=false){
 function poolControls(e){return activePool().some(c=>c.event_id===e.event_id)?'<span class="pill">已在人工候选池</span>':`<button class="compact" data-pool-add="${h(e.event_id)}">加入人工候选池</button>`;}
 function reportPoolButton(report,item){
  const c=activePool().find(c=>c.report_id===report.report_id&&c.item_id===item.item_id||item.research_identity&&c.research_identity===item.research_identity||item.local_event_id===c.event_id);
- if(c&&((item.material_fingerprints||[]).some(f=>!(c.material_fingerprints||[]).includes(f))||(item.claims||[]).some(n=>!(c.claims||[]).some(o=>o.claim_fingerprint===n.claim_fingerprint&&o.evidence_fingerprint===n.evidence_fingerprint))))return `<button class="compact" data-report-adopt="${h(item.item_id)}" data-report-id="${h(report.report_id)}">合并新增依据到原线索</button>`;
+ if(c&&((item.validity_state==='superseded'&&c.validity_state!=='superseded')||(item.material_fingerprints||[]).some(f=>!(c.material_fingerprints||[]).includes(f))||(item.claims||[]).some(n=>!(c.claims||[]).some(o=>o.claim_fingerprint===n.claim_fingerprint&&o.evidence_fingerprint===n.evidence_fingerprint))))return `<button class="compact" data-report-adopt="${h(item.item_id)}" data-report-id="${h(report.report_id)}">合并新增依据到原线索</button>`;
  return c?`<span class="pill">已加入候选池</span> <button class="compact" data-pool-remove="${h(c.event_id)}">移出候选池</button>`:`<button class="compact" data-report-adopt="${h(item.item_id)}" data-report-id="${h(report.report_id)}">加入人工候选池</button>`;
 }
 function renderPool(){

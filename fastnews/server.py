@@ -1,5 +1,6 @@
 """Local single-page interface. Business rules remain in the CLI services."""
 from contextlib import closing
+from copy import deepcopy
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -7,6 +8,7 @@ from pathlib import Path
 import secrets
 import sqlite3
 import threading
+import re
 from urllib.parse import parse_qs, urlsplit
 import uuid
 from zoneinfo import ZoneInfo
@@ -31,6 +33,11 @@ class LocalApplication:
         self.guard = threading.RLock()
         self.jobs = {}
         self.active_job = None
+        self.controls = {}
+        if Path(self.database).exists():
+            with closing(self.connection()) as conn, conn:
+                from .budget import utc_now
+                conn.execute("UPDATE fn_reading_reports SET status='failed',error_code='interrupted',finished_at=? WHERE status='running'",(utc_now(),))
 
     def connection(self):
         return connect(self.database, mode='fixture' if self.offline else 'live')
@@ -108,6 +115,8 @@ class LocalApplication:
             result['latest_research'] = json.loads(latest[0]) if latest and latest[0] else None
             from .reading_reports import latest_report
             result['reading_report'] = latest_report(conn,profile_id,'product',edition['edition_date'],edition_id)
+            from .product_reading import aggregate_reports
+            result['product_clues'] = aggregate_reports(conn,profile_id,edition_id)
             from .writing_background import pool_items
             result['candidate_pool'] = pool_items(conn, config, edition_id, include_inactive=True)
             return result
@@ -133,7 +142,7 @@ class LocalApplication:
                 from .custom_sources import ReaderAdapter
                 from .reading_reports import generate_report
                 profile_id = data.get('reader_profile','default')
-                config = configured_view(conn,self.config,profile_id)
+                config = data.get('_config') or configured_view(conn,self.config,profile_id)
                 sync_registry(conn,config)
                 if action in {'scan','digest'}:
                     def progress(item):
@@ -153,12 +162,21 @@ class LocalApplication:
                     from types import SimpleNamespace
                     from .cli_actions import dispatch
                     result = dispatch(conn, self.config, SimpleNamespace(command='probe-sources', offline=self.offline, output=None))
-                elif action == 'research':
+                elif action in {'research','explore'}:
                     from .research import research_product
-                    edition = editorial.get_edition(conn, data['edition_id'])
+                    edition = data.get('_edition') or editorial.get_edition(conn, data['edition_id'])
                     def research_progress(item):
                         with self.guard:
                             self.jobs[job_id]['progress'].append(item)
+                    if action=='explore':
+                        control=self.controls[job_id]
+                        control.check()
+                        result=generate_report(conn,config,profile_id,'product',edition['edition_date'],
+                            edition=edition,request_mode='explore',research_question=data.get('research_question',''),
+                            request_id=data['request_id'],control=control,task_id=job_id,progress=research_progress)
+                        with self.guard:
+                            self.jobs[job_id].update(status='completed',result=result)
+                        return
                     options = {'edition_id': edition['edition_id'], 'progress':research_progress}
                     if data.get('fetch_public_text'):
                         if self.offline:
@@ -167,7 +185,13 @@ class LocalApplication:
                         options.update(fulltext_provider=PublicTextProvider(self.config), external_calls_authorized=True)
                     if not self.offline:
                         options['discovery_adapter'] = ReaderAdapter(config)
-                    result = research_product(conn, config, edition['product_code'], **options)
+                    cached=conn.execute("SELECT report_json FROM fn_research_runs WHERE edition_id=? AND status IN ('complete','partial') AND report_json IS NOT NULL ORDER BY rowid DESC LIMIT 1",(edition['edition_id'],)).fetchone()
+                    if cached and data.get('use_host') and not data.get('fetch_public_text'):
+                        result=json.loads(cached[0])
+                        result['fixed_source_cache_reused']=True
+                        research_progress({'stage':'cache','message':'复用本期已存元数据，模型继续核对重点来源与背景'})
+                    else:
+                        result = research_product(conn, config, edition['product_code'], **options)
                     if data.get('use_host'):
                         result['reading_report'] = generate_report(conn,config,profile_id,'product',edition['edition_date'],
                                                                   edition=edition,progress=research_progress,
@@ -178,18 +202,70 @@ class LocalApplication:
                 self.jobs[job_id].update(status='completed', result=result)
         except Exception as exc:
             with self.guard:
-                self.jobs[job_id].update(status='failed', error=str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
+                from .task_control import TaskStopped
+                from .host_provider import HostUnavailable
+                self.jobs[job_id].update(status=getattr(exc,'code','failed'), error=str(exc) if isinstance(exc,(ValueError,TaskStopped,HostUnavailable)) else type(exc).__name__)
         finally:
             with self.guard:
-                self.active_job = None
+                if self.active_job==job_id:
+                    self.active_job = None
+                self.controls.pop(job_id,None)
 
     def mutate(self, action, data):
         if not isinstance(data, dict):
             raise ValueError('JSON object required')
+        if action=='explore':
+            from .task_control import TaskControl
+            from .product_reading import policy
+            seconds=policy()['exploration_seconds']
+            accepted_control=TaskControl(seconds)
+            accepted_at=accepted_control.started_at
         with self.guard:
-            if self.active_job:
-                raise ValueError('后台任务正在运行；完成后可保存或开始下一项操作，当前草稿会保留')
-            if action in {'scan', 'probe', 'research', 'digest'}:
+            if action=='job-stop':
+                job=self.jobs.get(data.get('job_id'))
+                if not job or job['action']!='explore':
+                    raise ValueError('没有可停止的探查任务')
+                control=self.controls.get(data['job_id'])
+                if control:
+                    control.cancelled.set()
+                    job['stop_requested']=True
+                return {'job_id':data['job_id'],'status':job['status'],'stop_requested':bool(control)}
+            if action=='explore':
+                rid=data.get('request_id')
+                if not isinstance(rid,str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
+                    raise ValueError('继续探查需要有效的请求编号')
+                question=data.get('research_question','')
+                if not isinstance(question,str) or len(question)>500:
+                    raise ValueError('补充需求最多500字')
+                for jid,job in self.jobs.items():
+                    if job.get('request_id')==rid:
+                        if job.get('edition_id')!=data.get('edition_id') or job.get('reader_profile')!=data.get('reader_profile','default'):
+                            raise ValueError('请求编号已用于其他期次或方案')
+                        return {'job_id':jid}
+                with closing(self.connection()) as conn:
+                    for row in conn.execute("SELECT * FROM fn_reading_reports WHERE profile_id=? AND edition_id=? AND kind='product' ORDER BY rowid DESC",(data.get('reader_profile','default'),data['edition_id'])):
+                        saved=json.loads(row['input_json'])
+                        if saved.get('request_id')==rid:
+                            from .reading_reports import report_record
+                            task=saved.get('task',{})
+                            jid=task.get('job_id') or row['report_id']
+                            status='completed' if row['status'] in {'complete','partial'} else row['error_code'] if row['error_code'] in {'cancelled','timed_out','interrupted'} else 'failed'
+                            self.jobs[jid]={'job_id':jid,'action':'explore','edition_id':data['edition_id'],
+                                'reader_profile':data.get('reader_profile','default'),'request_id':rid,'progress':[],
+                                'status':status,'started_at':task.get('started_at',row['created_at']),
+                                'deadline_at':task.get('deadline_at'),'product_code':row['product_code'],
+                                'news_cutoff':saved.get('news_cutoff'),'stop_requested':status=='cancelled',
+                                'result':report_record(row),'error':None if status=='completed' else
+                                {'cancelled':'本轮探查已停止，已有结果保留','timed_out':'本轮探查达到时间上限，已有结果保留'}.get(status,'上一次任务未完成，已有结果保留')}
+                            return {'job_id':jid}
+            if action in {'scan', 'probe', 'research', 'digest','explore'}:
+                if self.active_job:
+                    raise ValueError('已有后台检索任务；可继续选材、保存和导出，完成或停止后再发起检索')
+                from .source_catalog import configured_view
+                with closing(self.connection()) as conn:
+                    frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
+                    from .source_catalog import profile
+                    frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
                 if action == 'scan' and 'source_id' in data:
                     from .source_catalog import catalog
                     with closing(self.connection()) as conn:
@@ -202,7 +278,7 @@ class LocalApplication:
                 if action in {'scan','digest'} and 'date' in data:
                     with closing(self.connection()) as conn:
                         collection_window(data['date'], working_now(conn, self.offline))
-                if action == 'research':
+                if action in {'research','explore'}:
                     with closing(self.connection()) as conn:
                         edition = editorial.get_edition(conn,data['edition_id'])
                         from .search_plan import build_search_plan
@@ -211,11 +287,25 @@ class LocalApplication:
                                           edition['product_code'], data.get('extra_keywords'))
                         if data.get('product_code',edition['product_code']) != edition['product_code']:
                             raise ValueError('当前选择的产品与已保存期次不同，请按当前产品建立本期后检索')
+                        if action=='explore':
+                            selected_profile=frozen['_reader_profile']
+                            if self.offline:
+                                raise ValueError('合成模式不执行真实联网探查')
+                            if selected_profile['settings'].get('host','none')=='none' or not selected_profile['settings'].get('web_search',True):
+                                raise ValueError('继续探查需要选择已登录的模型并启用联网检索')
                 job_id = uuid.uuid4().hex
                 self.jobs[job_id] = {'job_id': job_id, 'action': action, 'date': data.get('date'),
-                                     'status': 'running', 'progress': []}
+                                     'edition_id':data.get('edition_id'),'reader_profile':data.get('reader_profile','default'),
+                                     'request_id':data.get('request_id'),'status': 'running', 'progress': []}
+                if action=='explore':
+                    self.controls[job_id]=accepted_control
+                    self.jobs[job_id].update(started_at=accepted_at,deadline_at=accepted_control.deadline_at,
+                        product_code=edition['product_code'],news_cutoff=edition['news_cutoff'])
                 self.active_job = job_id
-                threading.Thread(target=self._run_job, args=(job_id, action, data), daemon=True).start()
+                job_data=dict(deepcopy(data),_config=deepcopy(frozen))
+                if action in {'research','explore'}:
+                    job_data['_edition']=deepcopy(edition)
+                threading.Thread(target=self._run_job, args=(job_id, action,job_data), daemon=True).start()
                 return {'job_id': job_id}
             with closing(self.connection()) as conn:
                 if action in {'pool-add', 'pool-remove'}:
@@ -352,7 +442,7 @@ def make_server(app, port=8765):
                     names = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/editorial.css': ('editorial.css', 'text/css')}
                     filename, mime = names[request.path]
                     return self._send(200, (STATIC / filename).read_bytes(), mime + '; charset=utf-8')
-                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js'}:
+                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js','/exploration.js'}:
                     return self._send(200,(STATIC/request.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
                 if request.path == '/api/state':
                     result = app.state(query.get('profile',['default'])[0])

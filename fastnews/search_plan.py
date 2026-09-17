@@ -124,7 +124,7 @@ def build_search_plan(config, code, extra_keywords=None):
     queries = queries[:policy['max_queries'] - policy['fallback_queries']]
     if not config.get('reader_web_search_enabled', True):
         queries = []
-    return {'version': policy['version'], 'product_code': code, 'categories': rule['categories'],
+    result = {'version': policy['version'], 'product_code': code, 'categories': rule['categories'],
             'category_names': [CATEGORIES[c] for c in rule['categories']],
             'selected_sources': sources, 'manual_sources': manual, 'extra_keywords': extra,
             'local_source_ids': local_ids,
@@ -137,3 +137,5 @@ def build_search_plan(config, code, extra_keywords=None):
                 s['search_disabled_reason']=='scope_unconfirmed' or s['host_read_disabled_reason']=='scope_unconfirmed'],
             'gaps': [] if sources else ['当前方案没有启用与本产品匹配的领域来源；本次仅能走关键词检索。'],
             'execution_status': 'planned_not_executed'}
+    from .product_reading import decorate_plan
+    return decorate_plan(result)

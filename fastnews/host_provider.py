@@ -121,6 +121,7 @@ def _urls(value):
 
 def parse_codex_output(output, final):
     usage, searches, urls, actions = {}, [], set(), []
+    completed, pending_error, recovered_errors = False, False, 0
     for line in output.splitlines():
         try:
             # CLI telemetry can contain repeated flattened fields in some
@@ -132,6 +133,7 @@ def parse_codex_output(output, final):
             continue
         if event.get('type')=='turn.completed':
             usage = event.get('usage',{})
+            completed, pending_error = True, False
         item = event.get('item',{})
         if event.get('type')=='item.completed' and item.get('type')=='web_search':
             action = item.get('action') or {}
@@ -145,16 +147,26 @@ def parse_codex_output(output, final):
                 'queries':action.get('queries') if isinstance(action.get('queries'),list) else [],
                 'ref_id':action.get('ref_id'),
                 'result_content_available':False})
-        if event.get('type') in {'turn.failed','error'}:
+        if event.get('type')=='error':
+            # The CLI can report reconnects and still complete this same turn.
+            # Only a later explicit completion can clear an intermediate error.
+            pending_error=True
+            recovered_errors+=1
+        if event.get('type')=='turn.failed':
             raise HostUnavailable('Codex 任务未完成；请在 Codex 中检查登录、网络或剩余额度')
+    if pending_error:
+        raise HostUnavailable('Codex 任务未完成；请在 Codex 中检查登录、网络或剩余额度')
     return HostResult(loads(final),usage,{'web_actions':len(searches),'visited_urls':sorted(urls),
-        'actions':actions, 'tool_excerpts':[],
+        'actions':actions, 'tool_excerpts':[], 'turn_completed':completed,
+        'recovered_error_events':recovered_errors,
         'content_observability':'CLI action records do not establish returned page text or successful retrieval'})
 
 
-def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None):
+def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None, control=None):
     limits=reader_limits()
     timeout=limits['timeout_seconds'] if timeout is None else min(timeout,limits['timeout_seconds'])
+    if control:
+        control.check()
     command = host_command(host)
     if command is None:
         raise HostUnavailable('未找到所选宿主的命令行入口，请先安装并登录对应软件')
@@ -170,6 +182,8 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             raise HostUnavailable('无法检查 Codex 登录状态，请打开 Codex 后重试') from None
         if auth.returncode or 'ChatGPT' not in auth.stdout+auth.stderr:
             raise HostUnavailable('请先以 ChatGPT 账号登录 Codex；本功能不使用 API Key 计费模式')
+    if control:
+        timeout=min(timeout,control.host_timeout())
     # Use the OS temporary directory for ephemeral runs. Packaged Windows apps
     # can redirect new LOCALAPPDATA children into a package's LocalCache while
     # resolving an existing parent to its unredirected path.
@@ -203,7 +217,22 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
                 text=True,encoding='utf-8',errors='replace',cwd=root,env=env,**flags)
             group = ProcessGroup(process)
             try:
-                output, diagnostic = process.communicate(prompt,timeout=timeout)
+                if control:
+                    from .task_control import TaskStopped
+                    end=min(time.monotonic()+timeout,control.deadline-30)
+                    first=True
+                    while True:
+                        control.check()
+                        remaining=end-time.monotonic()
+                        if remaining<=0:
+                            raise TaskStopped('timed_out')
+                        try:
+                            output,diagnostic=process.communicate(prompt if first else None,timeout=min(0.5,remaining))
+                            break
+                        except subprocess.TimeoutExpired:
+                            first=False
+                else:
+                    output, diagnostic = process.communicate(prompt,timeout=timeout)
                 result = subprocess.CompletedProcess(args,process.returncode,output,diagnostic)
             finally:
                 group.close()
@@ -222,6 +251,8 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             if not output_path.is_file() or output_path.stat().st_size>200_000:
                 raise HostUnavailable('Codex 没有返回有效的结构化报告')
             parsed = parse_codex_output(result.stdout,output_path.read_text(encoding='utf-8'))
+            if not parsed.trace.get('turn_completed'):
+                raise HostUnavailable('Codex 未确认本轮完成，已有结果已保留')
         else:
             try:
                 outer = loads(result.stdout)

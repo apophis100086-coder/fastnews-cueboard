@@ -22,3 +22,18 @@ html{scroll-padding-top:126px}.workspace-screen{gap:20px}.panel{background:var(-
 /* Keep useful reading content in the first screen; the introduction stays brief. */
 .app-header{min-height:86px;padding-top:14px;padding-bottom:14px}.reader-nav{min-height:87px;padding-top:11px;padding-bottom:11px}.intro-board{padding-top:23px;padding-bottom:23px}.intro-copy h2{margin-top:8px;margin-bottom:6px}.daily-heading{margin-bottom:21px}.cutoff-display{align-self:end;font-size:12px;color:#49677b;min-width:0}.cutoff-display>span{display:block}.cutoff-display output{display:block;margin-top:4px;padding:10px 13px;min-height:43px;background:#edf4f8;border:1px solid #c8dce9;border-radius:5px;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--blue);white-space:normal}.custom-cutoff{max-width:570px;margin:15px 0}.briefing-layout+.briefings{margin-top:20px;margin-bottom:0}
 @media(max-width:560px){.app-header{min-height:80px}.reader-nav{min-height:0}.intro-board{padding-top:20px;padding-bottom:20px}.cutoff-display{grid-column:1}.cutoff-display output{font-size:14px}.daily-heading{margin-bottom:17px}.briefing-layout+.briefings{margin-top:15px}}
+/* Product research keeps two compact groups; exploration never replaces drafts. */
+.product-clue-columns { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.product-clue-columns .product-clue-group { min-width: 0; }
+.product-clue-columns .reading-item h4 { font-size: 18px; }
+.product-clue-columns .reading-item { grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 20px 0; }
+@media (max-width: 980px) { .product-clue-columns { grid-template-columns: 1fr; gap: 0; } }
+.product-clue-group { margin-top: 28px; border-top: 1px solid #d6e0e5; padding-top: 18px; }
+.product-clue-group h3 { font-size: 21px; color: #153c53; }
+.product-clue-group h3 small { font-size: 13px; font-weight: 400; margin-left: 8px; }
+.exploration-controls { margin: 22px 0 10px; padding: 18px; background: #f2f7f7; border: 1px solid #d5e3e4; border-radius: 10px; }
+.exploration-controls .right { margin-top: 12px; flex-wrap: wrap; }
+.exploration-summary { padding: 12px 16px; background: #edf6f1; border-radius: 8px; }
+.clue-new { border-left: 3px solid #36856b; }
+.clue-now { color: #37596a; }
+.clue-judgment { margin: 10px 0; font-size: 13px; }

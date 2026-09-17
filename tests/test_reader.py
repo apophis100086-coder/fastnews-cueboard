@@ -319,8 +319,8 @@ class ReportValidationTests(unittest.TestCase):
         self.raw['items'][0]['source_refs']=['web_invented']
         self.assertEqual(self.validate()['items'],[])
 
-    def test_more_than_ten_product_items_or_four_citations_is_rejected(self):
-        self.raw['items']*=11
+    def test_more_than_fifteen_product_items_or_four_citations_is_rejected(self):
+        self.raw['items']*=16
         with self.assertRaises(ValueError):
             self.validate()
         self.raw['items']=self.raw['items'][:1]
@@ -423,3 +423,13 @@ class FeedAndHostTests(unittest.TestCase):
         self.assertEqual(parse_codex_output(telemetry,'{}').trace['web_actions'],1)
         with self.assertRaises(ValueError):
             parse_codex_output(telemetry,'{"items":[],"items":[1]}')
+
+    def test_completed_codex_turn_can_recover_intermediate_connection_errors(self):
+        error=json.dumps({'type':'error','message':'Reconnecting... synthetic connection interruption'})
+        complete=json.dumps({'type':'turn.completed','usage':{'input_tokens':123}})
+        parsed=parse_codex_output(error+'\n'+complete,'{"items":[]}')
+        self.assertTrue(parsed.trace['turn_completed'])
+        self.assertEqual(parsed.trace['recovered_error_events'],1)
+        self.assertEqual(parsed.usage['input_tokens'],123)
+        for events in (error,complete+'\n'+error,error+'\n'+json.dumps({'type':'turn.failed'})+'\n'+complete):
+            with self.assertRaises(HostUnavailable):parse_codex_output(events,'{}')

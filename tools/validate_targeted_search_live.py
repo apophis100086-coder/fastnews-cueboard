@@ -37,6 +37,8 @@ def main():
     parser.add_argument('--product',choices=list(load_config()['products']),default='517120')
     parser.add_argument('--skip-program-probes',action='store_true',help='Isolate host recall without rerunning collectors')
     parser.add_argument('--cutoff',help='Explicit information cutoff for reproducible comparison')
+    parser.add_argument('--mode',choices=['baseline','explore'],default='baseline')
+    parser.add_argument('--seed-public-report',action='store_true',help='Reuse one prior public report as known context in an isolated exploration')
     args=parser.parse_args()
     if not args.live:
         parser.error('--live is required; this uses the logged-in host quota')
@@ -44,12 +46,13 @@ def main():
     day=now.astimezone(ZoneInfo('Asia/Shanghai')).date()
     # Include prior acceptance attempts and the real application in this guard.
     lo,hi=time_bounds(day.isoformat())
-    attempts=0
+    attempted_ids=set()
     stores=[ROOT/'data/fastnews.db',*sorted((ROOT/'data/targeted_acceptance').glob('*/acceptance.db'))]
     for path in stores:
         if path.exists():
             with sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True) as conn:
-                attempts+=sum(lo<=parse_instant(r[0])<=hi for r in conn.execute('SELECT created_at FROM fn_reading_reports'))
+                attempted_ids.update(r[0] for r in conn.execute('SELECT report_id,created_at FROM fn_reading_reports') if lo<=parse_instant(r[1])<=hi)
+    attempts=len(attempted_ids)
     if attempts>=reader_limits()['max_tasks_per_day']:
         raise SystemExit('Daily host task budget reached including acceptance attempts')
     dest=ROOT/'data/targeted_acceptance'/now.strftime('%Y%m%dT%H%M%S%fZ')
@@ -66,6 +69,20 @@ def main():
     db.sync_registry(conn,config)
     edition=editorial.create_edition(conn,config,product_code=args.product,
         edition_date=day.isoformat(),news_cutoff=cutoff.isoformat(),market_cutoffs={})
+    seeded=None
+    if args.seed_public_report:
+        with sqlite3.connect((ROOT/'data/fastnews.db').resolve().as_uri()+'?mode=ro',uri=True) as original:
+            original.row_factory=sqlite3.Row
+            for row in original.execute("SELECT * FROM fn_reading_reports WHERE product_code=? AND profile_id='default' AND status IN ('complete','partial') ORDER BY rowid DESC",(args.product,)):
+                public_input=json.loads(row['input_json'])
+                if parse_instant(public_input['news_cutoff'])>cutoff:
+                    continue
+                record=dict(row);record['edition_id']=edition['edition_id']
+                public_input.update(edition_id=edition['edition_id'],acceptance_seed=True)
+                record['input_json']=json.dumps(public_input,ensure_ascii=False)
+                with conn:
+                    conn.execute('INSERT INTO fn_reading_reports('+','.join(record)+') VALUES('+','.join('?' for _ in record)+')',list(record.values()))
+                seeded=row['report_id'];break
     cases=[s['source_id'] for s in build_search_plan(config,args.product)['selected_sources']][:6]
     sources={s['source_id']:s for s in config['reader_sources']}
     history_path=ROOT/'data/source_repair_20260916/probe-final.json'
@@ -118,11 +135,14 @@ def main():
     manifest={'is_fixture':False,'purpose':'isolated live acceptance, no production selections',
         'started_at':now.isoformat(),'product_code':args.product,'cutoff':cutoff.isoformat(),
         'cli_version':version,'existing_day_attempts':attempts,'cases':local,
-        'host_tasks_planned':1,'per_source_host_usage':None,'full_paragraph_availability':None}
+        'host_tasks_planned':1,'request_mode':args.mode,'seed_public_report_id':seeded,
+        'per_source_host_usage':None,'full_paragraph_availability':None}
     write(dest/'summary.json',manifest)
     print(json.dumps({'acceptance_directory':str(dest),'stage':'host_start'},ensure_ascii=False),flush=True)
     try:
         report=generate_report(conn,config,'default','product',day.isoformat(),edition=edition,runner=runner,
+            request_mode=args.mode,request_id=('live-'+dest.name) if args.mode=='explore' else None,
+            research_question='兼顾重要新进展和截至本期仍适用的产品背景，补充已有材料遗漏的方向。' if args.mode=='explore' else '',
             progress=lambda info:print(json.dumps(info,ensure_ascii=False),flush=True))
         write(dest/'report.json',report)
         # This selection belongs only to this disposable validation store.
