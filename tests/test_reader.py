@@ -138,7 +138,7 @@ class ReaderDatabaseTests(unittest.TestCase):
         save_source(self.conn,self.base,'default',{'source_id':'cls_morning','enabled':False})
         self.assertEqual(build_input(self.conn,self.view(),'default','morning','2026-09-14')['items'],[])
 
-    def test_four_product_inputs_include_distinct_observation_variables_and_cutoff(self):
+    def test_all_product_inputs_include_distinct_observation_variables_and_cutoff(self):
         variables=[]
         for code in self.base['products']:
             edition=self.edition(code)
@@ -146,7 +146,7 @@ class ReaderDatabaseTests(unittest.TestCase):
             self.assertEqual(payload['news_cutoff'],edition['news_cutoff'])
             self.assertEqual(payload['product']['observation_variables'],edition['profile']['observation_variables'])
             variables.append(tuple(payload['product']['observation_variables']))
-        self.assertEqual(len(set(variables)),4)
+        self.assertEqual(len(set(variables)),len(self.base['products']))
 
     def test_manual_reference_links_stay_local_outside_host_query_input(self):
         edition=self.edition('517120')

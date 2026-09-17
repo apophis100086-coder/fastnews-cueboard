@@ -170,7 +170,10 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             raise HostUnavailable('无法检查 Codex 登录状态，请打开 Codex 后重试') from None
         if auth.returncode or 'ChatGPT' not in auth.stdout+auth.stderr:
             raise HostUnavailable('请先以 ChatGPT 账号登录 Codex；本功能不使用 API Key 计费模式')
-    cache_root = Path(os.environ.get('LOCALAPPDATA',tempfile.gettempdir()))/'FastnewsCueboard'/'host-runs'
+    # Use the OS temporary directory for ephemeral runs. Packaged Windows apps
+    # can redirect new LOCALAPPDATA children into a package's LocalCache while
+    # resolving an existing parent to its unredirected path.
+    cache_root = Path(tempfile.gettempdir()).resolve()/'FastnewsCueboard'/'host-runs'
     cache_root.mkdir(parents=True,exist_ok=True)
     # An isolated empty work directory avoids inheriting project-editing tasks.
     with tempfile.TemporaryDirectory(prefix='reading-',dir=cache_root,ignore_cleanup_errors=True) as folder:

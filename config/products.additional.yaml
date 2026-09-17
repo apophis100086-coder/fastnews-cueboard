@@ -1,0 +1,14 @@
+# 新产品只追加在本文件；products.example.yaml 保留交接原件。
+# 588090 身份核验：上交所 2026-03-18 产品资料概要，见 docs/PRODUCT_ONBOARDING.md。
+# 权重仅为试跑路由初值；不表示指数行业权重、基金持仓或自动采用阈值。
+version: 1
+products:
+  - code: "588090"
+    name: 科创50ETF华泰柏瑞
+    topic_weights:
+      SEMICONDUCTOR: 0.65
+      AI: 0.65
+      MACRO_POLICY: 0.50
+      INNOVATIVE_DRUG: 0.25
+    preferred_sources: [gov_policy_library, miit, nda, csia, trendforce]
+    search_expansion: [科创50, 科创 50, 科创板, "588090", STAR50, STAR 50]

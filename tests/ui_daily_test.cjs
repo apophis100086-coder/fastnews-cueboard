@@ -65,7 +65,7 @@ async function harness(options = {}) {
   const state = {
     csrf_token: 'test-local-token', workspace_id: 'vm-only', is_fixture: false,
     default_day: '2026-09-15', default_cutoff: '2026-09-14T23:59:59+08:00',
-    products: [{code: '513130', name: '测试产品'}], editions: [], active_job: null,
+    products: options.products || [{code: '513130', name: '测试产品'}], editions: [], active_job: null,
     sources: {live_connected: 1, sources: [{source_id: 'miit', name: '测试来源', expected_morning_scan: true, capability_status: 'ready_metadata', last_success_at: '2026-09-15T03:00:00Z'}]},
     reader_profile:{profile_id:'default',name:'默认方案',settings:{host:'codex',web_search:true}},
     reader_profiles:[{profile_id:'default',name:'默认方案'},{profile_id:'reader_test',name:'我的方案'}],
@@ -120,6 +120,18 @@ test('opening without an Edition reads the current day and shows headlines', asy
   assert.match(app.el('daily-count').textContent, /1 条/);
   assert.equal(app.read('editionId'), '');
   assert.equal(app.read('basket'), null);
+});
+
+test('the product picker includes appended registry products without creating or choosing an edition', async () => {
+  const products = [{code:'513130',name:'测试产品'}, {code:'588710',name:'半导体设备测试'},
+    {code:'588090',name:'科创50ETF华泰柏瑞'}];
+  const app = await harness({products});
+  assert.match(app.el('product').innerHTML, /588090/);
+  assert.match(app.el('product').innerHTML, /科创50ETF华泰柏瑞/);
+  app.el('product').value='588090'; app.el('product').onchange();
+  assert.equal(app.read('editionId'), '');
+  assert.equal(app.read('basket'), null);
+  assert.ok(app.calls.every(call => call.method === 'GET'));
 });
 
 test('changing the date reads that day without creating an Edition', async () => {
@@ -282,6 +294,21 @@ test('research uses matching saved edition without creating duplicate or adoptin
   assert.ok(!app.calls.some(c=>c.url==='/api/edition'||c.url==='/api/decision'));
   assert.equal(app.read('basket.selected_event_id'),null);
   assert.equal(app.el('research').disabled,false);
+});
+
+test('switching to STAR 50 hides the prior product report and restores it without changing saved choices', async () => {
+  const app=await harness({reader:true,workflow:true});
+  app.el('editions').value='ed-one';await app.el('editions').onchange();
+  app.evaluate(`detail.reading_report={status:'partial',host:'fixture',output:{items:[{rank:1,item_id:'old',title:'原产品合成线索',summary:'合成摘要',why:'合成原因',sources:[]}],coverage:[],gaps:[]}};renderReaderReports()`);
+  const basket=app.read('basket');
+  assert.match(app.el('product-report').innerHTML,/原产品合成线索/);
+  app.el('product').value='588090';app.el('product').onchange();
+  assert.doesNotMatch(app.el('product-report').innerHTML,/原产品合成线索/);
+  assert.match(app.el('product-report').innerHTML,/已切换观察产品/);
+  assert.deepEqual(app.read('basket'),basket);
+  app.el('product').value='513130';app.el('product').onchange();
+  assert.match(app.el('product-report').innerHTML,/原产品合成线索/);
+  assert.ok(app.calls.every(call=>call.method==='GET'));
 });
 
 test('product view separates current core, background, old and post-cutoff items', async () => {

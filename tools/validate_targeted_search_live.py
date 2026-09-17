@@ -24,6 +24,7 @@ from fastnews.metadata import parse_instant, time_bounds
 from fastnews.reading_reports import generate_report, adopt_report_item
 from fastnews.reader_limits import reader_limits
 from fastnews.source_catalog import configured_view
+from fastnews.search_plan import build_search_plan
 
 
 def write(path,value):
@@ -33,7 +34,7 @@ def write(path,value):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
-    parser.add_argument('--product',choices=['517120','588710'],default='517120')
+    parser.add_argument('--product',choices=list(load_config()['products']),default='517120')
     args=parser.parse_args()
     if not args.live:
         parser.error('--live is required; this uses the logged-in host quota')
@@ -59,8 +60,7 @@ def main():
     db.sync_registry(conn,config)
     edition=editorial.create_edition(conn,config,product_code=args.product,
         edition_date=day.isoformat(),news_cutoff=cutoff.isoformat(),market_cutoffs={})
-    cases=(['nmpa','cde','medcube','fda','clinicaltrials','cls_innovative_drug'] if args.product=='517120'
-           else ['csia','semi','miit','nda','trendforce','cls_semiconductor_materials'])
+    cases=[s['source_id'] for s in build_search_plan(config,args.product)['selected_sources']][:6]
     sources={s['source_id']:s for s in config['reader_sources']}
     history_path=ROOT/'data/source_repair_20260916/probe-final.json'
     history=json.loads(history_path.read_text(encoding='utf-8')) if history_path.exists() else {}

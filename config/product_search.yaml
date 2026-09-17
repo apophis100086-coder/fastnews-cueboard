@@ -1,9 +1,22 @@
-version: product-search-v2-targeted-evidence
+version: product-search-v3-star50
 note: 领域来源与关键词双路检索；分类和词表仅用于检索，不代表当前持仓。
 max_queries: 8
 site_queries: 4
 evidence: {max_events: 3, max_pages_per_event: 2}
 products:
+  "588090":
+    categories: [technology]
+    background_sources: [gov_policy_library]
+    keyword_queries: [科创50 上证科创板50成份指数 样本调整 公告 生效日期, 科创板 业绩 研发 商业化 并购 高端装备 新能源 生物医药, 科创板 半导体 人工智能 经营 需求 订单, 科创50ETF华泰柏瑞 588090 科创50 估值 成交 份额]
+    source_questions:
+      gov_policy_library: 科创板、科技创新融资或并购重组有什么新公开政策，公告与实施日期是什么，影响范围能否核对？
+      miit: 科创产业经营、研发或高端装备有何新披露，统计期和实际进展是什么；行业整体不能代替科创50成份股数据？
+      nda: 数据与AI应用有哪些新政策或商业化进展，其实际阶段和适用范围是什么，不能推断为科创50整体收入？
+      csia: 芯片设计、制造、设备与材料各环节有何新经营信息，能否追溯原始公告；涉及公司的科创50成份身份需另核？
+      trendforce: 半导体、AI硬件和终端需求有何新数据，统计期、预测与实际值分别是什么，行业结论不能直接当科创50整体表现？
+      semi: 制造投资与需求有哪些新统计，范围与期间是什么，对科创50的覆盖仍需成份股证据？
+      cls_semiconductor_materials: 半导体经营与供需有什么新公开摘要，能否找到原始披露，其与科创50具体样本的联系有哪些待核实之处？
+      wscn_technology: 科创板科技企业的业绩、研发与商业化有什么新披露，实际结果和预期如何区分，能否追溯公司公告？
   "513130":
     categories: [hk, technology]
     background_sources: [gov_policy_library]

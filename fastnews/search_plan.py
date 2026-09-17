@@ -5,12 +5,13 @@ from urllib.parse import urlsplit
 import yaml
 
 from .source_catalog import CATEGORIES
+from .config import load_config
 from .live_sources import UniqueLoader
 
 PATH = Path(__file__).resolve().parents[1] / 'config' / 'product_search.yaml'
 
 
-def search_policy():
+def search_policy(config=None):
     policy = yaml.load(PATH.read_text(encoding='utf-8'), Loader=UniqueLoader)
     if not isinstance(policy, dict) or set(policy) != {'version', 'note', 'max_queries', 'site_queries', 'products', 'evidence'}:
         raise ValueError('产品检索配置字段不完整')
@@ -23,8 +24,9 @@ def search_policy():
             any(type(evidence[k]) is not int or not 1<=evidence[k]<=cap
                 for k,cap in [('max_events',3),('max_pages_per_event',2)])):
         raise ValueError('定向补证最多3个事件，每事件最多2个页面')
-    if set(policy['products']) != {'513130', '513530', '588710', '517120'}:
-        raise ValueError('产品检索配置需保留四只产品')
+    config = load_config() if config is None else config
+    if not isinstance(policy['products'], dict) or set(policy['products']) != set(config['products']):
+        raise ValueError('产品检索配置必须完整覆盖已登记产品，且不能包含未登记代码')
     for item in policy['products'].values():
         if set(item) != {'categories', 'background_sources', 'keyword_queries', 'source_questions'}:
             raise ValueError('产品检索规则字段不完整')
@@ -42,7 +44,7 @@ def search_policy():
 
 
 def build_search_plan(config, code, extra_keywords=None):
-    policy = search_policy()
+    policy = search_policy(config)
     rule = policy['products'][code]
     extra_keywords = [] if extra_keywords is None else extra_keywords
     if (not isinstance(extra_keywords, list) or len(extra_keywords) > 10 or

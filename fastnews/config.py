@@ -161,8 +161,7 @@ def _topics(doc):
     return topics
 
 
-def _products(doc, sources, topics):
-    path = "products.example.yaml"
+def _products(doc, sources, topics, *, path="products.example.yaml", expected=PRODUCT_CODES):
     _mapping(doc, path, {"version", "products"}, {"version", "products"})
     _number(doc["version"], path + ".version", 1, integer=True)
     if not isinstance(doc["products"], list):
@@ -173,6 +172,8 @@ def _products(doc, sources, topics):
         _mapping(product, path + ".products[]", fields, fields)
         code = product["code"]
         _text(code, path + ".code")
+        if len(code) != 6 or not code.isascii() or not code.isdigit():
+            raise ConfigError(path + ".code: expected six ASCII digits as text")
         if code in result:
             raise ConfigError(f"{path}: duplicate product code {code}")
         _text(product["name"], f"{path}.{code}.name")
@@ -184,7 +185,8 @@ def _products(doc, sources, topics):
         if set(product["preferred_sources"]) - set(sources):
             raise ConfigError(f"{path}.{code}.preferred_sources: unknown source reference")
         result[code] = product
-    _scope(result, PRODUCT_CODES, path + ".products (4 originals)")
+    if expected is not None:
+        _scope(result, expected, path + ".products (4 originals)")
     return result
 
 
@@ -325,7 +327,7 @@ def _routing(doc):
 
 
 def load_config(config_dir: Path | str | None = None) -> dict:
-    """Load six M0/M1 files; later-module profile/scoring/output files are unused."""
+    """Load original registries plus append-only product and discovery overlays."""
     root = Path(config_dir) if config_dir is not None else Path(__file__).resolve().parent.parent / "config"
     sources = _sources(_read(root, "sources.yaml"))
     topics = _topics(_read(root, "topic_taxonomy.yaml"))
@@ -336,6 +338,12 @@ def load_config(config_dir: Path | str | None = None) -> dict:
         "source_runtime": _source_runtime(_read(root, "source_runtime.example.yaml"), sources),
         "routing": _routing(_read(root, "routing.defaults.yaml")),
     }
+    if (root / 'products.additional.yaml').exists():
+        additions = _products(_read(root, 'products.additional.yaml'), sources, topics,
+                              path='products.additional.yaml', expected=None)
+        if set(additions) & set(result['products']):
+            raise ConfigError('products.additional.yaml: cannot override original product codes')
+        result['products'].update(additions)
     if (root / 'research_discovery.yaml').exists():
         doc = _read(root, 'research_discovery.yaml')
         fields = {'version','note','lookback_hours','morning_sources','supplemental_sources','products'}
@@ -349,7 +357,8 @@ def load_config(config_dir: Path | str | None = None) -> dict:
             _strings(doc[name], 'research_discovery.' + name)
             if set(doc[name]) - set(sources):
                 raise ConfigError('research_discovery sources must remain in original registry')
-        _mapping(doc['products'], 'research_discovery.products', PRODUCT_CODES, PRODUCT_CODES)
+        codes = set(result['products'])
+        _mapping(doc['products'], 'research_discovery.products', codes, codes)
         for code, entry in doc['products'].items():
             _mapping(entry, code, {'core_keywords','excluded_keywords'}, {'core_keywords','excluded_keywords'})
             for key, value in entry.items():

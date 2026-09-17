@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from fastnews.config import load_config
 
 
 def main():
@@ -49,7 +51,7 @@ def main():
     else:
         run('product', 'import-product-data', 'examples/editorial_product.synthetic.json', '--product-code', '513530')
         run('history', 'import-history', 'examples/editorial_history.synthetic.json', '--product-code', '513530')
-    for code in ('513130', '513530', '588710', '517120'):
+    for code in load_config()['products']:
         run('route_' + code, 'route-product', code, '--edition-date', '2026-09-15', '--news-cutoff', '2026-09-14T23:59:59+08:00')
     edition = run('edition', 'create-edition', '513530', '--edition-date', '2026-09-15',
                   '--news-cutoff', '2026-09-14T23:59:59+08:00', '--market-cutoff', 'HK=2026-09-14@explicit_acceptance_date')

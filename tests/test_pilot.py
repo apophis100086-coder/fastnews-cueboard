@@ -160,9 +160,9 @@ class PilotTests(unittest.TestCase):
             self.assertFalse(cohort['trial_targets']['first_three_accepted_at_least_80_percent'])
             self.assertFalse(cohort['automatic_rule_update'])
 
-    def test_report_retains_all_four_routes_and_flags_three_focus_products(self):
+    def test_report_retains_registered_routes_and_flags_three_original_focus_products(self):
         report = pilot_report(self.conn)
-        self.assertEqual({p['product_code'] for p in report['products']},{'513130','513530','588710','517120'})
+        self.assertEqual({p['product_code'] for p in report['products']},set(self.config['products']))
         self.assertEqual(sum(p['focus_product'] for p in report['products']),3)
         self.assertTrue(all(p['status']=='not_accepted_insufficient_trial_data' for p in report['products']))
         with self.assertRaises(PilotError):

@@ -1,11 +1,33 @@
-version: 2.0-proposal
+version: 2.1-star50
 status: routing_and_observation_only_not_verified_holdings
-routing_source: config/products.example.yaml
+routing_source: config/products.example.yaml + config/products.additional.yaml
 pilot_codes:
 - '513130'
 - '513530'
 - '588710'
 profiles:
+- code: '588090'
+  name: 科创50ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 上证科创板50成份指数的结构、样本调整与行业分布
+  - 科创板企业业绩、研发投入与商业化进展
+  - 半导体、AI、高端装备等科创产业的经营与需求变化
+  - 科创板制度、并购重组与资本市场政策
+  - 科创成长资产的估值、利率环境与风险偏好
+  - 指数、板块与本基金成交及资金数据的独立口径
+  relation_boundaries:
+  - 科创50是科创板跨行业指数，不等同于半导体设备主题；行业新闻不自动代表整个指数
+  - 科创板上市不等于科创50成份股；公司关联、行业权重和覆盖比例须核对有日期的指数或持仓快照
+  - 关键词只用于召回；AI、半导体、高端装备等表述不证明当前成份股或产品受益幅度
+  - 研发投入、技术突破、客户验证不等于订单、收入或利润兑现
+  - ETF成交额、指数成交额与科创板成交额分开；成交放大不等于资金净流入，份额增加不等于净买入金额
+  - 样本调整的公告日期、生效日期和统计日期分开；未来调整只作为计划
+  - 业绩下滑、估值压力、经营风险和相反证据同样保留
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
 - code: '513130'
   name: 恒生科技ETF华泰柏瑞
   profile_status: needs_authorized_snapshot

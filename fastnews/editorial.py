@@ -19,7 +19,7 @@ import uuid
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from .config import _read
+from .config import _read, load_config
 from .metadata import KINDS, PHASES, normalize_url, parse_instant, time_bounds
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,8 +87,20 @@ def load_editorial_config(config_dir=None):
     if scoring.get('auto_select_threshold') is not None or scoring.get('missing_component_policy') != 'null_total_no_renormalization':
         raise EditorialError('Unsupported scoring policy: no automatic selection or missing-score substitution')
     profiles = result['profiles']
-    if {p['code'] for p in profiles['profiles']} != {'513130', '513530', '588710', '517120'}:
-        raise EditorialError('Profile configuration must retain all four products')
+    products = load_config(root)['products']
+    entries = profiles['profiles']
+    if (not isinstance(entries, list) or any(not isinstance(p, dict) for p in entries)
+            or len(entries) != len(products) or {p.get('code') for p in entries} != set(products)):
+        raise EditorialError('Profile configuration must cover registered products exactly once')
+    for profile in entries:
+        if profile.get('name') != products[profile['code']]['name']:
+            raise EditorialError('Profile name must match the product registry')
+        for key in ('observation_variables', 'relation_boundaries'):
+            values = profile.get(key)
+            if not isinstance(values, list) or not values or any(not isinstance(v, str) or not v.strip() for v in values):
+                raise EditorialError('Product profiles require observation variables and relation boundaries')
+        if profile.get('factual_holdings_inferred_from_keywords') is not False:
+            raise EditorialError('Product routing cannot establish holdings')
     policy = result['output_policy']
     if policy.get('auto_publication') is not False or policy.get('source_relabeling_allowed') is not False or policy.get('date_relabeling_allowed') is not False:
         raise EditorialError('Unsupported export policy')
