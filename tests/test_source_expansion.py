@@ -114,7 +114,7 @@ class SourceExpansionTests(unittest.TestCase):
     def test_channels_are_additive_idempotent_and_keep_disabled_preference(self):
         base=load_config();before=deepcopy(base);expanded=with_channels(base)
         self.assertEqual(len(base['sources']),26);self.assertEqual(base,before)
-        self.assertEqual(len(expanded['sources']),32)
+        self.assertEqual(len(expanded['sources']),34)
         expanded['sources']['cls_innovative_drug']['enabled']=False
         self.assertEqual(expanded,with_channels(expanded))
 

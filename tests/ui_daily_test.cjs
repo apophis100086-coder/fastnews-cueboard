@@ -405,6 +405,19 @@ test('model text is escaped and product suggestions only expose explicit adoptio
   assert.equal(app.calls.filter(c=>c.method==='POST').length,0);
 });
 
+test('query gaps and older background dates stay visible without selecting a clue',async()=>{
+ const app=await harness({reader:true});
+ const r={report_id:'r',host:'codex',status:'partial',output:{items:[{item_id:'one',rank:1,
+  title:'背景｜合成设备数据',summary:'合成季度背景',why:'制造投资观察',time_role:'background',date_state:'background_before_window',
+  sources:[{url:'https://example.org/stat',title:'合成来源',excerpt:'合成片段',published_at:'2026-09-03',first_published_at:'2026-09-02',data_period_start:'2026-04-01',data_period_end:'2026-06-30'}]}],
+  search_audit:{observed_query_count:3,query_budget:24,directions:[{name:'生产数据',status:'queried'},{name:'<script>投资数据</script>',status:'no_query_observed'}]}}};
+ const markup=app.evaluate('reportHTML('+JSON.stringify(r)+',"product")');
+ assert.match(markup,/实际查询 3 次/);assert.match(markup,/产业观察方向 1\/2/);
+ assert.match(markup,/非本窗口新增消息/);assert.match(markup,/2026-04-01/);assert.match(markup,/2026-06-30/);
+ assert.match(markup,/本轮未观察到查询/);assert.ok(!markup.includes('<script>'));
+ assert.equal(app.calls.filter(c=>c.method==='POST').length,0);
+});
+
 test('workspace switching keeps unsaved selections and does not make API calls', async()=>{
  const app=await harness({workflow:true,workspace:true});
  app.el('editions').value='ed-one';await app.el('editions').onchange();

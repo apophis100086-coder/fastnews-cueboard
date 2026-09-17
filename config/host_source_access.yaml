@@ -1,6 +1,8 @@
 version: host-source-access-v1
 note: 仅产品宿主通道覆盖；不改变程序采集器的 metadata_allowed/fulltext_allowed。允许项只限公开资料，遇登录、付费、验证码、robots或明确条款限制即停止相应读取。
 sources:
+  nbs_public: {search: allowed, read: allowed, reason: public_official, note: 仅公开统计发布，可尝试读取短片段；遇站点限制停止，不含非公开统计库。}
+  semi_china_public: {search: allowed, read: allowed, reason: public_press_release, note: 仅SEMI中国公开新闻；不读取付费报告，遇访问限制停止。与英文站分别登记访问状态。}
   cls_morning: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开列表摘要；现有范围只允许元数据，不打开正文。}
   cls_hk_morning: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开列表摘要；保留媒体归属，不打开正文。}
   cls_southbound: {search: allowed, read: blocked, reason: metadata_scope, note: 可检索公开南向报道摘要；正文路径未授权。}

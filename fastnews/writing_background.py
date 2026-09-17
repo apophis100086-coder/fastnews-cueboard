@@ -30,7 +30,7 @@ def _report_snapshot(conn, path):
         return {'title': item['title'], 'summary': item['summary'], 'why': item['why'],
                 'sources': item['sources'], 'origin': 'ai_research', 'date_state': item['date_state'],
                 'report_id': parts[1], 'item_id': parts[2], 'fact_verified': False,
-                **{k:item.get(k) for k in ('claims','missing_items','research_identity','event_identity','material_fingerprints')}}
+                **{k:item.get(k) for k in ('claims','missing_items','research_identity','event_identity','material_fingerprints','time_role')}}
 
 
 def snapshot_event(conn, config, edition_id, event_id, *, retained=False):
@@ -195,6 +195,8 @@ def export_materials(decision, edition):
     for original in decision.get('selected_clues', []):
         item = deepcopy(original)
         item['date_state'] = _timing(item['sources'], edition['news_cutoff'])
+        if item['date_state']=='reported_in_window' and item.get('time_role')=='background':
+            item['date_state'] = 'background_before_window'
         if item['date_state'] == 'out_of_cutoff':
             excluded.append({'event_id': item['event_id'], 'reason': '线索来源报道在本期新闻截点之后；未输出摘要和数值',
                              'source_urls': [s.get('url') for s in item['sources']]})
@@ -226,13 +228,17 @@ def markdown_materials(materials):
     lines = ['', '## 人工选中的写作线索', '', '以下为供写作窗口回查的研究背景。保留原始归属、计划/预测身份及时间；不能直接当作已核实事实。', '']
     for i, clue in enumerate(materials['selected_research_clues'], 1):
         lines += [f"### {i}. {clue['title']}", '', clue['summary'], '', '产品关系 / 关注理由：' + clue['why'],
-                  '材料身份：' + clue['usage'], '日期状态：' + ('来源报道位于窗口内，首次公开仍待核实' if clue['date_state'] == 'reported_in_window' else '公开时间待核实'), '']
+                  '材料身份：' + clue['usage'], '日期状态：' + ('来源报道位于窗口内，首次公开仍待核实' if clue['date_state'] == 'reported_in_window' else '早于新闻窗口的统计 / 预测背景' if clue['date_state']=='background_before_window' else '公开时间待核实'), '']
+        if clue.get('time_role'):
+            lines += ['时效用途：' + ('较早发布的背景资料，不能当作本窗口新增消息。' if clue['time_role']=='background' else '近期消息含较早发布的背景依据，请分别保留来源日期。'), '']
         for s in clue['sources']:
             lines += [f"- 出处：{s.get('source_name') or s.get('title') or '未提供'}；链接：{s.get('url') or '本地材料'}；报道日期：{s.get('published_at') or '未知'}；读取身份：{s.get('evidence_level') or '未知'}。"]
             # Frozen selections exported by earlier versions keep their exact
             # renderer, otherwise their immutable MD path would conflict.
             if not clue.get('research_material_version'):
                 continue
+            if s.get('time_role_label'):
+                lines += ['  时效用途：' + s['time_role_label']]
             identity = s.get('material_identity') or s.get('evidence_level')
             lines += [f"  材料类型：{MATERIAL_LABELS.get(identity,identity or '未知')}；取得时间：{s.get('retrieved_at') or '未知'}；首次公开：{s.get('first_published_at') or '待核实'}。"]
             if s.get('excerpt'):

@@ -51,20 +51,20 @@ class ReaderDatabaseTests(unittest.TestCase):
     def test_all_original_sources_remain_with_categories_and_separate_sections(self):
         before=deepcopy(self.base)
         rows=catalog(self.conn,self.base)
-        self.assertEqual(len(rows),32)
+        self.assertEqual(len(rows),34)
         self.assertTrue(set(self.base['sources']).issubset({s['source_id'] for s in rows}))
         self.assertEqual({r['source_id'] for r in rows},set(self.view()['sources']))
         self.assertTrue(all(r['categories'] and r['sections'] for r in rows))
         self.assertEqual(len(section_ids(self.view(),'morning')),6)
-        self.assertEqual(len(section_ids(self.view(),'sector')),26)
+        self.assertEqual(len(section_ids(self.view(),'sector')),28)
         self.assertEqual(self.base,before)
 
     def test_custom_sources_and_enabled_overrides_are_isolated_between_profiles(self):
         p=save_profile(self.conn,{'name':'医药同事'})['profile_id']
         custom=save_source(self.conn,self.base,p,self.source())
         save_source(self.conn,self.base,p,{'source_id':'cls_morning','enabled':False})
-        self.assertEqual(len(catalog(self.conn,self.base)),32)
-        self.assertEqual(len(catalog(self.conn,self.base,p)),33)
+        self.assertEqual(len(catalog(self.conn,self.base)),34)
+        self.assertEqual(len(catalog(self.conn,self.base,p)),35)
         self.assertNotIn('cls_morning',section_ids(self.view(p),'morning'))
         self.assertIn('cls_morning',section_ids(self.view(),'morning'))
         with self.assertRaises(ValueError):
@@ -89,8 +89,8 @@ class ReaderDatabaseTests(unittest.TestCase):
         app=LocalApplication(dbpath,self.base,offline=True)
         self.assertEqual(app.detail(edition['edition_id'])['route']['event_count'],0)
         self.assertEqual(app.detail(edition['edition_id'],pid)['route']['event_count'],1)
-        self.assertEqual(len(app.state()['reader_sources']),32)
-        self.assertEqual(len(app.state()['sources']['sources']),32)
+        self.assertEqual(len(app.state()['reader_sources']),34)
+        self.assertEqual(len(app.state()['sources']['sources']),34)
 
     def test_source_null_id_creates_valid_id_and_builtin_url_does_not_repoint_collector(self):
         item=save_source(self.conn,self.base,'default',self.source(source_id=None))
@@ -113,7 +113,7 @@ class ReaderDatabaseTests(unittest.TestCase):
                     'file:///C:/private','https://user:pass@example.org/','https://example.org:8080/'):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 save_source(self.conn,self.base,'default',self.source(url=url))
-        self.assertEqual(len(catalog(self.conn,self.base)),32)
+        self.assertEqual(len(catalog(self.conn,self.base)),34)
 
     def test_personal_section_and_name_override_propagate_without_changing_base(self):
         save_source(self.conn,self.base,'default',{'source_id':'miit','sections':['sector'],'name':'部委信息'})
@@ -127,7 +127,7 @@ class ReaderDatabaseTests(unittest.TestCase):
                        {'categories':['not-real']},{'collection':'arbitrary-crawler'},{'command':'rm'}):
             with self.subTest(change=change),self.assertRaises(ValueError):
                 save_source(self.conn,self.base,'default',self.source(**change))
-        self.assertEqual(len(catalog(self.conn,self.base)),32)
+        self.assertEqual(len(catalog(self.conn,self.base)),34)
 
     def test_morning_input_uses_chosen_day_sources_and_metadata_only(self):
         self.save_article()

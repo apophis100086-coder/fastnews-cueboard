@@ -40,4 +40,5 @@ def with_channels(config, path=None):
             result['source_runtime'][sid] = {'capability_status':'needs_probe', 'access_review':'not_checked'}
         groups[sid] = row['categories']
     result['source_channel_categories'] = groups
-    return result
+    from .research_sources import add_research_sources
+    return add_research_sources(result)

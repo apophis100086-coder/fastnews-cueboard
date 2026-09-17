@@ -147,7 +147,7 @@ class ProductCatalogTests(unittest.TestCase):
             payload = build_input(conn, view, 'default', 'product', '2026-09-15', new)
             self.assertEqual(payload['product']['product_code'], '588090')
             self.assertIn('上证科创板50成份指数', str(payload['product']['observation_variables']))
-            self.assertLessEqual(len(payload['search_plan']['queries']), 8)
+            self.assertLessEqual(len(payload['search_plan']['queries']) + payload['search_plan']['fallback_queries'], payload['search_plan']['max_queries'])
             self.assertEqual(payload['search_plan']['evidence_budget'],
                 {'max_events': 3, 'max_pages_per_event': 2, 'within_current_host_task': True})
             event_id = conn.execute('SELECT event_id FROM fn_events').fetchone()[0]

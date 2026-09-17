@@ -35,6 +35,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--product',choices=list(load_config()['products']),default='517120')
+    parser.add_argument('--skip-program-probes',action='store_true',help='Isolate host recall without rerunning collectors')
+    parser.add_argument('--cutoff',help='Explicit information cutoff for reproducible comparison')
     args=parser.parse_args()
     if not args.live:
         parser.error('--live is required; this uses the logged-in host quota')
@@ -53,6 +55,10 @@ def main():
     dest=ROOT/'data/targeted_acceptance'/now.strftime('%Y%m%dT%H%M%S%fZ')
     dest.mkdir(parents=True,exist_ok=False)
     cutoff=datetime.combine(day,datetime.min.time(),ZoneInfo('Asia/Shanghai'))-timedelta(seconds=1)
+    if args.cutoff:
+        cutoff=parse_instant(args.cutoff)
+        if cutoff>now:
+            parser.error('cutoff cannot be in the future')
     conn=db.connect(dest/'acceptance.db',mode='live')
     config=load_config()
     db.sync_registry(conn,config)
@@ -75,7 +81,9 @@ def main():
              'search_enabled':source['search_enabled'],'host_read_allowed':source['host_read_allowed'],
              'policy_reason':source['access_reason'],'program_scan_enabled':source['program_scan_enabled']}
         started=time.monotonic()
-        if sid not in adapter.supported_sources:
+        if args.skip_program_probes:
+            row.update(program_status='not_requested',program_reason='host_recall_only',records=None)
+        elif sid not in adapter.supported_sources:
             row.update(program_status='not_requested',program_reason='adapter_or_permission_unavailable',records=None)
         else:
             try:

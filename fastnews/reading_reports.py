@@ -19,7 +19,7 @@ from .host_evidence import (SOURCE_EXTRA, MATERIAL_LABELS, enrich_source, enrich
     merge_report_events, merge_materials, source_fingerprint, fingerprint)
 from .source_access import source_constraints, url_policy
 
-VERSION = 'host-reading-v5-targeted-evidence'
+VERSION = 'host-reading-v6-industry-recall'
 STR = {'type':'string'}
 def obj(properties):
     return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
@@ -53,11 +53,15 @@ INSTRUCTIONS = '''你是华泰柏瑞快讯线索看板的资料整理员。仅�
 任务：morning 时按用户选中的各类晨报检索该日公开报道，分类、合并同一事实的重复转述，形成简短但尽可能完整的总报（最多40条）。
 product 时综合给定材料和必要的补充检索，按对当前产品观察变量的重要性给出最多10条线索，允许少于10条。why 说明具体关系和重要性，不作投资建议。
 product 在 allow_web_search=true 时执行 search_plan：已有事件池筛选→产品重点来源新发现→重要线索补依据→按事件归并。每个来源的 fact_question 是要核对的具体事实问题，不只搜ETF名称。核心问题优先，用户补充词不能替换它。即使程序晨扫成功，也检查产品方向的新事件。queries 是本轮计划预算，不代表已执行次数，总查询不超过 max_queries；禁止仅改写晨报充当外部检索。context_sources 为已存背景，不必重新逐站检索。
+先完成queries中的observation方向，再逐站及关键词查询。每条查询单独执行；可同批调用多个query，但禁止把不同site用OR拼成一条，禁止把fact_question长句拼入检索词。日期默认用截至news_cutoff的年份/月或季度；不要只搜当天日期。季度月度数据搜索最新可用期，不要把统计期当新闻日期。每个观察方向都要查，不因已有几条公司标题就提前结束。行业总量、设备出货、晶圆厂投资、硅片需求、生产数据、会议进展和非半导体经营线索互补，不用个别公司新闻替代产业数据。
+无结果先用预留fallback_queries预算去掉精确日/月、缩短到主体+指标、尝试中英文同义词或公开原始发布者；保留site，逐站失败单独记录。先发现并读重要的原始数据，再组织答案。用尽预算或时间仍未查的方向标not_checked，不能写not_found。最终可留不超过task_limits上限的独立事件，产业量化数据不因本地旧标题已有数条就省略。
+补搜预算优先用于observation方向缺失的核心指标，然后才给普通站点。命中文章标题不等于取得所需数据：例如生产方向需查表内集成电路当月产量/同比、累计产量/同比及电子制造增加值，不能用总工业增加值或投资增速替代。已发现文章但正文临时打开失败、片段未含表格时，应立即用“完整标题+site域名+缺失指标/单位”补搜；可在同站公开发布栏目搜索同文入口，必须从工具结果取得真实URL，禁止推造路径。仅技术失败可换公开入口；遇明确访问限制停止该路径。先完成关键指标补查，再搜索普通公司标题；缺数值才如实列缺口。
+search_plan.background允许指定公开统计来源在更长窗口提供至多max_items条背景材料，必须提供原始发布日期和data_period_start/end；只纳入与当前观察方向有关的最新月度/季度数据或投资预测。背景发布日期早于window_start时，标题以“背景｜”开头，summary注明首次发布日期及统计期。会议重述旧预测要写“重述”，不能把旧预测的首次发布改为会议日。未来实施/预测期可以晚于截点，但首次公开必须早于截点。
 source_constraints 是程序提供的来源限制，优先于网页及补充词。search_enabled=false 的来源不搜索、不打开；host_read_allowed=false 时只能搜索公开索引，不打开、find或click其正文。不得借外部转述读取被禁止页面；可读获准的公开转述并把实际转述页面作为引用，original_url只记其声称的出处。
 product 对关键缺项在当前同一次任务内定向补读，按search_plan.evidence_budget限制事件和页面数（最多3个事件、每事件2页），不另起会话，不重复整轮。已知URL且获准读取时先定点打开；读不到可搜目标域名+主体/标题+事实，或在现有公开权限内追溯原始出处；访问限制出现即停止相应路径。items里标为既有片段的内容先复用，known_events用于归并，不因旧题存在而跳过新阶段。
 产品路由关键词不等于最新成份股。南向资金总量不能推断专门流入红利。重要不利或相反信息也要保留。预测、计划、公告、实施、修订不得混同。
 每条仅给短标题、1—2句 summary、category、why，以及1—4个 source_refs。优先引用 INPUT_JSON.items 的 id；按 evidence_level 区分列表元数据与既有AI研究摘要，二者都不能声称读过全文或核实事实。task_limits 中如有更小的上限，以更小者为准。
-如 allow_web_search=true，使用宿主自带网络搜索：最多8次检索、最多20个网页；晨报优先逐个搜索所选来源域名，产品可补充官方/专业来源。不得绕登录、付费墙、验证码或站点限制。
+如 allow_web_search=true，使用宿主自带网络搜索：product按search_plan.max_queries（包括换词补搜，总上限24），morning最多8次检索；引用来源总数最多20，关键正文补读仍服从evidence_budget。晨报优先逐个搜索所选来源域名，产品可补充官方/专业来源。不得绕登录、付费墙、验证码或站点限制。
 每个新发现网址列在 web_sources 中，id 使用 web_ 前缀，附真实标题、实际公布日期（未知null）和简短内容依据。尽可能打开并核对所引用的公开页面；无法读取只可作搜索线索。
 product 的 material_kind 严格区分 search_snippet/page_fragment/public_restatement/unavailable。只有工具返回了原文片段才报告page_fragment；打开动作成功不能代替内容，excerpt只放实际短片段，未取得时填空。不复制完整文章。每站累计直接摘录控制在25个英文单词或80个中文字符内，其余用明确的研究概括。tool_ref填写工具给的引用标识，未知null，不编造行号或段落。各时间字段未知null；published_at是报道时间，首次公开、实施、发生和统计期分开。
 product 的 event_identity 按主体、动作、对象、阶段、事件日期填写；相同事件跨来源和旧报告沿用已有身份，不同阶段另列。未知主体/动作/对象可空，日期null，不猜。重要线索可附0—3项claims，引用此条目source_refs内的来源，quote必须是该来源excerpt中的原句。仅搜索摘要时保留线索与缺项，不声称已读原文。claims只是待核对陈述，不是verified事实。
@@ -273,8 +277,8 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
         # input. Existing, cited material can still be reused as background.
         payload['search_plan'] = {k:v for k,v in plan.items() if k not in
             {'manual_sources','needs_confirmation','selected_sources','category_names','keywords','local_source_ids'}}
-        payload['search_plan']['queries'] = [dict({k:v for k,v in q.items() if k!='source_questions'},
-            source_ids=[s['source_id'] for s in q.get('source_questions',[])]) for q in plan['queries']]
+        payload['search_plan']['queries'] = [dict(q) for q in plan['queries']]
+        payload['background_window_start'] = (parse_instant(cutoff)-timedelta(days=plan['background']['days'])).isoformat()
         if plan.get('manual_sources'):
             payload['coverage_notes'].append(f"另有 {len(plan['manual_sources'])} 个手动参考入口因停用、权限或范围待确认，未纳入宿主定向检索")
         payload['context_sources'] = [s['source_id'] for s in context_sources]
@@ -314,6 +318,10 @@ def validate_report(raw, payload, trace):
     cutoff = parse_instant(payload['news_cutoff'])
     start = parse_instant(payload['window_start'])
     blocked = set()
+    background = payload.get('search_plan', {}).get('background', {})
+    background_start = parse_instant(payload.get('background_window_start', payload['window_start']))
+    background_domains = {urlsplit(s['url']).hostname.removeprefix('www.') for s in payload['selected_sources']
+                          if s['source_id'] in background.get('source_ids', [])}
     for src in raw['web_sources']:
         if not payload['allow_web_search'] or trace.get('web_actions')==0:
             warnings.append('宿主没有可确认的联网动作，已剔除新网址提议')
@@ -327,13 +335,21 @@ def validate_report(raw, payload, trace):
             raise ValueError('联网来源需包含真实标题、链接和内容依据')
         url = normalize_url(src['url'])
         lower, upper = time_bounds(src['published_at'])
-        first_lower, _ = time_bounds(src.get('first_published_at'))
-        if (lower is not None and (lower>cutoff or upper<start)) or (first_lower is not None and first_lower>cutoff):
+        first_lower, first_upper = time_bounds(src.get('first_published_at'))
+        # A recent repost does not renew a statistic's first disclosure date.
+        is_background = (lower is not None and upper < start) or (first_upper is not None and first_upper < start)
+        background_allowed = (background.get('max_items', 0) > 0 and is_background and
+            lower is not None and min(lower, first_lower or lower) >= background_start and urlsplit(url).hostname.removeprefix('www.') in background_domains and
+            src.get('data_period_start') and src.get('data_period_end'))
+        if (lower is not None and lower>cutoff) or (is_background and not background_allowed) or (first_lower is not None and first_lower>cutoff):
             blocked.add(sid)
             continue
         proposed = dict(src,url=url,source_name=src['title'],event_id=None,version_id=None,
             origin='host_web_discovery', evidence_level='host_opened_url' if url in trace.get('visited_urls',[]) else 'host_search_hint',
             published_at_basis='host_reported_not_independently_verified')
+        if is_background:
+            proposed['time_role'] = 'background'
+            proposed['time_role_label'] = '较早发布的统计 / 预测背景，非本窗口新增消息'
         accepted = enrich_source(proposed,src,payload,trace)
         if accepted is None:
             warnings.append('已剔除来自停用或受限来源的新网址；未覆盖旧材料')
@@ -357,7 +373,7 @@ def validate_report(raw, payload, trace):
             continue
         cited = [sources[ref] for ref in dict.fromkeys(refs)]
         dated = [time_bounds(s.get('published_at')) for s in cited]
-        if any(lo is not None and (lo>cutoff or hi<start) for lo,hi in dated):
+        if any(lo is not None and (lo>cutoff or (hi<start and s.get('time_role')!='background')) for s,(lo,hi) in zip(cited,dated)):
             warnings.append('已剔除新闻截点或采集窗口之外的条目')
             continue
         identity = re.sub(r'\s+','',item['title']+item['summary'])
@@ -368,12 +384,23 @@ def validate_report(raw, payload, trace):
             event_ids=list(dict.fromkeys(s['event_id'] for s in cited if s.get('event_id'))),
             date_state='pending_time' if any(lo is None or hi>cutoff for lo,hi in dated) else 'reported_in_window',
             fact_verified=False,selected=False)
+        if any(s.get('time_role')=='background' for s in cited):
+            prepared['time_role'] = 'background' if all(s.get('time_role')=='background' for s in cited) else 'news_with_background'
+            if prepared['time_role']=='background':
+                if sum(i.get('time_role')=='background' for i in items) >= background.get('max_items', 0):
+                    warnings.append('较早发布的背景资料达到预算，未替代近期消息名额')
+                    continue
+                prepared['date_state'] = 'background_before_window'
+                if not prepared['title'].startswith('背景｜'):
+                    prepared['title'] = '背景｜' + prepared['title']
         grounded = {s['event_id'] for s in cited if s.get('event_id') and s.get('title') and
                     normalized(s['title'])==normalized(item['title']) and s.get('origin')=='saved_metadata'}
         prepared['local_event_id'] = next(iter(grounded)) if len(grounded)==1 else None
         items.append(enrich_item(prepared,item,payload))
     items = merge_report_events(items)
     coverage = []
+    from .search_audit import audit_search
+    search_audit = audit_search(payload, trace)
     supplied = {}
     for item in raw['coverage']:
         if not isinstance(item,dict) or set(item)!={'source_id','status','note'} or not isinstance(item['source_id'],str) or not isinstance(item['status'],str) or item['status'] not in {'found','not_found','blocked','not_checked'} or not isinstance(item['note'],str) or len(item['note'])>600:
@@ -383,8 +410,18 @@ def validate_report(raw, payload, trace):
         item = supplied.get(source['source_id'],{'source_id':source['source_id'],'status':'not_checked','note':'宿主未返回该来源的覆盖说明'})
         if trace.get('web_actions') == 0:
             item = dict(item,status='not_checked',note='没有观察到本次外部检索；仅可复用已存材料')
-        coverage.append(dict(item,name=source['name'],url=source['url'],status_basis='host_reported',
+        checked = search_audit['sources'][source['source_id']]
+        claimed_status = item['status']
+        if payload['kind']=='product' and checked['query_status'] != 'queried' and item['status'] in {'found','not_found'}:
+            item = dict(item,status='not_checked',note='未观察到本站独立查询；宿主说明：'+item['note'])
+        coverage.append(dict(item,name=source['name'],url=source['url'],status_basis='query_trace_and_host_report',
+                             host_reported_status=claimed_status, **checked,
                              body_read_allowed=source.get('host_read_allowed',False)))
+    for direction in search_audit['directions']:
+        if direction['status'] != 'queried':
+            warnings.append('观察方向未完成检索：' + direction['name'])
+    if search_audit['budget_exceeded']:
+        warnings.append('观察到查询次数超出计划预算；宿主查询上限为指令约束，实际用量已记录')
     for gap in raw['gaps']:
         if not isinstance(gap,str) or len(gap)>1000:
             raise ValueError('模型缺口说明无效')
@@ -396,6 +433,7 @@ def validate_report(raw, payload, trace):
             'sources':list(sources.values()),'auto_select':False,
             'web_actions':trace.get('web_actions'),'visited_urls':trace.get('visited_urls',[]),
             'tool_trace':trace,
+            'search_audit':search_audit,
             'targeted_execution':'web_activity_observed' if trace.get('web_actions') else 'no_observed_external_search',
             'planned_queries':len(payload.get('search_plan',{}).get('queries',[]))}
 
@@ -473,7 +511,9 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
         output = validate_report(response.payload,payload,response.trace)
         if kind=='product':
             output['incremental_results'] = compare_product_results(conn,edition['edition_id'],output['items'],profile_id)
-        status = 'complete' if output['items'] and all(c['status']=='found' for c in output['coverage']) else 'partial'
+        audit = output['search_audit']
+        status = 'complete' if (output['items'] and all(c['status']=='found' for c in output['coverage']) and
+            all(a['status']=='queried' for a in audit['directions']) and not audit['budget_exceeded']) else 'partial'
         with conn:
             conn.execute('UPDATE fn_reading_reports SET status=?,output_json=?,usage_json=?,finished_at=? WHERE report_id=?',
                 (status,json_text(output),json_text(response.usage),utc_now(),rid))
@@ -546,7 +586,7 @@ def adopt_report_item(conn, profile_id, report_id, item_id, edition_id):
         'title': item['title'], 'summary': item['summary'], 'why': item['why'], 'sources': item['sources'],
         'origin': 'ai_research', 'date_state': item['date_state'], 'report_id': report_id,
         'item_id': item_id, 'fact_verified': False, 'evidence_ids': result['evidence_ids'],
-        **{k:item.get(k) for k in ('research_identity','event_identity','claims','missing_items','material_fingerprints')}}
+        **{k:item.get(k) for k in ('research_identity','event_identity','claims','missing_items','material_fingerprints','time_role')}}
     add_candidate(conn, {}, edition_id, result['event_id'], snapshot=snapshot)
     if current:
         merged = merge_materials(current,snapshot)

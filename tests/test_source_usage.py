@@ -22,7 +22,7 @@ class SourceUsageTests(unittest.TestCase):
         config = configured_view(self.conn, self.base)
         all_ids = section_ids(config, 'all')
         automatic = section_ids(config, 'all', collect_only=True)
-        self.assertEqual(len(all_ids), 32)
+        self.assertEqual(len(all_ids), 34)
         self.assertEqual(len(automatic), 13)
         self.assertIn('fda', all_ids)
         self.assertNotIn('fda', automatic)
