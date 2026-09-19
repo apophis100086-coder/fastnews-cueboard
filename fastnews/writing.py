@@ -46,7 +46,10 @@ def policy():
 
 
 def instructions(stage):
-    return (SKILL/'SKILL.md').read_text(encoding='utf-8')+'\n'+(SKILL/'guides'/(stage+'.md')).read_text(encoding='utf-8')
+    # The host receives text, not access to linked skill files. Load the shared
+    # style guide explicitly so it is also covered by the frozen skill hash.
+    return '\n'.join(path.read_text(encoding='utf-8') for path in
+        (SKILL/'SKILL.md',SKILL/'guides'/'style.md',SKILL/'guides'/(stage+'.md')))
 
 
 def task_attempts(conn):

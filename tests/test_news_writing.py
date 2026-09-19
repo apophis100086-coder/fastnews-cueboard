@@ -1,6 +1,7 @@
 """Writing workflow invariants, isolated DBs and explicitly synthetic evidence."""
 from copy import deepcopy
 import json
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -112,6 +113,41 @@ class NewsWritingTests(unittest.TestCase):
             confirmed=self.confirm(outline)
             self.assertNotEqual(confirmed['snapshot']['skill_version'],old['snapshot']['skill_version'])
         self.assertEqual(w.version(self.conn,outline['version_id']),old)
+
+    def test_shared_style_is_loaded_and_frozen_for_an_accepted_task(self):
+        skill=Path(self.temp.name)/'skill'
+        shutil.copytree(w.SKILL,skill)
+        guide=skill/'guides'/'style.md'
+        guide.write_text('任务发起时采用的写法。',encoding='utf-8')
+        with patch('fastnews.writing.SKILL',skill):
+            control=TaskControl()
+            run=w.accept_run(self.conn,self.cfg,'outline',self.data(),control)
+            guide.write_text('任务发起之后修订的写法。',encoding='utf-8')
+            def captured_runner(host,prompt,schema,**kwargs):
+                self.assertIn('任务发起时采用的写法。',prompt)
+                self.assertNotIn('任务发起之后修订的写法。',prompt)
+                return self.runner(host,prompt,schema,**kwargs)
+            result=w.execute_run(self.conn,run['run_id'],control,runner=captured_runner)
+            self.assertFalse(result['checks']['errors'])
+            self.assertTrue(w.workflow(self.conn,self.eid)['versions'][0]['stale_skill_version'])
+
+    def test_one_confirmed_outline_point_can_expand_into_sourced_natural_paragraphs(self):
+        outline=self.generate();confirmed=self.confirm(outline)
+        def expanded_runner(*args,**kwargs):
+            result=self.runner(*args,**kwargs)
+            analysis=deepcopy(result.payload['paragraphs'][0])
+            analysis['text']='订单增长为需求判断提供了依据，兑现为经营成果仍取决于后续交付。'
+            result.payload['paragraphs'].append(analysis)
+            return result
+        control=TaskControl()
+        run=w.accept_run(self.conn,self.cfg,'draft',self.data(confirmed_version_id=confirmed['version_id']),control)
+        result=w.execute_run(self.conn,run['run_id'],control,runner=expanded_runner)
+        self.assertFalse(result['checks']['errors'])
+        paragraphs=result['content']['paragraphs']
+        self.assertEqual(len(paragraphs),2)
+        self.assertEqual({p['outline_paragraph_id'] for p in paragraphs},{'p1'})
+        self.assertTrue(all(p['sources'] and p['claim_ids']==['c1'] for p in paragraphs))
+        self.assertIn('兑现为经营成果',w.export_draft(self.conn,result['version_id'])['markdown'])
 
     def test_no_confirmation_and_cross_edition_rejected(self):
         outline=self.generate()
