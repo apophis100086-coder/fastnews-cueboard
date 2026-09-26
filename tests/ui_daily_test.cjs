@@ -663,6 +663,15 @@ test('stopped exploration preserves draft and exposes no fabricated results',asy
  assert.match(app.el('message').textContent,/达到时间上限/);assert.equal(app.el('explore-stop').hidden,true);
 });
 const writingOptions={workflow:true,writing:true,exploration:true};
+test('unlimited task count shows no fake remaining quota or midnight reset',async()=>{
+ const e=writingEdition();e.writing.task_budget={used:10000,limit:null,remaining:null,resets_at:null,unlimited:true};
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ assert.match(app.el('writing-budget').textContent,/10000/);
+ assert.match(app.el('writing-budget').textContent,/未设置每日次数上限/);
+ assert.doesNotMatch(app.el('writing-budget').textContent,/null|恢复|剩余/);
+ assert.equal(app.el('writing-outline').disabled,false);
+});
 test('legacy outlines do not claim that the new supplemental search has run',async()=>{
  const e=writingEdition();e.writing.versions[0].supplemental_research={};e.writing.versions[0].stale_skill_version=true;
  const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});

@@ -16,7 +16,8 @@ def status(conn, *, used=None, limit=None):
     used=attempts(conn,*time_bounds(now.date().isoformat())) if used is None else used
     limit=reader_limits()['max_tasks_per_day'] if limit is None else limit
     reset=(now+timedelta(days=1)).replace(hour=0,minute=0,second=0,microsecond=0)
-    return dict(used=used,limit=limit,remaining=max(0,limit-used),resets_at=reset.isoformat(),
+    return dict(used=used,limit=limit,remaining=None if limit is None else max(0,limit-used),
+                resets_at=None if limit is None else reset.isoformat(),unlimited=limit is None,
                 scope='project_local_daily',includes_failed_attempts=True)
 
 

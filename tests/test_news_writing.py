@@ -511,9 +511,21 @@ class NewsWritingTests(unittest.TestCase):
         self.assertEqual(w.task_attempts(self.conn),1)
 
     def test_shared_budget_blocks_before_launching_another_task(self):
-        with patch('fastnews.writing.task_attempts',return_value=12):
+        with patch('fastnews.writing.task_attempts',return_value=12),\
+            patch('fastnews.writing.reader_limits',return_value=w.reader_limits()|{'max_tasks_per_day':12}):
             with self.assertRaisesRegex(ValueError,'共享预算'):w.accept_run(self.conn,self.cfg,'outline',self.data(),TaskControl())
         self.assertEqual(w.task_attempts(self.conn),0)
+
+    def test_unlimited_daily_tasks_keep_count_without_rejection_or_reset_time(self):
+        from fastnews.host_task_budget import status
+        self.assertIsNone(w.reader_limits()['max_tasks_per_day'])
+        budget=status(self.conn,used=10000)
+        self.assertTrue(budget['unlimited']);self.assertEqual(budget['used'],10000)
+        self.assertIsNone(budget['remaining']);self.assertIsNone(budget['resets_at'])
+        with patch('fastnews.writing.task_attempts',return_value=10000):
+            run=w.accept_run(self.conn,self.cfg,'outline',self.data(),TaskControl())
+        self.assertEqual(run['status'],'running')
+        self.assertEqual(w.task_attempts(self.conn),1)
 
     def test_server_writing_wait_does_not_lock_human_saves_or_old_export(self):
         from fastnews.server import LocalApplication

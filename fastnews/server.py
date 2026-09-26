@@ -333,7 +333,7 @@ class LocalApplication:
                         from .writing import task_attempts
                         from .host_task_budget import status, exhausted_message
                         budget=status(conn,used=task_attempts(conn))
-                        if not budget['remaining']:
+                        if budget['remaining']==0:
                             raise ValueError(exhausted_message(budget))
                 if action == 'scan' and 'source_id' in data:
                     from .source_catalog import catalog

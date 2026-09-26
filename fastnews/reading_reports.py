@@ -705,7 +705,7 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
     with reservation(conn):
         from .host_task_budget import status, exhausted_message
         budget=status(conn,used=task_attempts(conn),limit=reader_limits()['max_tasks_per_day'])
-        if not budget['remaining']:
+        if budget['remaining']==0:
             raise ValueError(exhausted_message(budget))
         with conn:
             conn.execute('INSERT INTO fn_reading_reports(report_id,profile_id,kind,day,edition_id,product_code,host,status,input_hash,input_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',

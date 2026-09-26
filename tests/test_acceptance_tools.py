@@ -11,7 +11,7 @@ from tools import run_v64_acceptance as live
 class AcceptanceToolTests(unittest.TestCase):
     def test_feedback_revision_saves_new_original_without_replacing_parent(self):
         with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)),\
-            patch.object(live.w,'task_attempts',return_value=0),\
+            patch.object(live.w,'task_attempts',return_value=10000),\
             patch.object(live.ed,'latest_decision',return_value={'decision_revision':1}),\
             patch.object(live.w,'accept_run',return_value={'run_id':'test_run'}) as accept,\
             patch.object(live.w,'execute_run',return_value={'content':{'text':'new original'},'checks':{'status':'ready_to_confirm'}}):
@@ -27,6 +27,7 @@ class AcceptanceToolTests(unittest.TestCase):
 
     def test_revision_waits_on_shared_budget_before_loading_feedback(self):
         with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)),\
+            patch.object(live,'reader_limits',return_value={'max_tasks_per_day':12}),\
             patch.object(live.w,'task_attempts',return_value=12),patch.object(live.w,'accept_run') as accept:
             result=live.write(None,{},SimpleNamespace(code='513130',stage='outline',revision=2))
             self.assertEqual(result['status'],'budget_wait');accept.assert_not_called()
@@ -57,6 +58,7 @@ class AcceptanceToolTests(unittest.TestCase):
 
     def test_retry_still_waits_on_shared_budget_and_leaves_failure_intact(self):
         with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)),\
+            patch.object(live,'reader_limits',return_value={'max_tasks_per_day':12}),\
             patch.object(live.w,'task_attempts',return_value=12),patch.object(live,'collect') as collect:
             path=Path(root)/'morning.json';live.save(path,{'status':'failed'})
             original=path.read_bytes()
@@ -68,6 +70,7 @@ class AcceptanceToolTests(unittest.TestCase):
 
     def test_daily_limit_stops_before_collection_or_host(self):
         with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)),\
+            patch.object(live,'reader_limits',return_value={'max_tasks_per_day':12}),\
             patch.object(live.w,'task_attempts',return_value=12),patch.object(live,'collect') as collect,\
             patch.object(live.rr,'generate_report') as host:
             result=live.research(None,{},SimpleNamespace(kind='morning'))

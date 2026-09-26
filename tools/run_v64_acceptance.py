@@ -90,7 +90,7 @@ def research(conn,cfg,args):
     key='morning' if args.kind=='morning' else args.code+'-research'
     out=FOLDER/(key+'.json')
     if out.exists() and not getattr(args,'retry_reason',None):return dict(status='already_recorded',path=str(out))
-    if w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
+    if reader_limits()['max_tasks_per_day'] is not None and w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
         return dict(status='budget_wait',reason='shared_project_daily_limit',used=w.task_attempts(conn))
     if out.exists():archive_failed_attempt(out,args.retry_reason)
     control=TaskControl(480)
@@ -145,7 +145,7 @@ def saved_outline(path,code,edition_id):
 def write(conn,cfg,args):
     out=FOLDER/(writing_key(args)+'.json')
     if out.exists() and not getattr(args,'retry_reason',None):return dict(status='already_recorded',path=str(out))
-    if w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
+    if reader_limits()['max_tasks_per_day'] is not None and w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
         return dict(status='budget_wait',reason='shared_project_daily_limit',used=w.task_attempts(conn))
     if out.exists():archive_failed_attempt(out,args.retry_reason)
     eid=read(FOLDER/'editions.json')[args.code];decision=ed.latest_decision(conn,eid)

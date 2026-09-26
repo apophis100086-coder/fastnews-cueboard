@@ -254,6 +254,13 @@ class ReaderDatabaseTests(unittest.TestCase):
                 generate_report(self.conn,self.view(other),other,'morning','2026-09-14',runner=runner)
         self.assertEqual(runner.call_count,1)
 
+    def test_unlimited_daily_count_does_not_reject_research(self):
+        runner=Mock(side_effect=HostUnavailable('synthetic provider failure'))
+        with patch('fastnews.writing.task_attempts',return_value=10000):
+            with self.assertRaises(HostUnavailable):
+                generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=runner)
+        self.assertEqual(runner.call_count,1)
+
     def test_private_imports_are_not_sent_to_host(self):
         edition=self.edition()
         editorial.import_evidence_payload(self.conn,{'title':'私有材料',

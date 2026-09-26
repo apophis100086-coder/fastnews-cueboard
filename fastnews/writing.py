@@ -252,7 +252,7 @@ def accept_run(conn,config,stage,data,control,run_id=None):
         try:
             from .host_task_budget import status, exhausted_message
             budget=status(conn,used=task_attempts(conn),limit=reader_limits()['max_tasks_per_day'])
-            if not budget['remaining']:
+            if budget['remaining']==0:
                 raise ValueError(exhausted_message(budget))
             control.check()
             conn.execute('''INSERT INTO fn_writing_runs(run_id,request_id,request_hash,edition_id,decision_revision,stage,

@@ -13,6 +13,8 @@ def reader_limits():
     if not isinstance(config,dict) or set(config)!=set(BOUNDS):
         raise ValueError('reader.defaults.yaml 的预算字段不完整')
     for key,(lower,upper) in BOUNDS.items():
+        if key=='max_tasks_per_day' and config[key] is None:
+            continue
         if type(config[key]) is not int or not lower<=config[key]<=upper:
             raise ValueError('无效的宿主任务预算：'+key)
     return config

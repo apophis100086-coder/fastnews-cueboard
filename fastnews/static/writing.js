@@ -36,7 +36,7 @@ function updateWritingButtons(){
  $('writing-auto-research').disabled=busy||!web;
  $('writing-research-note').textContent=web?'补查范围：本期截点 '+displayTime(detail?.edition?.news_cutoff)+' 之前近7个自然日。新增资料列在框架中，由你确认后进入正文。历史期次仍按原截点补查。':'当前模型方案已关闭联网搜索，本轮只核对已有材料。可在来源设置中开启联网。';
  const budget=detail?.writing?.task_budget;
- $('writing-budget').textContent=budget?`项目今日模型任务：已用 ${budget.used} 次 / 上限 ${budget.limit} 次，剩余 ${budget.remaining} 次（含失败尝试）；${displayTime(budget.resets_at)} 恢复。这是本地限制，不代表账号剩余额度。`:'';
+ $('writing-budget').textContent=budget?(budget.limit===null?`今日已运行 ${budget.used} 次模型任务（含失败尝试）；未设置每日次数上限。账号可用额度由模型服务提供方管理。`:`项目今日模型任务：已用 ${budget.used} 次 / 上限 ${budget.limit} 次，剩余 ${budget.remaining} 次（含失败尝试）；${displayTime(budget.resets_at)} 恢复。这是本地限制，不代表账号剩余额度。`):'';
 }
 function supplementalHTML(outline){
  const research=outline?.supplemental_research;if(!research||research.enabled===undefined)return '';
