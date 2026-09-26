@@ -31,7 +31,8 @@ def normalized(text):
 
 def source_fingerprint(source):
     return fingerprint([source.get('url'),source.get('excerpt'),source.get('material_identity') or source.get('evidence_level'),
-        source.get('published_at'),source.get('data_period_start'),source.get('data_period_end')])
+        source.get('published_at'),source.get('data_period_start'),source.get('data_period_end')] +
+        ([source['time_field_audit']] if source.get('time_field_audit') else []))
 
 
 def enrich_source(source, raw, payload, trace):
@@ -46,8 +47,15 @@ def enrich_source(source, raw, payload, trace):
         raise ValueError('未知的来源材料身份')
     if raw.get('source_id') is not None and not isinstance(raw['source_id'],str):
         raise ValueError('来源ID必须是字符串或null')
+    raw=deepcopy(raw);time_issues={}
     for field in ('first_published_at','occurred_at','effective_at','data_period_start','data_period_end'):
-        time_bounds(raw.get(field))
+        try:
+            time_bounds(raw.get(field))
+        except MetadataError:
+            if field=='first_published_at':raise
+            time_issues[field]={'reported':raw[field],'reason':'date_precision_or_format_pending'}
+            raw[field]=None;source[field]=None
+    if time_issues:source['time_field_audit']=time_issues
     period_start, _ = time_bounds(raw.get('data_period_start'))
     _, period_end = time_bounds(raw.get('data_period_end'))
     if period_start is not None and period_end is not None and period_start > period_end:
@@ -63,7 +71,7 @@ def enrich_source(source, raw, payload, trace):
     matched = [e for e in trace.get('tool_excerpts',[]) if e.get('url')==source['url'] and
                source['excerpt'] and source['excerpt'] in e.get('text','') and
                e.get('kind')=='page_fragment' and e.get('tool_ref')]
-    missing = []
+    missing = ['发生日、实施日或统计期精度待核，原值保留在日期审计；未补造具体日期'] if time_issues else []
     if requested == 'unavailable':
         material = 'not_obtained'
         source['excerpt'] = ''
@@ -139,7 +147,8 @@ def enrich_item(item, raw, payload):
             # unrelated events under an invalid identity. Raw output is intact.
             date_issue={'reported':identity['event_date'],'reason':'event_date_not_parseable'}
             identity['event_date']=None
-    complete = identity and identity['event_date'] and all(identity[k].strip() for k in ('subject','action','object'))
+    imprecise_periods=[source_fingerprint(s) for s in item['sources'] if s.get('time_field_audit')]
+    complete = identity and identity['event_date'] and all(identity[k].strip() for k in ('subject','action','object')) and not imprecise_periods
     if complete:
         key = fingerprint(['host_event_identity', *[normalized(identity[k]) for k in ('subject','action','object')],
                            identity['phase'],identity['event_date'],
@@ -149,7 +158,8 @@ def enrich_item(item, raw, payload):
         key = fingerprint(['cited_title',normalized(item['title']),
             sorted({(s['url'],s.get('published_at') or '') for s in item['sources']})] +
             ([date_issue['reported'],sorted({(s.get('data_period_start') or '',s.get('data_period_end') or '')
-                for s in item['sources']})] if date_issue else []))
+                for s in item['sources']})] if date_issue else []) +
+            ([sorted(imprecise_periods)] if imprecise_periods else []))
     item.update(claims=clean, event_identity=identity, research_identity=key,
         missing_items=list(dict.fromkeys(g for s in item['sources'] for g in s.get('missing_items',[]))),
         material_fingerprints=[s.get('material_fingerprint') or source_fingerprint(s) for s in item['sources']])

@@ -20,7 +20,7 @@ from .host_evidence import (SOURCE_EXTRA, MATERIAL_LABELS, enrich_source, enrich
 from .source_access import source_constraints, url_policy
 
 VERSION = 'host-reading-v9-bounded-context'
-VALIDATION_VERSION = 'reading-validation-v2-event-date-isolation'
+VALIDATION_VERSION = 'reading-validation-v3-source-aliases'
 STR = {'type':'string'}
 def obj(properties):
     return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
@@ -364,6 +364,47 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
     return payload
 
 
+def normalize_source_aliases(raw, payload):
+    """Canonicalize unambiguous local labels; never infer a missing citation."""
+    ids=[s.get('id') if isinstance(s,dict) else None for s in raw['web_sources']]
+    if any(not isinstance(s,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,68}',s) for s in ids):
+        raise ValueError('模型引用编号无效或重复')
+    existing={s['id'] for s in payload['items']}
+    existing.update(r['id'] for r in ((payload.get('product') or {}).get('context') or {}).get('references',[]))
+    if len(ids)!=len(set(ids)) or existing.intersection(ids):
+        raise ValueError('模型引用编号无效或重复')
+    def references(value):
+        if isinstance(value,dict):
+            for key,part in value.items():
+                if key=='source_ref' and isinstance(part,str):yield part
+                elif key=='source_refs' and isinstance(part,list):
+                    yield from (ref for ref in part if isinstance(ref,str))
+                else:yield from references(part)
+        elif isinstance(value,list):
+            for part in value:yield from references(part)
+    reserved=existing|set(ids)|set(references(raw));aliases={}
+    for sid in ids:
+        if re.fullmatch(r'web_[A-Za-z0-9_-]{1,64}',sid):continue
+        target='web_'+sid
+        if len(sid)>64 or target in reserved:
+            raise ValueError('模型引用编号无法无歧义规范化')
+        aliases[sid]=target;reserved.add(target)
+    if not aliases:return raw,[]
+    def remap(value):
+        if isinstance(value,list):return [remap(part) for part in value]
+        if not isinstance(value,dict):return value
+        result={}
+        for key,part in value.items():
+            if key=='source_ref' and isinstance(part,str):result[key]=aliases.get(part,part)
+            elif key=='source_refs' and isinstance(part,list):
+                result[key]=[aliases.get(ref,ref) if isinstance(ref,str) else ref for ref in part]
+            else:result[key]=remap(part)
+        return result
+    normalized=remap(raw)
+    for source in normalized['web_sources']:source['id']=aliases.get(source['id'],source['id'])
+    return normalized,[dict(reported_id=k,normalized_id=v,reason='unique_local_source_alias') for k,v in aliases.items()]
+
+
 def validate_report(raw, payload, trace):
     valid_fields=[set(REPORT_SCHEMA['properties'])]
     if payload['kind']=='morning':
@@ -376,8 +417,13 @@ def validate_report(raw, payload, trace):
     limits=payload.get('task_limits') or reader_limits()
     if len(raw['web_sources'])>limits['max_web_sources'] or len(raw['items'])>limits['max_product_items' if payload['kind']=='product' else 'max_morning_items']:
         raise ValueError('模型输出超过候选或来源预算')
+    source_aliases=[]
+    if payload['allow_web_search'] and trace.get('web_actions')!=0:
+        raw,source_aliases=normalize_source_aliases(raw,payload)
     sources = {s['id']:dict(s,origin=s.get('origin','saved_metadata')) for s in payload['items']}
     warnings = list(payload['coverage_notes'])
+    if source_aliases:
+        warnings.append(f'{len(source_aliases)}个唯一来源编号已规范化；未修改来源正文、日期或证据状态')
     cutoff = parse_instant(payload['news_cutoff'])
     start = parse_instant(payload['window_start'])
     blocked = set()
@@ -548,6 +594,7 @@ def validate_report(raw, payload, trace):
         warnings.append(f'模型返回{len(raw["items"])}条，经引用、日期和材料用途检查，{len(rejected_items)}条未作为新闻展示；不等于没有搜到消息')
     result={'validation_version':VALIDATION_VERSION,'items':items,'coverage':coverage,'gaps':list(dict.fromkeys(warnings)),
             'validation_audit':{'proposed_items':len(raw['items']),'accepted_items':len(items),'rejected_items':rejected_items,
+                'source_aliases':source_aliases,
                 'merged_count':before_merge-len(items)-len(context_items),'context_items':context_items,
                 'pending_items':[{'title':i['title'],'reason':'; '.join(i.get('missing_items',[])) or 'evidence_pending'}
                     for i in items if not all(s.get('source_excerpt_verified') for s in i['sources'])]},

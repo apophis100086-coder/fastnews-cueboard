@@ -308,6 +308,57 @@ class ReportValidationTests(unittest.TestCase):
         self.payload['allow_web_search']=False
         self.assertEqual(self.validate()['items'],[])
 
+    def test_unique_source_alias_remaps_claims_without_mutating_original_or_evidence(self):
+        from copy import deepcopy
+        self.raw['web_sources'][0]['id']='s1'
+        item=self.raw['items'][0];item['source_refs']=['s1']
+        item.update(event_identity=None,claims=[dict(statement='合成事实',kind='reported',source_ref='s1',quote='合成依据')])
+        original=deepcopy(self.raw);result=self.validate()
+        self.assertEqual(self.raw,original)
+        self.assertEqual(result['items'][0]['sources'][0]['id'],'web_s1')
+        self.assertEqual(result['items'][0]['claims'][0]['source_ref'],'web_s1')
+        self.assertFalse(result['items'][0]['fact_verified'])
+        self.assertEqual(result['validation_audit']['source_aliases'][0]['reported_id'],'s1')
+
+    def test_alias_remapping_preserves_morning_timeline_and_domain_references(self):
+        self.payload.update(kind='morning',day='2026-09-14');self.raw['web_sources'][0]['id']='s1'
+        self.raw['items'][0]['source_refs']=['s1']
+        self.raw.update(timeline=[dict(theme='合成科技进展',development='new',summary='合成变化',events=[
+            dict(date='2026-09-14',event='合成发布',source_refs=['s1'])])],
+            domain_coverage=[dict(domain='technology',status='found',source_refs=['s1'],note='合成科技发布')])
+        result=self.validate()
+        self.assertEqual(result['timeline'][0]['events'][0]['source_refs'],['web_s1'])
+        row=next(r for r in result['domain_coverage'] if r['domain']=='technology')
+        self.assertEqual(row['source_refs'],['web_s1'])
+
+    def test_duplicate_conflicting_and_undefined_source_aliases_are_not_repaired(self):
+        from copy import deepcopy
+        self.raw['web_sources'][0]['id']='s1';self.raw['items'][0]['source_refs']=['s1']
+        original=deepcopy(self.raw)
+        self.raw['web_sources'].append(deepcopy(self.raw['web_sources'][0]))
+        with self.assertRaises(ValueError):self.validate()
+        self.raw=deepcopy(original);self.payload['items']=[{'id':'s1'}]
+        with self.assertRaises(ValueError):self.validate()
+        self.payload['items']=[];self.raw['items'][0]['source_refs']=['web_s1']
+        with self.assertRaises(ValueError):self.validate()
+        self.raw=deepcopy(original);self.raw['web_sources'][0]['published_at']='2026-09-15'
+        self.assertEqual(self.validate()['items'],[])
+
+    def test_coarse_nonpublication_dates_stay_audited_and_do_not_merge_periods(self):
+        from copy import deepcopy
+        from fastnews.host_evidence import SOURCE_EXTRA
+        source=self.raw['web_sources'][0]
+        source.update({k:None for k in SOURCE_EXTRA});source['material_kind']='page_fragment'
+        source.update(effective_at='2026-11',data_period_start='2026-09',data_period_end='2026-09')
+        original=deepcopy(self.raw);result=self.validate()['items'][0];normalized=result['sources'][0]
+        self.assertEqual(self.raw,original)
+        self.assertIsNone(normalized['effective_at'])
+        self.assertEqual(normalized['time_field_audit']['effective_at']['reported'],'2026-11')
+        source.update(data_period_start='2026-08',data_period_end='2026-08')
+        self.assertNotEqual(result['research_identity'],self.validate()['items'][0]['research_identity'])
+        source['first_published_at']='2026-09'
+        with self.assertRaises(ValueError):self.validate()
+
     def test_search_hint_is_distinct_from_opened_link_and_both_remain_unverified(self):
         first=self.validate()['items'][0]
         self.assertEqual(first['sources'][0]['evidence_level'],'host_search_hint')
