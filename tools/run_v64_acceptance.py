@@ -127,8 +127,23 @@ def select(conn,cfg,args):
     return dict(status='test_selected',edition_id=eid)
 
 
+def writing_key(args):
+    revision=getattr(args,'revision',1)
+    if type(revision) is not int or not 1<=revision<=99:raise ValueError('Revision must be 1..99')
+    return args.code+'-'+args.stage+('' if revision==1 else '-r'+str(revision))
+
+
+def saved_outline(path,code,edition_id):
+    path=Path(path)
+    if path.resolve().parent!=FOLDER.resolve():raise ValueError('Use an outline in the fixed acceptance folder')
+    result=read(path)
+    if result.get('stage')!='outline' or result.get('product_code')!=code or result.get('edition_id')!=edition_id:
+        raise ValueError('Outline must belong to this product and edition')
+    return result
+
+
 def write(conn,cfg,args):
-    out=FOLDER/(args.code+'-'+args.stage+'.json')
+    out=FOLDER/(writing_key(args)+'.json')
     if out.exists() and not getattr(args,'retry_reason',None):return dict(status='already_recorded',path=str(out))
     if w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
         return dict(status='budget_wait',reason='shared_project_daily_limit',used=w.task_attempts(conn))
@@ -136,18 +151,30 @@ def write(conn,cfg,args):
     eid=read(FOLDER/'editions.json')[args.code];decision=ed.latest_decision(conn,eid)
     if not decision:raise ValueError('Explicit test selection is required')
     data=dict(edition_id=eid,decision_revision=decision['decision_revision'],reader_profile='default',request_id=uuid.uuid4().hex)
+    parent_path=getattr(args,'parent_outline',None);feedback_path=getattr(args,'feedback_file',None)
+    if parent_path or feedback_path:
+        if args.stage!='outline' or not parent_path or not feedback_path or getattr(args,'revision',1)==1:
+            raise ValueError('Outline revision requires a parent, feedback and a new revision number')
+        feedback_path=Path(feedback_path)
+        if feedback_path.resolve().parent!=FOLDER.resolve() or feedback_path.suffix not in {'.txt','.md'}:
+            raise ValueError('Use explicit review notes in the fixed acceptance folder')
+        feedback=feedback_path.read_text(encoding='utf-8')
+        if not feedback.strip():raise ValueError('Review notes cannot be empty')
+        parent=saved_outline(parent_path,args.code,eid)
+        data.update(parent_version_id=parent['version_id'],feedback=feedback)
+    if getattr(args,'outline_file',None) and args.stage!='draft':raise ValueError('outline-file is only for explicit draft confirmation')
     if args.stage=='draft':
         if not args.confirm_test_outline:raise ValueError('Explicit --confirm-test-outline required; not editorial approval')
-        outline=read(FOLDER/(args.code+'-outline.json'))
+        outline=saved_outline(getattr(args,'outline_file',None) or FOLDER/(args.code+'-outline.json'),args.code,eid)
         confirmed=w.confirm_outline(conn,dict(data,outline_version_id=outline['version_id'],text=outline['content']['text']))
-        save(FOLDER/(args.code+'-test-confirmation.json'),dict(purpose='isolated_test_not_editorial_approval',
+        save(FOLDER/(args.code+'-test-confirmation-'+confirmed['version_id']+'.json'),dict(purpose='isolated_test_not_editorial_approval',
             outline_id=outline['version_id'],confirmed_version_id=confirmed['version_id']))
         data.update(request_id=uuid.uuid4().hex,confirmed_version_id=confirmed['version_id'])
     control=TaskControl(480);run=w.accept_run(conn,cfg,args.stage,data,control)
     result=w.execute_run(conn,run['run_id'],control,progress=progress)
     save(out,result)
     # Preserve every raw draft, including rejected or incomplete ones.
-    (FOLDER/(args.code+'-'+args.stage+'.md')).write_text(result['content']['text'],encoding='utf-8')
+    out.with_suffix('.md').write_text(result['content']['text'],encoding='utf-8')
     return dict(status=result['checks']['status'],path=str(out),checks=result['checks'])
 
 
@@ -184,6 +211,10 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('action',choices=['prepare','status','research','select','write','compare'])
     p.add_argument('--code',choices=CODES);p.add_argument('--kind',choices=['morning','product'],default='product')
     p.add_argument('--stage',choices=['outline','draft'],default='outline');p.add_argument('--selection');p.add_argument('--holdout')
+    p.add_argument('--revision',type=int,default=1,help='Save a separate original result, e.g. outline-r2; never overwrite r1')
+    p.add_argument('--parent-outline',help='Existing outline for an explicit feedback revision')
+    p.add_argument('--feedback-file',help='Local .txt/.md review notes; requires parent-outline and revision > 1')
+    p.add_argument('--outline-file',help='Exact saved outline to explicitly confirm for a draft')
     p.add_argument('--retry-reason',help='Explicit diagnosed retry of a failed case; archives the untouched original and shares quota')
     p.add_argument('--codex-model',help='Explicit model experiment through the existing ChatGPT subscription; recorded in task input')
     p.add_argument('--codex-reasoning',choices=['low','medium','high','xhigh','max','ultra'])
@@ -217,7 +248,7 @@ def main():
                     if row:result['record']=rr.report_record(row)
                     result['output']=(result.get('record') or {}).get('output') or {}
                 elif args.action=='write':
-                    key=args.code+'-'+args.stage
+                    key=writing_key(args)
                     row=conn.execute('SELECT input_json,run_id FROM fn_writing_runs WHERE created_at>=? ORDER BY rowid DESC LIMIT 1',(started,)).fetchone()
                     if row:
                         saved=json.loads(row['input_json'])

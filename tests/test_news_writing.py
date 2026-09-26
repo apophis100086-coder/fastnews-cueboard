@@ -56,6 +56,39 @@ class NewsWritingTests(unittest.TestCase):
         self.assertEqual(json.loads(row['input_json'])['raw_failed_response'],bad)
         self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],0)
 
+    def test_publisher_label_survives_snapshot_and_legacy_confirmation_without_rewriting_parent(self):
+        outline=self.generate();parent=w.version(self.conn,outline['version_id'])
+        source=next(s for s in parent['snapshot']['sources'] if s['material_id']==self.mid)
+        self.assertEqual(source['name'],'合成测试出处')
+        source['name']='example.org'
+        legacy=w._save_version(self.conn,parent['snapshot'],'outline',parent['content'],parent['checks'])
+        self.conn.commit()
+        confirmed=self.confirm(legacy)
+        changed=next(s for s in confirmed['snapshot']['sources'] if s['material_id']==self.mid)
+        self.assertEqual(changed['name'],'合成测试出处')
+        self.assertEqual(changed['url'],source['url'])
+        self.assertEqual(changed['identity'],source['identity'])
+        self.assertEqual(w.version(self.conn,legacy['version_id'])['snapshot']['sources'][0]['name'],'example.org')
+        self.assertIn('转引Wind',w.citation_publisher({'declared_source':'Wind','source_type':'media'},source['url'],'example.org'))
+
+    def test_program_renders_outline_source_titles_separately_from_proposed_body(self):
+        snapshot=w._snapshot(self.conn,self.cfg,self.eid,1)
+        snapshot['sources'][0]['title']='北方华创合成原文标题'
+        raw=self.outline(snapshot);content,checks=w.validate_outline(raw,snapshot)
+        self.assertFalse(any(e['code']=='a_share_company' for e in checks['errors']))
+        self.assertIn('资料／数据来源：合成测试出处《北方华创合成原文标题》',content['text'])
+        saved=w._save_version(self.conn,snapshot,'outline',content,checks);self.conn.commit()
+        self.assertEqual(self.confirm(saved)['stage'],'confirmed_outline')
+        with self.assertRaises(ValueError):self.confirm(saved,content['text']+'\n资料／数据来源：北方华创经营增长')
+        raw['paragraphs'][0]['points'].append('北方华创经营增长')
+        self.assertTrue(any(e['code']=='a_share_company' for e in w.validate_outline(raw,snapshot)[1]['errors']))
+
+    def test_literal_english_duration_numbers_do_not_reject_chinese_digits(self):
+        from fastnews.writing_checks import numeric_tokens
+        self.assertEqual(numeric_tokens('within four months; after six months or more'),{'4','6'})
+        self.assertEqual(numeric_tokens('twenty four months; one hundred and six months'),set())
+        self.assertEqual(numeric_tokens('four different models'),set())
+
     def test_interrupted_host_keeps_search_trace_without_a_confirmable_outline(self):
         control=TaskControl()
         run=w.accept_run(self.conn,self.cfg,'outline',self.data(),control)

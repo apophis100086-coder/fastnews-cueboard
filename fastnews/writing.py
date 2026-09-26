@@ -80,6 +80,15 @@ def version(conn, identifier):
     return item
 
 
+def citation_publisher(evidence,url,fallback):
+    """A source label is not independent verification of its data provider."""
+    label=evidence.get('declared_source') or fallback
+    if evidence.get('source_type')=='media' and str(label).strip().casefold()=='wind':
+        from urllib.parse import urlsplit
+        return (urlsplit(url or '').hostname or '媒体')+'（转引Wind）'
+    return label
+
+
 def _snapshot(conn, config, edition_id, revision):
     decision=_decision(conn,edition_id,revision)
     edition=ed.get_edition(conn,edition_id)
@@ -107,7 +116,9 @@ def _snapshot(conn, config, edition_id, revision):
                     evidence=json.loads(doc['data_json'])
                     if evidence['source_type'] not in {'search_snippet','user_text'}:
                         text=doc['content']; observed=True
-                        source=dict(source,published_at=evidence['first_published_at'])
+                        label=citation_publisher(evidence,source.get('url'),source.get('source_name'))
+                        source=dict(source,published_at=evidence['first_published_at'],source_name=label,
+                            publisher_label_basis='selected_document_declaration' if evidence.get('declared_source') else 'source_metadata')
                         break
             sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,
                 title=source.get('title') or clue['title'],
@@ -117,6 +128,8 @@ def _snapshot(conn, config, edition_id, revision):
                 text_observed=observed,date_observed=observed and clue.get('origin')=='user_material',
                 identity=source.get('material_identity') or source.get('evidence_level') or clue.get('origin'),
                 source_id=source.get('source_id'),document_id=source.get('document_id'),error=None))
+            if source.get('publisher_label_basis'):
+                sources[-1]['publisher_label_basis']=source['publisher_label_basis']
     for note in decision.get('manual_notes',[]):
         if not note['selected']:
             continue
@@ -440,8 +453,24 @@ def validate_outline(raw,snapshot):
     if len(raw['supplement_queries'])>3 or any(len(q)>500 for q in raw['supplement_queries']):
         raise ValueError('补搜问题最多3条、每条500字')
     content=deepcopy(raw); content['claims']=list(claims.values())
+    content['paragraph_sources']={}
+    for p in raw['paragraphs']:
+        unique={}
+        for cid in p['claim_ids']:
+            source=sources.get(claims[cid]['source_id'])
+            if source:
+                key=(source.get('url'),source.get('title'),claims[cid]['published_at'])
+                unique[key]=dict(name=source['name'],title=source.get('title') or source['name'],
+                    url=source.get('url'),published_at=claims[cid]['published_at'])
+        content['paragraph_sources'][p['id']]=list(unique.values())
     content['text']=outline_text(content)
     return content,dict(errors=errors,status='needs_materials' if errors else 'ready_to_confirm')
+
+
+def outline_source_line(refs):
+    def single(value):return ' '.join(str(value or '').split())
+    return '资料／数据来源：'+'；'.join(single(s['name'])+'《'+single(s['title'])+'》，'+single(s['published_at'])+
+        ('，'+single(s['url']) if s.get('url') else '，用户提供的原始资料') for s in refs)
 
 
 def outline_text(content):
@@ -449,6 +478,9 @@ def outline_text(content):
     for i,p in enumerate(content['paragraphs'],1):
         parts.append(f"第{i}段｜{p['purpose']}\n"+'\n'.join('- '+t for t in p['points'])+
                      '\n分析：'+p['analysis']+'\n产品承接：'+p['product_connection'])
+        refs=content.get('paragraph_sources',{}).get(p['id'],[])
+        if refs:
+            parts[-1]+='\n'+outline_source_line(refs)
     return '\n\n'.join(parts)
 
 
@@ -475,6 +507,21 @@ def confirm_outline(conn,data):
         if parent['decision_revision']!=data['decision_revision']:
             raise ValueError('框架对应旧选材，请先按当前材料更新框架')
         snapshot=deepcopy(parent['snapshot'])
+        # Carry human-supplied publisher labels into a new confirmation version.
+        # Never change the original outline, URL, evidence identity or claim text.
+        from urllib.parse import urlsplit
+        for source in snapshot['sources']:
+            host=urlsplit(source.get('url') or '').hostname
+            if not source.get('document_id') or not host or source['name'] not in {host,host.removeprefix('www.')}:
+                continue
+            rows=conn.execute('''SELECT e.data_json FROM fn_edition_evidence ee
+                JOIN fn_evidence e USING(evidence_id) WHERE ee.edition_id=? AND e.document_id=?''',
+                (data['edition_id'],source['document_id'])).fetchall()
+            evidence=[json.loads(row['data_json']) for row in rows]
+            labels={citation_publisher(e,source.get('url'),source['name']) for e in evidence
+                if e.get('declared_source') and e.get('source_type') not in {'user_text','search_snippet'}}
+            if len(labels)==1:
+                source.update(name=labels.pop(),publisher_label_basis='selected_document_declaration')
         snapshot['rules']=policy()
         snapshot['skill_version']=fingerprint([instructions('outline'),instructions('draft'),snapshot['rules']])
         proposal={key:deepcopy(parent['content'].get(key,[])) for key in OUTLINE['properties']}
@@ -483,7 +530,15 @@ def confirm_outline(conn,data):
         if 'blocking_gaps' not in parent['content']:
             proposal['blocking_gaps']=parent['content'].get('gaps',[])
         reviewed,checks=validate_outline(proposal,snapshot)
-        checks['errors']+=check_text(body,location='confirmed_outline',entities=parent['content']['entities'],
+        # Only exact, program-rendered references from the saved parent are exempt.
+        # Edited references and user-authored "source" lines still receive checks.
+        from collections import Counter
+        source_lines=Counter(outline_source_line(refs) for refs in parent['content'].get('paragraph_sources',{}).values() if refs)
+        body_lines=[]
+        for line in body.splitlines():
+            if source_lines[line]>0:source_lines[line]-=1
+            else:body_lines.append(line)
+        checks['errors']+=check_text('\n'.join(body_lines),location='confirmed_outline',entities=parent['content']['entities'],
             product_codes=parent['snapshot']['product_codes'],cutoff=parent['snapshot']['news_cutoff'],editorial=True)
         if checks['errors']:
             raise ValueError('框架仍有关键依据或规则问题，请先补齐材料并更新框架')

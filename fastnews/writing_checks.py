@@ -29,7 +29,15 @@ def issue(code, message, location='', excerpt=''):
 def numeric_tokens(text):
     # Compare magnitudes and explicit dates without allowing invented arithmetic.
     text=unicodedata.normalize('NFKC',text).replace(',', '')
-    return {str(Decimal(n).normalize()) for n in re.findall(r'(?<![A-Za-z])\d+(?:\.\d+)?', text)}
+    result={str(Decimal(n).normalize()) for n in re.findall(r'(?<![A-Za-z])\d+(?:\.\d+)?', text)}
+    # Literal English durations can be written with Arabic digits in Chinese.
+    # Do not reinterpret compound, fractional or scaled number phrases.
+    words=dict(zip('one two three four five six seven eight nine ten eleven twelve'.split(),range(1,13)))
+    for match in re.finditer(r'(?<![\w-])('+'|'.join(words)+r')\s+(?:months?|weeks?|days?|years?)\b',text,re.I):
+        prefix=text[:match.start()].rstrip().lower()
+        if re.search(r'\b(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|and|point|minus)\s*$',prefix):continue
+        result.add(str(words[match[1].lower()]))
+    return result
 
 
 def number_units(text):
