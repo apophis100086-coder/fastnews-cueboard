@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -164,7 +165,12 @@ def parse_codex_output(output, final, *, incomplete=False):
         'content_observability':'CLI action records do not establish returned page text or successful retrieval'})
 
 
-def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None, control=None):
+def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None, control=None,
+             model=None, reasoning_effort=None):
+    if model is not None and (host!='codex' or not isinstance(model,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,79}',model)):
+        raise ValueError('显式模型设置仅支持有效的Codex模型标识')
+    if reasoning_effort is not None and (host!='codex' or reasoning_effort not in {'none','minimal','low','medium','high','xhigh','max','ultra'}):
+        raise ValueError('显式推理强度无效')
     limits=reader_limits()
     timeout=limits['timeout_seconds'] if timeout is None else min(timeout,limits['timeout_seconds'])
     if control:
@@ -211,6 +217,8 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
                 '--sandbox','read-only','--disable','shell_tool','--disable','multi_agent',
                 '--disable','plugins','-c','web_search="live"' if web_search else 'web_search="disabled"',
                 '--json','-C',str(root),'--output-schema',str(schema_path),'-o',str(output_path),'-']
+            if model is not None:args[2:2]=['--model',model]
+            if reasoning_effort is not None:args[2:2]=['-c','model_reasoning_effort='+json.dumps(reasoning_effort)]
         else:
             args = command+['--print','--output-format','json','--permission-mode','dontAsk',
                 '--tools','WebSearch,WebFetch' if web_search else '',
@@ -298,6 +306,7 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             except (ValueError,AttributeError):
                 raise HostUnavailable('WorkBuddy 尚未返回可用报告，请先确认命令行登录与订阅授权') from None
         parsed.usage = {'host':host,'billing':'host_subscription','api_key_used':False,
+                        'model_requested':model,'reasoning_effort_requested':reasoning_effort,
                         'input_tokens':parsed.usage.get('input_tokens'),
                         'output_tokens':parsed.usage.get('output_tokens'),
                         'cached_input_tokens':parsed.usage.get('cached_input_tokens'),

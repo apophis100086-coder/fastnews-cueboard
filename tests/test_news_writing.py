@@ -116,6 +116,20 @@ class NewsWritingTests(unittest.TestCase):
         self.assertIn('语气简洁',self.last_input['confirmed_outline'])
         self.assertEqual(len(w.workflow(self.conn,self.eid)['versions']),3)
 
+    def test_explicit_host_experiment_is_recorded_without_changing_selection(self):
+        cfg=dict(self.cfg,_host_runtime={'model':'gpt-6-sol','reasoning_effort':'low'})
+        original=ed.latest_decision(self.conn,self.eid)
+        control=TaskControl();run=w.accept_run(self.conn,cfg,'outline',self.data(),control)
+        calls=[]
+        def runner(*args,**kwargs):
+            calls.append(kwargs)
+            return self.runner(*args,**kwargs)
+        w.execute_run(self.conn,run['run_id'],control,runner=runner)
+        saved=json.loads(self.conn.execute('SELECT input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()[0])
+        self.assertEqual(saved['host_runtime'],cfg['_host_runtime'])
+        self.assertEqual(calls[0]['model'],'gpt-6-sol')
+        self.assertEqual(ed.latest_decision(self.conn,self.eid),original)
+
     def test_program_recheck_preserves_old_version_and_does_not_call_model(self):
         outline=self.generate();confirmed=self.confirm(outline);draft=self.generate('draft',confirmed_version_id=confirmed['version_id'])
         old=w.version(self.conn,draft['version_id']);attempts=w.task_attempts(self.conn)

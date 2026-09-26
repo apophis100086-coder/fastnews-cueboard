@@ -90,6 +90,32 @@ class HostWorkspaceTests(unittest.TestCase):
         group.close.assert_called_once()
         process.kill.assert_called_once()
 
+    def test_explicit_model_uses_same_subscription_command_and_records_request(self):
+        process=Mock(returncode=0)
+        process.communicate.return_value=(json.dumps({'type':'turn.completed','usage':{}}),'')
+        process.poll.return_value=0
+        commands=[]
+        def start(args,**kwargs):
+            commands.append(args)
+            Path(args[args.index('-o')+1]).write_text('{"items":[]}',encoding='utf-8')
+            return process
+        with patch.object(host_provider,'host_command',return_value=['fixture-host']), \
+             patch.object(host_provider.subprocess,'run',return_value=Mock(returncode=0,stdout='ChatGPT',stderr='')), \
+             patch.object(host_provider.subprocess,'Popen',side_effect=start), \
+             patch.object(host_provider,'ProcessGroup'):
+            result=host_provider.run_host('codex','public fixture',{},model='gpt-6-sol',reasoning_effort='low')
+        self.assertEqual(commands[0][commands[0].index('--model')+1],'gpt-6-sol')
+        self.assertIn('model_reasoning_effort="low"',commands[0])
+        self.assertEqual(result.usage['model_requested'],'gpt-6-sol')
+        self.assertFalse(result.usage['api_key_used'])
+        self.assertEqual(result.usage['host_tasks'],1)
+
+    def test_invalid_override_does_not_launch_another_host(self):
+        with patch.object(host_provider.subprocess,'Popen') as launch:
+            with self.assertRaises(ValueError):host_provider.run_host('workbuddy','public fixture',{},model='gpt-6-sol')
+            with self.assertRaises(ValueError):host_provider.run_host('codex','public fixture',{},model='bad\nmodel')
+        launch.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

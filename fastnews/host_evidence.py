@@ -5,7 +5,7 @@ import json
 import re
 
 from .budget import utc_now
-from .metadata import normalize_url, time_bounds
+from .metadata import normalize_url, time_bounds, MetadataError
 from .source_access import url_policy
 
 KINDS = {'search_snippet','page_fragment','public_restatement','unavailable'}
@@ -124,13 +124,21 @@ def enrich_item(item, raw, payload):
         record['claim_fingerprint'] = fingerprint([normalized(record['statement']),record['kind'],
             source.get('data_period_start'),source.get('data_period_end')])
         clean.append(record)
-    identity = raw.get('event_identity')
+    identity = deepcopy(raw.get('event_identity'))
+    date_issue=None
     if identity is not None:
         if (not isinstance(identity,dict) or set(identity)!=IDENTITY_FIELDS or
             any(not isinstance(identity[k],str) or len(identity[k])>150 for k in ('subject','action','object','phase')) or
             identity['phase'] not in PHASES):
             raise ValueError('事件身份字段无效')
-        time_bounds(identity['event_date'])
+        try:
+            time_bounds(identity['event_date'])
+        except MetadataError:
+            # An imprecise event occurrence is not a publication timestamp.
+            # Keep the cited candidate without inventing a day or collapsing
+            # unrelated events under an invalid identity. Raw output is intact.
+            date_issue={'reported':identity['event_date'],'reason':'event_date_not_parseable'}
+            identity['event_date']=None
     complete = identity and identity['event_date'] and all(identity[k].strip() for k in ('subject','action','object'))
     if complete:
         key = fingerprint(['host_event_identity', *[normalized(identity[k]) for k in ('subject','action','object')],
@@ -139,10 +147,15 @@ def enrich_item(item, raw, payload):
                                    for s in item['sources'] if s.get('data_period_start') or s.get('data_period_end')})])
     else:
         key = fingerprint(['cited_title',normalized(item['title']),
-            sorted({(s['url'],s.get('published_at') or '') for s in item['sources']})])
+            sorted({(s['url'],s.get('published_at') or '') for s in item['sources']})] +
+            ([date_issue['reported'],sorted({(s.get('data_period_start') or '',s.get('data_period_end') or '')
+                for s in item['sources']})] if date_issue else []))
     item.update(claims=clean, event_identity=identity, research_identity=key,
         missing_items=list(dict.fromkeys(g for s in item['sources'] for g in s.get('missing_items',[]))),
         material_fingerprints=[s.get('material_fingerprint') or source_fingerprint(s) for s in item['sources']])
+    if date_issue:
+        item['event_date_audit']=date_issue
+        item['missing_items'].append('事件发生日格式或精度待核，未当作明确日期；来源公开日期仍单独检查')
     return item
 
 

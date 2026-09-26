@@ -227,6 +227,8 @@ def accept_run(conn,config,stage,data,control,run_id=None):
         'supplement_latest':stage=='outline' and supplement and settings.get('web_search',True),
         'feedback':feedback,'parent':parent['content'] if parent else None,
         'parent_id':parent['version_id'] if parent else None,'instructions':instructions(stage)}
+    if config.get('_host_runtime'):
+        content['host_runtime']={k:v for k,v in config['_host_runtime'].items() if k in {'model','reasoning_effort'}}
     # Bound selected user content, not source retrieval or instruction overhead.
     if len(dumps(snapshot['materials'])+dumps(snapshot['preferences'])+feedback)>reader_limits()['max_input_characters']:
         raise ValueError('选材超出本次输入预算，请精简补充；未丢弃任何必写项')
@@ -672,7 +674,7 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
         response=runner(data['host'],data['instructions']+'\nINPUT_JSON:\n'+context,
             OUTLINE_RESEARCH if supplement else OUTLINE if stage=='outline' else DRAFT_V64 if 'v6.4' in snapshot['rules']['version'] else DRAFT,web_search=supplement,
             timeout=control.host_timeout(snapshot['rules']['host_seconds'],snapshot['rules']['finalize_seconds']+post_verify),
-            control=control,progress=progress)
+            control=control,progress=progress,**data.get('host_runtime',{}))
         control.check()
         payload=response.payload
         if supplement:

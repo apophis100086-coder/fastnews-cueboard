@@ -20,6 +20,7 @@ from .host_evidence import (SOURCE_EXTRA, MATERIAL_LABELS, enrich_source, enrich
 from .source_access import source_constraints, url_policy
 
 VERSION = 'host-reading-v9-bounded-context'
+VALIDATION_VERSION = 'reading-validation-v2-event-date-isolation'
 STR = {'type':'string'}
 def obj(properties):
     return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
@@ -271,7 +272,7 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
         free_slots=config['runtime']['second_round']['max_event_candidates']-len({s['event_id'] for s in material})
         material+=prior_morning_material(conn,profile_id,sources+context_sources,code,config,start,cutoff,free_slots)
     material = list({v['id']:v for v in material}.values())
-    payload = {'version':VERSION,'kind':kind,'day':day,'news_cutoff':cutoff,'window_start':start,
+    payload = {'version':VERSION,'validation_version':VALIDATION_VERSION,'kind':kind,'day':day,'news_cutoff':cutoff,'window_start':start,
                'edition_id':edition['edition_id'] if edition else None,
                'product':product,'selected_sources':sources,'items':[],
                'allow_web_search':bool(reader['settings'].get('web_search',True)),
@@ -279,6 +280,8 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
     payload['source_constraints'] = [{k:v for k,v in s.items() if v is not None}
         for s in source_constraints(config['reader_sources'])]
     payload['timing_policy'] = dict(morning_reading.TIMING)
+    if config.get('_host_runtime'):
+        payload['host_runtime']={k:v for k,v in config['_host_runtime'].items() if k in {'model','reasoning_effort'}}
     if kind=='morning':
         payload.update(lookback_days=lookback_days,search_plan={'max_queries':24,'queries':[]},
             prompt_version=hashlib.sha256(morning_reading.instructions().encode('utf-8')).hexdigest())
@@ -543,7 +546,7 @@ def validate_report(raw, payload, trace):
         warnings.append(f'本次返回 {len(items)} 条有引用材料；数量不足不凑数，当前用途按条目判断。')
     if rejected_items:
         warnings.append(f'模型返回{len(raw["items"])}条，经引用、日期和材料用途检查，{len(rejected_items)}条未作为新闻展示；不等于没有搜到消息')
-    result={'items':items,'coverage':coverage,'gaps':list(dict.fromkeys(warnings)),
+    result={'validation_version':VALIDATION_VERSION,'items':items,'coverage':coverage,'gaps':list(dict.fromkeys(warnings)),
             'validation_audit':{'proposed_items':len(raw['items']),'accepted_items':len(items),'rejected_items':rejected_items,
                 'merged_count':before_merge-len(items)-len(context_items),'context_items':context_items,
                 'pending_items':[{'title':i['title'],'reason':'; '.join(i.get('missing_items',[])) or 'evidence_pending'}
@@ -665,6 +668,7 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
     started = time.monotonic()
     try:
         options={'web_search':payload['allow_web_search'],'progress':progress}
+        options.update(payload.get('host_runtime',{}))
         if control:
             limits=payload['timing_policy']
             options.update(control=control,timeout=control.host_timeout(limits['host_seconds'],limits['finalize_seconds']))

@@ -185,12 +185,17 @@ def main():
     p.add_argument('--code',choices=CODES);p.add_argument('--kind',choices=['morning','product'],default='product')
     p.add_argument('--stage',choices=['outline','draft'],default='outline');p.add_argument('--selection');p.add_argument('--holdout')
     p.add_argument('--retry-reason',help='Explicit diagnosed retry of a failed case; archives the untouched original and shares quota')
+    p.add_argument('--codex-model',help='Explicit model experiment through the existing ChatGPT subscription; recorded in task input')
+    p.add_argument('--codex-reasoning',choices=['low','medium','high','xhigh','max','ultra'])
     p.add_argument('--confirm-test-outline',action='store_true');args=p.parse_args()
     if args.action=='prepare':prepare();print('prepared');return
     if args.action=='compare':progress(compare(args.holdout));return
     if not (FOLDER/'editions.json').exists():raise ValueError('Run prepare once; never reset the acceptance database')
     with closing(db.connect(FOLDER/'live.db',mode='live')) as conn:
         cfg=configured_view(conn,load_config());cfg['_reader_profile']=profile(conn,'default')
+        if args.codex_model or args.codex_reasoning:
+            if cfg['_reader_profile']['settings']['host']!='codex':raise ValueError('Codex experiment requires the existing Codex host')
+            cfg['_host_runtime']={k:v for k,v in {'model':args.codex_model,'reasoning_effort':args.codex_reasoning}.items() if v}
         if args.action=='status':
             result=dict(used=w.task_attempts(conn),limit=reader_limits()['max_tasks_per_day'],host=cfg['_reader_profile']['settings']['host'],
                 research={key:recorded_status(FOLDER/(key+'.json')) for key in ['morning']+[c+'-research' for c in CODES]},

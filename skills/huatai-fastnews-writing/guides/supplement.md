@@ -4,6 +4,8 @@
 
 一次任务内完成补搜与框架，最多8次公开搜索、6份新增原文，已有可靠来源直接复用。根据现场发现扩展主体和关键词，不只重复所选标题。优先官方原文及可靠报道，遵守 supplemental_research.source_constraints；受限路径停止，技术失败可尝试一次合法替代入口。不绕登录、验证码、付费墙、robots或授权限制。
 
+8次按查询字符串逐条累计，不按工具调用批次：一批4条查询即占4次，换词和重复搜索也计入。达到上限停止新搜索，用已取得材料完成框架；不必用满，留出90秒整理输出。
+
 公开查询只使用产品身份、public_search_anchors 和已公开事件概念；不得把 preferences、feedback、mainline_note、私人原稿或用户上传资料中的非公开原句发送到搜索引擎。仅有私人线索时，从公开产品与行业范围开始，不外发私人内容。
 
 supplemental_sources 列出新增材料：material_id 使用 news_ 开头，source_id 使用 news_src_ 开头；不能重复或覆盖输入中的编号和网址。每项给出真实发布机构 publisher、原文标题 title、url、首次公开日期 published_at、原文摘录 excerpt、与人工主线的 relation。只取得搜索摘要时如实标明，不能声称已读正文。没有可靠新增资料时返回空数组并在 research_summary 说明检查范围、没有发现或未能核实的区别，不凑数，不声称已经穷尽所有消息。

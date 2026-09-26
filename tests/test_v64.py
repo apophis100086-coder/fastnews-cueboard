@@ -89,6 +89,34 @@ class V64Tests(unittest.TestCase):
         self.assertEqual(invalid['timeline'],[])
         self.assertTrue(invalid['timeline_audit'])
 
+    def test_explicit_runtime_experiment_has_separate_cache_identity(self):
+        self.article('2026-09-14')
+        calls=[]
+        def run(host,prompt,schema,**kwargs):
+            calls.append(kwargs)
+            return HostResult(dict(items=[],web_sources=[],coverage=[],gaps=[],timeline=[],domain_coverage=[]),{},dict(web_actions=0))
+        first=generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=run)
+        cfg=self.view();cfg['_host_runtime']={'model':'gpt-6-sol','reasoning_effort':'low'}
+        second=generate_report(self.conn,cfg,'default','morning','2026-09-14',runner=run)
+        self.assertNotEqual(first['input_hash'],second['input_hash'])
+        self.assertEqual(calls[-1]['model'],'gpt-6-sol')
+        self.assertEqual(calls[-1]['reasoning_effort'],'low')
+        self.assertEqual(len(calls),2)
+
+    def test_imprecise_event_date_preserves_candidate_and_original_without_inventing_day(self):
+        from fastnews.host_evidence import enrich_item
+        raw={'event_identity':dict(subject='合成主体',action='披露',object='合成统计',phase='result',event_date='2026-08')}
+        before=deepcopy(raw)
+        item={'title':'合成统计公告','sources':[{'id':'s1','url':'https://example.org/public','published_at':'2026-09-14'}]}
+        result=enrich_item(item,raw,{})
+        self.assertIsNone(result['event_identity']['event_date'])
+        self.assertEqual(result['event_date_audit']['reported'],'2026-08')
+        self.assertTrue(result['missing_items'])
+        self.assertEqual(raw,before)
+        other=deepcopy(raw);other['event_identity']['event_date']='2026-07'
+        earlier=enrich_item(deepcopy(item),other,{})
+        self.assertNotEqual(earlier['research_identity'],result['research_identity'])
+
     def test_input_truncation_is_audited_and_does_not_drop_short_later_items(self):
         for n in range(60):
             self.article('2026-09-14',title='合成公告'+str(n),lead='合成长摘要。'*350,number=n)
