@@ -10,6 +10,7 @@ import yaml
 from .metadata import time_bounds, parse_instant
 
 FUND_MANAGER_NAMES={'华泰柏瑞基金管理有限公司','华泰柏瑞基金'}
+QUANTITY = re.compile(r'(\d+(?:\.\d+)?)\s*((?:万亿|亿|万|千|百)?(?:人民币元|亿美元|亿港元|美元|港元|亿元|万元|元|亿块|万块|块|亿份|万份|份)|%|个百分点)')
 
 
 def known_entities():
@@ -33,8 +34,34 @@ def numeric_tokens(text):
 
 def number_units(text):
     text=unicodedata.normalize('NFKC',text).replace(',','')
-    return {(str(Decimal(number).normalize()),unit.replace('人民币','')) for number,unit in re.findall(
-        r'(\d+(?:\.\d+)?)\s*((?:万亿|亿|万|千|百)?(?:人民币元|亿美元|亿港元|美元|港元|亿元|万元|元|亿块|万块|块|亿份|万份|份)|%|个百分点)',text)}
+    return {(str(Decimal(number).normalize()),unit.replace('人民币','')) for number,unit in QUANTITY.findall(text)}
+
+
+def quantity_scopes(text):
+    """Preserve explicit bounds/approximation; this does not infer statistical subjects."""
+    text=re.sub(r'\s+','',unicodedata.normalize('NFKC',text).replace(',',''))
+    result={}
+    prefixes=[('ge',r'不低于|不少于|至少|大于等于|>=|≥'),
+              ('le',r'不高于|不多于|不超过|至多|最多|小于等于|<=|≤'),
+              ('gt',r'超过|高于|大于|多于|超|>'),('lt',r'低于|小于|少于|不足|不到|<'),
+              ('approx',r'大约|约为|约|接近|近')]
+    for match in QUANTITY.finditer(text):
+        scope='exact'
+        before,after=text[:match.start()],text[match.end():]
+        for label,pattern in prefixes:
+            if re.search('(?:'+pattern+')$',before):
+                scope=label;break
+        for label,pattern in [('ge',r'^(?:及)?以上'),('le',r'^(?:及)?以下'),('approx',r'^(?:左右|上下)')]:
+            if re.search(pattern,after):
+                scope=label;break
+        key=(str(Decimal(match[1]).normalize()),match[2].replace('人民币',''))
+        result.setdefault(key,set()).add(scope)
+    return result
+
+
+def changed_quantity_scopes(text, evidence):
+    expected=quantity_scopes(evidence)
+    return any(key in expected and not scopes<=expected[key] for key,scopes in quantity_scopes(text).items())
 
 
 def date_present(day, text):
@@ -142,4 +169,6 @@ def qualify_claim(claim, sources, cutoff, product_code=None):
         errors.append(issue('unsupported_period','统计期未能对应原文日期',claim['id']))
     if number_units(claim['statement'])-number_units(quote):
         errors.append(issue('unsupported_unit','陈述的数字、单位或币种组合与原文不同',claim['id']))
+    if changed_quantity_scopes(claim['statement'],quote):
+        errors.append(issue('unsupported_quantity_scope','陈述改变了原文数值的约数或上下限口径',claim['id']))
     return errors

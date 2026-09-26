@@ -159,6 +159,53 @@ class NewsWritingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'版本|更新'):
             self.generate('draft',confirmed_version_id=confirmed['version_id'])
 
+    def test_new_selection_blocks_old_draft_export_and_recheck_but_keeps_history(self):
+        outline=self.generate();confirmed=self.confirm(outline)
+        draft=self.generate('draft',confirmed_version_id=confirmed['version_id'])
+        before=w.version(self.conn,draft['version_id'])
+        self.save(1,mainline_note='人工改为新的写作主线')
+        with self.assertRaisesRegex(ValueError,'选材版本'):
+            w.export_draft(self.conn,draft['version_id'])
+        with self.assertRaisesRegex(ValueError,'选材版本'):
+            w.recheck_draft(self.conn,dict(version_id=draft['version_id'],request_id=uuid.uuid4().hex))
+        self.assertEqual(w.version(self.conn,draft['version_id']),before)
+        self.assertTrue(w.workflow(self.conn,self.eid)['versions'][-1]['stale_selection'])
+
+    def test_title_cannot_change_an_observed_percentage_to_money(self):
+        outline=self.generate();confirmed=self.confirm(outline)
+        raw=self.runner('fixture','INPUT_JSON:\n'+w.dumps(dict(stage='draft',confirmed_outline=confirmed['content']['confirmed_text'])),{},web_search=False).payload
+        raw['title']='设备订单20亿元'
+        self.assertIn('title_unit',{e['code'] for e in w.validate_draft(raw,confirmed['snapshot'],confirmed['content'])[1]['errors']})
+
+    def test_legacy_passed_draft_cannot_bypass_new_export_checks(self):
+        outline=self.generate();confirmed=self.confirm(outline)
+        draft=self.generate('draft',confirmed_version_id=confirmed['version_id'])
+        saved=w.version(self.conn,draft['version_id'])
+        # Simulate a version accepted by the previous title-number-only gate.
+        content=deepcopy(saved['content']);content['title']='设备订单20亿元'
+        with self.conn:
+            old=w._save_version(self.conn,saved['snapshot'],'draft',content,dict(errors=[],status='ready'),parent_id=confirmed['version_id'])
+        with self.assertRaisesRegex(ValueError,'当前程序检查'):
+            w.export_draft(self.conn,old['version_id'])
+        self.assertEqual(w.version(self.conn,old['version_id']),old)
+
+    def test_quantity_bounds_checked_at_claim_body_and_title(self):
+        snap=w._snapshot(self.conn,self.cfg,self.eid,1)
+        self.statement='合成产业资料：设备稼动率90%以上。'
+        snap['sources'][0]['text']=self.statement
+        raw=self.outline(snap)
+        raw['claims'][0]['statement']='设备稼动率超过90%。'
+        self.assertIn('unsupported_quantity_scope',{e['code'] for e in w.validate_outline(raw,snap)[1]['errors']})
+        raw['claims'][0]['statement']=self.statement
+        outline,checks=w.validate_outline(raw,snap)
+        self.assertFalse(checks['errors']);outline['confirmed_text']=outline['text']
+        draft=self.runner('fixture','INPUT_JSON:\n'+w.dumps(dict(stage='draft',confirmed_outline=outline['text'])),{},web_search=False).payload
+        draft['title']='设备稼动率超过90%';draft['paragraphs'][0]['text']='设备稼动率90%。'
+        codes={e['code'] for e in w.validate_draft(draft,snap,outline)[1]['errors']}
+        self.assertTrue({'title_quantity_scope','new_quantity_scope'}<=codes)
+        draft['title']='设备稼动率不低于90%';draft['paragraphs'][0]['text']=self.statement
+        self.assertFalse(w.validate_draft(draft,snap,outline)[1]['errors'])
+
     def test_duplicate_requests_not_new_model_tasks(self):
         data=self.data(); control=TaskControl()
         a=w.accept_run(self.conn,self.cfg,'outline',data,control)
@@ -330,6 +377,18 @@ class NewsWritingTests(unittest.TestCase):
         fetcher=Mock(return_value=dict(text='原文片段',published_at='2026-09-15',retrieved_at='2026-09-17'))
         w.verify_sources(snap,TaskControl(),fetcher=fetcher)
         self.assertEqual(source['error'],'program_read_restricted');self.assertTrue(snap['sources'][1]['text_observed'])
+        self.assertEqual(fetcher.call_count,1)
+
+    def test_shared_source_reused_after_page_budget_without_another_request(self):
+        snap=w._snapshot(self.conn,self.cfg,self.eid,1)
+        source=snap['sources'][0];source.update(text='',text_observed=False)
+        snap['sources'].append(dict(source,id='src_2',material_id='another_material'))
+        snap['sources'].append(dict(source,id='src_3',url='https://example.org/unread'))
+        snap['rules']['max_pages']=1
+        fetcher=Mock(return_value=dict(text=self.statement,published_at='2026-09-15'))
+        w.verify_sources(snap,TaskControl(),fetcher=fetcher)
+        self.assertTrue(snap['sources'][1]['text_observed'])
+        self.assertEqual(snap['sources'][2]['error'],'verification_budget')
         self.assertEqual(fetcher.call_count,1)
 
     def test_restart_retains_request_and_marks_incomplete_run(self):

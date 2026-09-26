@@ -663,6 +663,16 @@ test('stopped exploration preserves draft and exposes no fabricated results',asy
  assert.match(app.el('message').textContent,/达到时间上限/);assert.equal(app.el('explore-stop').hidden,true);
 });
 const writingOptions={workflow:true,writing:true,exploration:true};
+test('old-selection drafts remain readable but cannot be exported or rechecked',async()=>{
+ const e=writingEdition();e.writing.versions.push({version_id:'stale-draft',stage:'draft',decision_revision:1,
+  created_at:'2026-09-13T11:00:00Z',stale_selection:true,checks:{errors:[]},
+  content:{title:'旧版初稿',paragraphs:[],body_characters:0,risk_notice:{text:'风险',missing:[]}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/旧版初稿/);assert.match(output,/对应旧选材，请更新框架/);
+ for(const action of ['copy','download','recheck'])assert.match(output,new RegExp('data-'+action+'-draft="stale-draft" disabled'));
+});
 test('writing renders a framework without copying it into the confirmation editor',async()=>{
  const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
  await app.evaluate("loadEdition('ed-one')");

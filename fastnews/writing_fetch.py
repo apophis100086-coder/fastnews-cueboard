@@ -8,19 +8,36 @@ from html.parser import HTMLParser
 
 from .network import SafeHTTPClient
 from .public_text import PageText
+from .metadata import time_bounds
 
 
 class PublicationMetadata(HTMLParser):
     def __init__(self):
-        super().__init__(); self.published_at=None
+        super().__init__(); self.dates=[]
+
+    @property
+    def published_at(self):
+        # Conflicting publication tags are ambiguous, never last-tag-wins.
+        dated=[]
+        for value in self.dates:
+            try:
+                lo,hi=time_bounds(value)
+            except ValueError:
+                continue
+            if lo is not None:
+                dated.append((lo,hi,value))
+        if not dated or max(d[0] for d in dated)>min(d[1] for d in dated):
+            return None
+        # Compatible day/timestamp tags retain the most precise observed value.
+        return min(dated,key=lambda d:d[1]-d[0])[2]
 
     def handle_starttag(self,tag,attrs):
         attr=dict(attrs)
         key=(attr.get('property') or attr.get('name') or attr.get('itemprop') or '').lower()
         if tag=='meta' and key in {'article:published_time','datepublished','pubdate','publishdate','publish_time','publication_date'}:
-            self.published_at=attr.get('content') or self.published_at
+            self.dates.append(attr.get('content'))
         if tag=='time' and key=='datepublished':
-            self.published_at=attr.get('datetime') or self.published_at
+            self.dates.append(attr.get('datetime'))
 
 
 def read_page(url):
@@ -33,11 +50,12 @@ def read_page(url):
         reader=PdfReader(BytesIO(response.body))
         if reader.is_encrypted:
             raise ValueError('restricted_pdf')
-        text='\n'.join(f'【PDF第{i+1}页】\n'+page.extract_text() for i,page in enumerate(reader.pages[:20]))
+        pages=[(i+1,page.extract_text() or '') for i,page in enumerate(reader.pages[:20])]
+        if len(''.join(text.strip() for _,text in pages))<80:
+            raise ValueError('pdf_requires_ocr')
+        text='\n'.join(f'【PDF第{i}页】\n'+body for i,body in pages if body.strip())
         found=re.search(r'报告送出日期[：:]?\s*(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日',text)
         published='-'.join([found[1],found[2].zfill(2),found[3].zfill(2)]) if found else None
-        if len(text.strip())<80:
-            raise ValueError('pdf_requires_ocr')
         return dict(text=text[:60000],url=response.url,retrieved_at=response.retrieved_at,published_at=published,
                     pages_read=min(len(reader.pages),20),format='pdf')
     if not any(t in mime for t in ('text/html','text/plain','application/xhtml')):
@@ -47,10 +65,11 @@ def read_page(url):
     metadata=PublicationMetadata();metadata.feed(response.text)
     # The publisher encodes the article's day in this documented URL layout.
     # This remains date precision; it cannot satisfy an intraday cutoff.
-    if not metadata.published_at and urlsplit(response.url).hostname=='fund.jrj.com.cn':
+    published=metadata.published_at
+    if not metadata.dates and urlsplit(response.url).hostname=='fund.jrj.com.cn':
         encoded=re.fullmatch(r'/(20\d{2})/(\d{2})/(\d{2})\d+\.shtml',urlsplit(response.url).path)
         if encoded:
-            metadata.published_at='-'.join(encoded.groups())
+            published='-'.join(encoded.groups())
     text=response.text if 'text/plain' in mime else parser.text()
     if len(text)<40:
         raise ValueError('insufficient_text')
@@ -58,7 +77,7 @@ def read_page(url):
         'sign in to continue','登录后阅读全文','付费后阅读全文','订阅后阅读全文','访问验证')):
         raise ValueError('restricted_content')
     return dict(text=text[:60000],url=response.url,retrieved_at=response.retrieved_at,
-                published_at=metadata.published_at)
+                published_at=published)
 
 
 if __name__=='__main__':

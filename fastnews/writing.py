@@ -21,7 +21,7 @@ from .metadata import normalize_url, parse_instant, time_bounds
 from .reader_limits import reader_limits
 from .source_access import source_constraints, url_policy
 from .task_control import TaskControl
-from .writing_checks import issue, check_text, qualify_claim, numeric_tokens, number_units, within_cutoff, normalized, FUND_MANAGER_NAMES
+from .writing_checks import issue, check_text, qualify_claim, numeric_tokens, number_units, changed_quantity_scopes, within_cutoff, normalized, FUND_MANAGER_NAMES
 from .writing_contracts import OUTLINE, DRAFT
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -271,7 +271,7 @@ def verify_sources(snapshot,control,progress=None,fetcher=None):
             urlsplit(r.get('listing_url','')).hostname and urlsplit(r['listing_url']).hostname.removeprefix('www.')==host]
         if any(r.get('fulltext_allowed') is not True for r in matching):
             source['error']='program_read_restricted'; continue
-        if time.monotonic()>=until or total>=rules['max_pages'] or counts.get(mid,0)>=rules['pages_per_material']:
+        if url not in seen and (time.monotonic()>=until or total>=rules['max_pages'] or counts.get(mid,0)>=rules['pages_per_material']):
             source['error']='verification_budget'; continue
         if progress:
             progress({'stage':'writing_verify','message':'核对已选材料出处 '+str(total+1)})
@@ -450,7 +450,7 @@ def validate_draft(raw,snapshot,outline):
     sources={s['id']:s for s in snapshot['sources']}
     errors+=_entities(raw['entities'],sources)
     seen=set(); used=set(); rendered=[]
-    allowed_title=set()
+    allowed_title=set(); title_evidence=[]
     for index,p in enumerate(raw['paragraphs'],1):
         ids=p['claim_ids']; mid=p['material_ids']; oid=p['outline_paragraph_id']
         if not ids or set(ids)-set(claims) or not oid or not p['outline_anchor'].strip() or p['outline_anchor'] not in outline['confirmed_text']:
@@ -464,10 +464,14 @@ def validate_draft(raw,snapshot,outline):
         citation_dates=' '.join((claims[c]['published_at'] or '')+' '+claims[c]['data_period'] for c in ids if claims[c]['usable'])
         allowed=numeric_tokens(evidence+' '+citation_dates+' '+snapshot['product_name']+' '+snapshot['product_code'])
         allowed_title.update(allowed)
+        quotes=' '.join(claims[c]['quote'] for c in ids)
+        title_evidence.append(quotes)
         if numeric_tokens(p['text'])-allowed:
             errors.append(issue('new_number','正文包含所引事实没有的数字',str(index)))
         if number_units(p['text'])-number_units(evidence):
             errors.append(issue('new_unit','正文的数值、单位或币种组合不对应所引事实',str(index)))
+        if changed_quantity_scopes(p['text'],quotes):
+            errors.append(issue('new_quantity_scope','正文改变了原文数值的约数或上下限口径',str(index)))
         errs=check_text(p['text'],location=str(index),entities=outline['entities']+raw['entities'],
                         product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff'])
         errors.extend(errs)
@@ -487,6 +491,10 @@ def validate_draft(raw,snapshot,outline):
             errors.append(issue('must_include','正文遗漏必须体现的材料',m['id']))
     if numeric_tokens(raw['title'])-allowed_title:
         errors.append(issue('title_number','标题数字缺少正文依据'))
+    if number_units(raw['title'])-number_units(' '.join(title_evidence)):
+        errors.append(issue('title_unit','标题的数值、单位或币种组合不对应所引事实'))
+    if changed_quantity_scopes(raw['title'],' '.join(title_evidence)):
+        errors.append(issue('title_quantity_scope','标题改变了原文数值的约数或上下限口径'))
     errors.extend(check_text(raw['title'],location='title',entities=outline['entities']+raw['entities'],
         product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff']))
     content=dict(raw,paragraphs=rendered,risk_notice=risk_notice(snapshot),news_cutoff=snapshot['news_cutoff'],
@@ -623,27 +631,19 @@ def export_draft(conn,identifier):
     record=version(conn,identifier)
     if record['stage']!='draft' or record['checks']['errors']:
         raise ValueError('当前稿件尚有检查问题，请修改框架或补齐依据后重新生成')
+    _decision(conn,record['edition_id'],record['decision_revision'])
     current_version=fingerprint([instructions('outline'),instructions('draft'),policy()])
     if record['snapshot']['skill_version']!=current_version:
         raise ValueError('写作规则已更新，请按新规则重新检查生成')
+    if review_stored_draft(conn,record)[1]['errors']:
+        raise ValueError('当前程序检查发现问题，请重新检查这版初稿并按提示调整框架')
     return dict(artifact_type='human_confirmed_news_draft',version_id=identifier,
         markdown=record['content']['text'],risk_notice=record['content']['risk_notice'],
         trace=public_version(record))
 
 
-def recheck_draft(conn,data):
-    """Re-run deterministic checks after a fix, retaining the original model review."""
-    parent=version(conn,data['version_id']);rid=data.get('request_id','')
-    if parent['stage']!='draft' or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
-        raise ValueError('重新检查需要稿件版本和有效请求编号')
-    current=fingerprint([instructions('outline'),instructions('draft'),policy()])
-    if parent['snapshot']['skill_version']!=current:
-        raise ValueError('写作技能或规则已更新，请回到框架确认后生成；程序复查不能代替新语义检查')
-    previous=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()
-    signature=fingerprint(['recheck',parent['version_id']])
-    if previous:
-        if previous['input_hash']!=signature:raise ValueError('此复查请求编号已用于其他稿件')
-        return public_version(version(conn,previous['version_id']))
+def review_stored_draft(conn,parent):
+    """Apply current deterministic gates without rewriting a saved version."""
     confirmed=parent
     while confirmed['stage']=='draft':confirmed=version(conn,confirmed['parent_id'])
     if confirmed['stage']!='confirmed_outline':raise ValueError('稿件没有可追溯的确认框架')
@@ -654,7 +654,24 @@ def recheck_draft(conn,data):
         claim['usable']=not claim['checks']
     raw={key:deepcopy(parent['content'][key]) for key in DRAFT['properties']}
     raw['paragraphs']=[{k:p[k] for k in DRAFT['properties']['paragraphs']['items']['properties']} for p in raw['paragraphs']]
-    content,checks=validate_draft(raw,parent['snapshot'],outline)
+    return validate_draft(raw,parent['snapshot'],outline)
+
+
+def recheck_draft(conn,data):
+    """Re-run deterministic checks after a fix, retaining the original model review."""
+    parent=version(conn,data['version_id']);rid=data.get('request_id','')
+    if parent['stage']!='draft' or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
+        raise ValueError('重新检查需要稿件版本和有效请求编号')
+    _decision(conn,parent['edition_id'],parent['decision_revision'])
+    current=fingerprint([instructions('outline'),instructions('draft'),policy()])
+    if parent['snapshot']['skill_version']!=current:
+        raise ValueError('写作技能或规则已更新，请回到框架确认后生成；程序复查不能代替新语义检查')
+    previous=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()
+    signature=fingerprint(['recheck',parent['version_id']])
+    if previous:
+        if previous['input_hash']!=signature:raise ValueError('此复查请求编号已用于其他稿件')
+        return public_version(version(conn,previous['version_id']))
+    content,checks=review_stored_draft(conn,parent)
     checks['review_kind']='program_recheck_original_model_review_preserved'
     with conn:
         return public_version(_save_version(conn,parent['snapshot'],'draft',content,checks,
