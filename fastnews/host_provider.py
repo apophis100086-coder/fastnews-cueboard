@@ -1,5 +1,6 @@
 """Official local CLI adapters. No extracted login tokens or model API keys."""
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -119,7 +120,7 @@ def _urls(value):
     return result
 
 
-def parse_codex_output(output, final):
+def parse_codex_output(output, final, *, incomplete=False):
     usage, searches, urls, actions = {}, [], set(), []
     completed, pending_error, recovered_errors = False, False, 0
     for line in output.splitlines():
@@ -152,12 +153,13 @@ def parse_codex_output(output, final):
             # Only a later explicit completion can clear an intermediate error.
             pending_error=True
             recovered_errors+=1
-        if event.get('type')=='turn.failed':
+        if event.get('type')=='turn.failed' and not incomplete:
             raise HostUnavailable('Codex 任务未完成；请在 Codex 中检查登录、网络或剩余额度')
-    if pending_error:
+    if pending_error and not incomplete:
         raise HostUnavailable('Codex 任务未完成；请在 Codex 中检查登录、网络或剩余额度')
     return HostResult(loads(final),usage,{'web_actions':len(searches),'visited_urls':sorted(urls),
         'actions':actions, 'tool_excerpts':[], 'turn_completed':completed,
+        'incomplete':incomplete,
         'recovered_error_events':recovered_errors,
         'content_observability':'CLI action records do not establish returned page text or successful retrieval'})
 
@@ -184,6 +186,14 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             raise HostUnavailable('请先以 ChatGPT 账号登录 Codex；本功能不使用 API Key 计费模式')
     if control:
         timeout=min(timeout,control.host_timeout())
+    # The outer task also reserves verification and saving time. Tell the model
+    # its earlier, actual deadline rather than only the outer 480-second limit.
+    model_deadline=(datetime.now(timezone.utc)+timedelta(seconds=timeout)).isoformat()
+    prompt=(f'运行时限：本次模型最多使用 {timeout:.0f} 秒，必须在 {model_deadline} 前返回完整JSON。'
+            '这早于资料中可能出现的整项任务截止时间，以本条为准。预留最后至少90秒组织和输出结果；'
+            '时间不足立即结束检索，用已取得材料交付并列明未检查缺口。查询和容量均为上限，不要求用满。\n'+prompt)
+    if len(prompt)>36000:
+        raise ValueError('本次资料及运行指令超过宿主任务输入上限')
     # Use the OS temporary directory for ephemeral runs. Packaged Windows apps
     # can redirect new LOCALAPPDATA children into a package's LocalCache while
     # resolving an existing parent to its unredirected path.
@@ -216,6 +226,8 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             process = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                 text=True,encoding='utf-8',errors='replace',cwd=root,env=env,**flags)
             group = ProcessGroup(process)
+            partial_output=''
+            failure=None
             try:
                 if control:
                     from .task_control import TaskStopped
@@ -229,16 +241,35 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
                         try:
                             output,diagnostic=process.communicate(prompt if first else None,timeout=min(0.5,remaining))
                             break
-                        except subprocess.TimeoutExpired:
+                        except subprocess.TimeoutExpired as pending:
+                            partial_output=pending.output or partial_output
                             first=False
                 else:
                     output, diagnostic = process.communicate(prompt,timeout=timeout)
                 result = subprocess.CompletedProcess(args,process.returncode,output,diagnostic)
+            except BaseException as exc:
+                failure=exc
+                raise
             finally:
                 group.close()
                 if process.poll() is None:
                     process.kill()
                 process.wait(timeout=10)
+                # Preserve observable public search actions on timeout/cancel.
+                # Never retain raw diagnostics, reasoning or login output.
+                if failure is not None and host=='codex':
+                    # Windows communicate keeps data in reader threads and may
+                    # omit TimeoutExpired.output. Drain after killing the group.
+                    try:
+                        drained,_=process.communicate(timeout=1)
+                        partial_output=drained or partial_output
+                    except (OSError,subprocess.TimeoutExpired):
+                        pass
+                    if isinstance(partial_output,bytes):
+                        partial_output=partial_output.decode('utf-8',errors='replace')
+                    partial=parse_codex_output(partial_output[:4_000_000],'{}',incomplete=True)
+                    partial.trace['trace_truncated']=len(partial_output)>4_000_000
+                    failure.host_trace=partial.trace
         except subprocess.TimeoutExpired:
             raise HostUnavailable(f'宿主任务达到 {timeout} 秒上限，已停止；请缩小来源范围后重试') from None
         except OSError:

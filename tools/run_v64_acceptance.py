@@ -38,6 +38,27 @@ def recorded_status(path):
     return value.get('status') or value.get('checks',{}).get('status') or 'recorded'
 
 
+def archive_failed_attempt(path,reason):
+    """Only an explicit diagnosed retry can replace the current result pointer."""
+    if not isinstance(reason,str) or not reason.strip():
+        raise ValueError('A diagnosed retry reason is required')
+    if path.resolve().parent!=FOLDER.resolve():
+        raise ValueError('Retry must stay in the fixed acceptance folder')
+    if recorded_status(path) not in {'failed','timed_out','cancelled','interrupted'}:
+        raise ValueError('Only failed attempts can be retried; completed originals are immutable')
+    folder=FOLDER/'attempts';folder.mkdir(exist_ok=True)
+    target=folder/(path.stem+'-'+uuid.uuid4().hex+'.json')
+    original=path.read_bytes()
+    with target.open('xb') as stream:stream.write(original)
+    markdown=path.with_suffix('.md')
+    if markdown.exists():
+        with target.with_suffix('.md').open('xb') as stream:stream.write(markdown.read_bytes())
+    save(target.with_suffix('.retry.json'),dict(reason=reason,original_path=str(path),
+        original_sha256=hashlib.sha256(original).hexdigest(),archived_path=str(target)))
+    path.unlink()
+    if markdown.exists():markdown.unlink()
+
+
 def prepare():
     FOLDER.mkdir(exist_ok=True)
     path=FOLDER/'live.db'
@@ -68,9 +89,10 @@ def progress(item):print(json.dumps(item,ensure_ascii=True),flush=True)
 def research(conn,cfg,args):
     key='morning' if args.kind=='morning' else args.code+'-research'
     out=FOLDER/(key+'.json')
-    if out.exists():return dict(status='already_recorded',path=str(out))
+    if out.exists() and not getattr(args,'retry_reason',None):return dict(status='already_recorded',path=str(out))
     if w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
         return dict(status='budget_wait',reason='shared_project_daily_limit',used=w.task_attempts(conn))
+    if out.exists():archive_failed_attempt(out,args.retry_reason)
     control=TaskControl(480)
     edition=None
     if args.kind=='morning':
@@ -107,9 +129,10 @@ def select(conn,cfg,args):
 
 def write(conn,cfg,args):
     out=FOLDER/(args.code+'-'+args.stage+'.json')
-    if out.exists():return dict(status='already_recorded',path=str(out))
+    if out.exists() and not getattr(args,'retry_reason',None):return dict(status='already_recorded',path=str(out))
     if w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
         return dict(status='budget_wait',reason='shared_project_daily_limit',used=w.task_attempts(conn))
+    if out.exists():archive_failed_attempt(out,args.retry_reason)
     eid=read(FOLDER/'editions.json')[args.code];decision=ed.latest_decision(conn,eid)
     if not decision:raise ValueError('Explicit test selection is required')
     data=dict(edition_id=eid,decision_revision=decision['decision_revision'],reader_profile='default',request_id=uuid.uuid4().hex)
@@ -161,6 +184,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('action',choices=['prepare','status','research','select','write','compare'])
     p.add_argument('--code',choices=CODES);p.add_argument('--kind',choices=['morning','product'],default='product')
     p.add_argument('--stage',choices=['outline','draft'],default='outline');p.add_argument('--selection');p.add_argument('--holdout')
+    p.add_argument('--retry-reason',help='Explicit diagnosed retry of a failed case; archives the untouched original and shares quota')
     p.add_argument('--confirm-test-outline',action='store_true');args=p.parse_args()
     if args.action=='prepare':prepare();print('prepared');return
     if args.action=='compare':progress(compare(args.holdout));return
@@ -190,10 +214,19 @@ def main():
                 elif args.action=='write':
                     key=args.code+'-'+args.stage
                     row=conn.execute('SELECT input_json,run_id FROM fn_writing_runs WHERE created_at>=? ORDER BY rowid DESC LIMIT 1',(started,)).fetchone()
-                    if row:result.update(run_id=row['run_id'],raw_failed_response=json.loads(row['input_json']).get('raw_failed_response'))
+                    if row:
+                        saved=json.loads(row['input_json'])
+                        result.update(run_id=row['run_id'],raw_failed_response=saved.get('raw_failed_response'),
+                            failed_host_trace=saved.get('failed_host_trace'),
+                            supplemental_research=saved.get('snapshot',{}).get('supplemental_research'))
                 else:key=args.code+'-selection-error'
-                save(FOLDER/(key+'.json'),result)
-        progress(result)
+                failed_path=FOLDER/(key+'.json')
+                # A rejected retry must never overwrite the completed result it
+                # tried to replace, nor an earlier failed artifact left intact.
+                if failed_path.exists():failed_path=FOLDER/(key+'-rejected-'+uuid.uuid4().hex+'.json')
+                save(failed_path,result)
+        progress({k:v for k,v in result.items() if k not in
+            {'record','output','raw_failed_response','failed_host_trace','supplemental_research'}})
 
 
 if __name__=='__main__':main()

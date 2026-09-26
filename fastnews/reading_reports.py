@@ -19,7 +19,7 @@ from .host_evidence import (SOURCE_EXTRA, MATERIAL_LABELS, enrich_source, enrich
     merge_report_events, merge_materials, source_fingerprint, fingerprint)
 from .source_access import source_constraints, url_policy
 
-VERSION = 'host-reading-v8-v64-recall'
+VERSION = 'host-reading-v9-bounded-context'
 STR = {'type':'string'}
 def obj(properties):
     return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
@@ -237,7 +237,11 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
             observation_variables=edition['profile']['observation_variables'],
             relation_boundaries=edition['profile']['relation_boundaries'],
             holdings_status='关键词和观察变量，不代表当前持仓')
-        product['context'] = public_context(conn, edition)
+        product['context'] = dict(public_context(conn, edition))
+        # These are a second copy prepared exclusively for drafting. Research
+        # already has the dated references; writing loads its own full context.
+        product['context'].pop('writing_references',None)
+        product['context'].pop('excluded_from_writing',None)
         routed = route_product(conn,config,code,edition_date=edition['edition_date'],news_cutoff=cutoff,now=clock,
                                market_cutoffs=edition['market_cutoffs'])
         events = [e for group in ('within_cutoff','pending_time') for e in routed['groups'][group]]
@@ -272,7 +276,8 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
                'product':product,'selected_sources':sources,'items':[],
                'allow_web_search':bool(reader['settings'].get('web_search',True)),
                'coverage_notes':[],'category_names':CATEGORIES,'task_limits':reader_limits()}
-    payload['source_constraints'] = source_constraints(config['reader_sources'])
+    payload['source_constraints'] = [{k:v for k,v in s.items() if v is not None}
+        for s in source_constraints(config['reader_sources'])]
     payload['timing_policy'] = dict(morning_reading.TIMING)
     if kind=='morning':
         payload.update(lookback_days=lookback_days,search_plan={'max_queries':24,'queries':[]},
@@ -605,7 +610,11 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
     input_audit={}
     payload = build_input(conn,config,profile_id,kind,day,edition,extra_keywords,request_mode=request_mode,research_question=research_question,lookback_days=lookback_days,input_audit=input_audit)
     if collection_result and collection_result.get('collection_incomplete'):
-        payload['coverage_notes'].append('前置采集达到60秒上限，已入库材料保留；未完成来源由本轮模型按缺口继续检查')
+        payload['coverage_notes'].append('前置采集达到60秒上限，已入库材料保留；未完成来源由本轮模型按缺口继续检查'
+            if collection_result.get('status')=='collection_timed_out' else
+            '前置采集失败，已入库材料保留；尚未完成本次来源采集，不代表没有新资讯')
+    if collection_result is not None:
+        input_audit['collection']=collection_result
     if request_mode=='explore' and not payload['allow_web_search']:
         raise HostUnavailable('继续探查需要启用联网检索；现有材料仍可正常选用')
     if request_id:
@@ -691,6 +700,10 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
                 conn.execute('UPDATE fn_reading_reports SET output_json=? WHERE report_id=?',
                     (json_text(dict(raw_model_output=response.payload,tool_trace=response.trace,
                         input_audit=input_audit,validation_error=str(exc))),rid))
+            elif getattr(exc,'host_trace',None):
+                conn.execute('UPDATE fn_reading_reports SET output_json=? WHERE report_id=?',
+                    (json_text(dict(tool_trace=exc.host_trace,input_audit=input_audit,
+                        incomplete=True,validation_error=str(exc))),rid))
             conn.execute("UPDATE fn_reading_reports SET status='failed',error_code=?,usage_json=?,finished_at=? WHERE report_id=?",
                 (getattr(exc,'code',None) or ('host_unavailable' if isinstance(exc,HostUnavailable) else 'invalid_report'),
                  json_text(response.usage) if response else json_text({'host':host,'host_tasks_attempted':1,

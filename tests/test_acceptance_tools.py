@@ -9,6 +9,31 @@ from tools import run_v64_acceptance as live
 
 
 class AcceptanceToolTests(unittest.TestCase):
+    def test_explicit_retry_preserves_failed_bytes_and_does_not_erase_success(self):
+        with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)):
+            path=Path(root)/'morning.json'
+            original=b'{"status":"failed","message":"original failure"}'
+            path.write_bytes(original)
+            live.archive_failed_attempt(path,'synthetic diagnosed correction')
+            archive=next(p for p in (Path(root)/'attempts').glob('*.json') if not p.name.endswith('.retry.json'))
+            self.assertEqual(archive.read_bytes(),original)
+            self.assertFalse(path.exists())
+            live.save(path,{'status':'partial','output':{'items':[]}})
+            saved=path.read_bytes()
+            with self.assertRaises(ValueError):live.archive_failed_attempt(path,'must not replace success')
+            self.assertEqual(path.read_bytes(),saved)
+
+    def test_retry_still_waits_on_shared_budget_and_leaves_failure_intact(self):
+        with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)),\
+            patch.object(live.w,'task_attempts',return_value=12),patch.object(live,'collect') as collect:
+            path=Path(root)/'morning.json';live.save(path,{'status':'failed'})
+            original=path.read_bytes()
+            result=live.research(None,{},SimpleNamespace(kind='morning',retry_reason='diagnosed'))
+            self.assertEqual(result['status'],'budget_wait')
+            self.assertEqual(path.read_bytes(),original)
+            self.assertFalse((Path(root)/'attempts').exists())
+            collect.assert_not_called()
+
     def test_daily_limit_stops_before_collection_or_host(self):
         with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)),\
             patch.object(live.w,'task_attempts',return_value=12),patch.object(live,'collect') as collect,\

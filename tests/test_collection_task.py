@@ -28,6 +28,18 @@ class CollectionTests(unittest.TestCase):
         self.assertTrue(self.conn.execute('SELECT count(*) FROM fn_scan_batches').fetchone()[0])
         self.assertFalse(self.conn.execute("SELECT count(*) FROM fn_scan_batches WHERE status='running'").fetchone()[0])
 
+    def test_real_child_handles_chinese_database_path_with_non_utf8_locale(self):
+        folder=self.root/'中文回测';folder.mkdir()
+        conn=db.connect(folder/'快讯.db',mode='fixture');self.addCleanup(conn.close)
+        db.sync_registry(conn,self.cfg)
+        from fastnews.host_provider import clean_environment
+        # UTF-8 must be selected by the command, not inherited from the parent.
+        env=dict(clean_environment(),PYTHONUTF8='0')
+        with patch('fastnews.collection_task.clean_environment',return_value=env):
+            result=collect(conn,self.cfg,'digest',{'no_network':True},TaskControl())
+        self.assertFalse(result.get('collection_incomplete'),result)
+        self.assertTrue(conn.execute('SELECT count(*) FROM fn_scan_batches').fetchone()[0])
+
     def interrupted(self,cancel=False):
         helper=self.root/'slow.py'
         helper.write_text('''import json,sys,sqlite3,time

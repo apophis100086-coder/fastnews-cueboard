@@ -1,12 +1,15 @@
 """Host launch isolation, including Windows packaged-app directory redirection."""
 from contextlib import nullcontext
 import json
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
 from fastnews import host_provider
+from fastnews.task_control import TaskControl, TaskStopped
 
 
 class HostWorkspaceTests(unittest.TestCase):
@@ -47,6 +50,45 @@ class HostWorkspaceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Unsafe host work directory'):
                 host_provider.run_host('workbuddy', 'synthetic input', {'type': 'object'}, web_search=False)
         launch.assert_not_called()
+
+    def test_cancel_retains_public_actions_and_sends_earlier_model_deadline(self):
+        control=TaskControl(480)
+        process=Mock(returncode=0)
+        telemetry='\n'.join(json.dumps(e) for e in [
+            {'type':'item.completed','item':{'type':'reasoning','text':'must not persist'}},
+            {'type':'item.completed','item':{'id':'s1','type':'web_search',
+                'action':{'type':'search','query':'public news'}}},
+            {'type':'error','message':'private diagnostic must not persist'}])
+        calls=[]
+        def interrupted(*args,**kwargs):
+            calls.append(1)
+            if len(calls)==1:
+                control.cancelled.set()
+                # Windows returns no partial output until reader threads drain.
+                raise subprocess.TimeoutExpired('fixture',.5)
+            return telemetry,''
+        process.communicate.side_effect=interrupted
+        process.poll.return_value=None
+        group=Mock()
+        with patch.object(host_provider,'host_command',return_value=['fixture-host']), \
+             patch.object(host_provider.subprocess,'run',return_value=Mock(returncode=0,stdout='ChatGPT',stderr='')), \
+             patch.object(host_provider.subprocess,'Popen',return_value=process), \
+             patch.object(host_provider,'ProcessGroup',return_value=group):
+            with self.assertRaises(TaskStopped) as caught:
+                host_provider.run_host('codex','public fixture',{},control=control,timeout=120)
+        sent=process.communicate.call_args_list[0].args[0]
+        self.assertIn('120 秒',sent)
+        import re
+        deadline=datetime.fromisoformat(re.search(r'必须在 (\S+) 前',sent).group(1))
+        self.assertLess(deadline,datetime.fromisoformat(control.deadline_at))
+        self.assertLess((deadline-datetime.now(timezone.utc)).total_seconds(),121)
+        trace=caught.exception.host_trace
+        self.assertEqual(trace['actions'][0]['query'],'public news')
+        self.assertTrue(trace['incomplete'])
+        self.assertFalse(trace['turn_completed'])
+        self.assertNotIn('must not persist',json.dumps(trace))
+        group.close.assert_called_once()
+        process.kill.assert_called_once()
 
 
 if __name__ == '__main__':

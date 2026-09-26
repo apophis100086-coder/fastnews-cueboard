@@ -252,7 +252,7 @@ def accept_run(conn,config,stage,data,control,run_id=None):
 
 def _read_source(url,control,seconds):
     flags={'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {}
-    process=subprocess.Popen([sys.executable,'-m','fastnews.writing_fetch'],cwd=ROOT,env=clean_environment(),
+    process=subprocess.Popen([sys.executable,'-X','utf8','-m','fastnews.writing_fetch'],cwd=ROOT,env=clean_environment(),
         stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8',**flags)
     group=ProcessGroup(process)
     end=min(time.monotonic()+seconds,control.deadline-30)
@@ -706,6 +706,8 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
             saved_input['failure_message']=failure[:1000]
             if response:
                 saved_input['raw_failed_response']=response.payload
+            elif getattr(exc,'host_trace',None):
+                saved_input['failed_host_trace']=exc.host_trace
             conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(dumps(saved_input),identifier))
             conn.execute('UPDATE fn_writing_runs SET status=?,error_code=?,usage_json=?,finished_at=? WHERE run_id=?',
                 (status,code,dumps(usage),utc_now(),identifier))

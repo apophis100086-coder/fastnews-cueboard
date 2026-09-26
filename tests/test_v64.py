@@ -99,6 +99,24 @@ class V64Tests(unittest.TestCase):
         self.assertGreater(p['input_coverage']['excerpt_truncated_count'],0)
         self.assertTrue(any('未送入' in gap for gap in p['coverage_notes']))
 
+    def test_product_research_does_not_repeat_drafting_only_references(self):
+        edition=ed.create_edition(self.conn,self.config,product_code='588090',edition_date='2026-09-14',
+            news_cutoff='2026-09-14T23:59:59+08:00',market_cutoffs={})
+        context=dict(version='synthetic',references=[],writing_references=[{'excerpt':'合成重复资料'*1800}],
+            excluded_from_writing=[],published_history=[],gaps=[])
+        original=deepcopy(context)
+        cfg=self.view()
+        with patch('fastnews.product_context.public_context',return_value=context):
+            payload=build_input(self.conn,cfg,'default','product','2026-09-14',edition)
+        self.assertLess(len(json.dumps(payload,ensure_ascii=False)),24000)
+        self.assertNotIn('writing_references',payload['product']['context'])
+        self.assertEqual(context,original)
+        from fastnews.source_access import source_constraints,url_policy
+        full=source_constraints(cfg['reader_sources'])
+        for source in full:
+            self.assertEqual(url_policy(source['url'],full,source['source_id']),
+                url_policy(source['url'],payload['source_constraints'],source['source_id']))
+
     def test_v64_names_trends_and_precise_amounts(self):
         for body in ['本基金截至2026年9月25日连续11日获资金增持。',
             '恒生科技ETF华泰柏瑞（513130）关注港股科技方向。',

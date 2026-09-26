@@ -229,6 +229,19 @@ class ReaderDatabaseTests(unittest.TestCase):
         self.assertEqual(report['error_code'],'host_unavailable')
         self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_article_versions').fetchone()[0],before)
 
+    def test_timeout_preserves_observed_trace_without_creating_candidates(self):
+        from fastnews.task_control import TaskStopped
+        error=TaskStopped('timed_out')
+        error.host_trace={'actions':[{'type':'search','query':'public fixture news'}],
+                          'incomplete':True,'turn_completed':False}
+        with self.assertRaises(TaskStopped):
+            generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=Mock(side_effect=error))
+        report=latest_report(self.conn,'default','morning','2026-09-14')
+        self.assertEqual(report['error_code'],'timed_out')
+        self.assertEqual(report['output']['tool_trace'],error.host_trace)
+        self.assertTrue(report['output']['incomplete'])
+        self.assertNotIn('items',report['output'])
+
     def test_daily_budget_counts_failed_attempts_across_profiles(self):
         from fastnews.reader_limits import reader_limits
         limits=reader_limits()|{'max_tasks_per_day':1}

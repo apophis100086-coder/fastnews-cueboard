@@ -56,6 +56,18 @@ class NewsWritingTests(unittest.TestCase):
         self.assertEqual(json.loads(row['input_json'])['raw_failed_response'],bad)
         self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],0)
 
+    def test_interrupted_host_keeps_search_trace_without_a_confirmable_outline(self):
+        control=TaskControl()
+        run=w.accept_run(self.conn,self.cfg,'outline',self.data(),control)
+        error=TaskStopped('timed_out')
+        error.host_trace={'actions':[{'type':'search','query':'public fixture'}],'incomplete':True}
+        with self.assertRaises(TaskStopped):
+            w.execute_run(self.conn,run['run_id'],control,runner=Mock(side_effect=error))
+        row=self.conn.execute('SELECT status,input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()
+        self.assertEqual(row['status'],'timed_out')
+        self.assertEqual(json.loads(row['input_json'])['failed_host_trace'],error.host_trace)
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],0)
+
     def save(self,revision,**kw):
         return ed.save_decision(self.conn,edition_id=self.eid,selected_event_id=self.mid,selected_fact_ids=[],
             selected_clue_ids=[self.mid],manual_notes=[],must_include_ids=[self.mid],expected_revision=revision,

@@ -19,7 +19,7 @@ def collect(conn, config, action, parameters, control, progress=None):
     root=Path(__file__).resolve().parents[1]
     owner=uuid.uuid4().hex
     config=dict(config,_collection_task_id=owner)
-    command=[sys.executable,'-m','fastnews.collection_task']
+    command=[sys.executable,'-X','utf8','-m','fastnews.collection_task']
     proc=subprocess.Popen(command,cwd=root,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
         text=True,encoding='utf-8',env=clean_environment(),
         creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0,
