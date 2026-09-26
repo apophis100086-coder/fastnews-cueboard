@@ -107,6 +107,12 @@ class OutlineResearchTests(unittest.TestCase):
         def revise(host,prompt,schema,**kw):
             payload=json.loads(prompt.split('INPUT_JSON:\n')[1])
             self.assertIn('news_policy',{m['id'] for m in payload['materials']})
+            self.assertNotIn('paragraph_sources',payload['previous_outline'])
+            for source in payload['sources']:
+                for key in ['document_hash','fingerprint','document_id','evidence_id']:
+                    self.assertNotIn(key,source)
+                for key in ['id','material_id','title','name','url','text','text_observed']:
+                    self.assertIn(key,source)
             raw={key:deepcopy(original['content'][key]) for key in w.OUTLINE['properties']}
             for claim in raw['claims']:
                 claim.pop('usable',None);claim.pop('checks',None)
@@ -116,6 +122,24 @@ class OutlineResearchTests(unittest.TestCase):
         self.assertFalse(newer['checks']['errors'])
         self.assertEqual(len(newer['supplemental_materials']),1)
         self.assertEqual(ed.latest_decision(self.conn,self.eid)['decision_revision'],1)
+
+    def test_compact_permission_brief_keeps_all_rules_and_blocked_paths(self):
+        snapshot=w._snapshot(self.conn,self.cfg,self.eid,1)
+        before=deepcopy(snapshot['source_constraints'])
+        brief=research_brief(snapshot)['source_constraints']
+        self.assertEqual(len(brief),len(before))
+        for a,b in zip(before,brief):
+            self.assertEqual(b,{k:v for k,v in a.items() if v is not None})
+            for key in ['source_id','url','search_enabled','host_read_allowed']:self.assertEqual(a[key],b[key])
+        self.assertEqual(snapshot['source_constraints'],before)
+
+    def test_revision_does_not_retry_an_explicitly_blocked_original(self):
+        original=self.run_outline(fetcher=lambda *a:dict(error='robots_disallowed'))
+        snapshot=w.version(self.conn,original['version_id'])['snapshot']
+        fetcher=Mock(side_effect=AssertionError('blocked original must not be retried'))
+        w.verify_sources(snapshot,TaskControl(),fetcher=fetcher)
+        fetcher.assert_not_called()
+        self.assertEqual(snapshot['sources'][-1]['error'],'robots_disallowed')
 
     def test_source_collision_private_url_and_excess_count_fail_without_overwrite(self):
         for mutation in ['collision','private','excess']:

@@ -306,6 +306,10 @@ def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,so
         control.check()
         if source['text_observed']:
             continue
+        if (str(source.get('error') or '').startswith(('robots_','unsafe_')) or
+            source.get('error') in {'source_restricted','program_read_restricted','access_challenge',
+                'http_401','http_403','http_412','http_429','tls_certificate_invalid'}):
+            continue
         mid=source['material_id']
         url=source.get('url')
         if not url:
@@ -684,7 +688,7 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
             if data['allow_verify']:
                 verify_sources(snapshot,control,progress,fetcher,
                     seconds=snapshot['rules']['verification_seconds']/2 if supplement else None,budget_state=verification)
-            previous={k:v for k,v in (data['parent'] or {}).items() if k not in {'claims','text'}} or None
+            previous={k:v for k,v in (data['parent'] or {}).items() if k in OUTLINE['properties'] and k!='claims'} or None
             raw=dict(snapshot,stage=stage,feedback=data['feedback'],previous_outline=previous)
             if supplement:
                 from .writing_research import research_brief
@@ -701,7 +705,7 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
                     material['summary_compacted']=True
         else:
             raw=dict(snapshot,stage=stage,confirmed_outline=data['parent']['confirmed_text'],
-                     outline={k:v for k,v in data['parent'].items() if k not in {'claims','text','confirmed_text'}},
+                     outline={k:v for k,v in data['parent'].items() if k in OUTLINE['properties'] and k!='claims'},
                      claims=data['parent']['claims'])
             raw['materials']=[{k:m[k] for k in ('id','title','must_include')} for m in snapshot['materials']]
             raw['sources']=deepcopy(snapshot['sources'])
@@ -717,7 +721,8 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
             raw.pop('supplemental_research',None)
         raw['sources']=deepcopy(raw['sources'])
         for source in raw['sources']:
-            source.pop('text_segments',None)  # server audit, duplicate of rendered excerpts
+            for key in ('text_segments','document_hash','fingerprint','document_id','evidence_id','publisher_label_basis'):
+                source.pop(key,None)  # local audit only; public identity and exact excerpts stay
             if source.get('text_observed'):
                 source.pop('research_hint',None)
         context=dumps(raw)

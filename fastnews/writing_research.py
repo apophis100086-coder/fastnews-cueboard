@@ -14,7 +14,7 @@ def research_brief(snapshot):
     return dict(enabled=True,window_start=(cutoff-timedelta(days=6)).date().isoformat(),
         news_cutoff=snapshot['news_cutoff'],max_queries=8,max_new_sources=6,
         max_pages=snapshot['rules']['max_pages'],
-        source_constraints=deepcopy(snapshot['source_constraints']),
+        source_constraints=[{k:v for k,v in rule.items() if v is not None} for rule in snapshot['source_constraints']],
         public_search_anchors=[s.get('title') or s.get('name','') for s in snapshot['sources']
             if s.get('identity') not in {'user_document','user_text','manual_note'}
             and not any(m['id']==s['material_id'] and m['origin'] in {'user_material','manual_note'}
