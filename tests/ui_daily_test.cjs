@@ -663,6 +663,50 @@ test('stopped exploration preserves draft and exposes no fabricated results',asy
  assert.match(app.el('message').textContent,/达到时间上限/);assert.equal(app.el('explore-stop').hidden,true);
 });
 const writingOptions={workflow:true,writing:true,exploration:true};
+test('legacy outlines do not claim that the new supplemental search has run',async()=>{
+ const e=writingEdition();e.writing.versions[0].supplemental_research={};e.writing.versions[0].stale_skill_version=true;
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ assert.doesNotMatch(app.el('writing-outline-result').innerHTML,/补搜已返回/);
+ assert.match(app.el('writing-outline-result').innerHTML,/旧版规则/);
+});
+test('writing rejection is visible beside the button and clears submitting state',async()=>{
+ const e=writingEdition();e.writing.task_budget={used:13,limit:12,remaining:0,resets_at:'2026-09-27T00:00:00+08:00'};
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return e;
+  if(c.url==='/api/writing-outline')return {httpStatus:400,payload:{error:'共享预算12次已用完，次日00:00恢复'}};
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('writing-final').value='保留人工修改';app.el('writing-final').oninput();
+ await app.el('writing-outline').onclick();
+ assert.equal(app.el('writing-error').hidden,false);assert.match(app.el('writing-error').textContent,/共享预算12次/);
+ assert.match(app.el('writing-progress').textContent,/未能启动/);assert.match(app.el('writing-budget').textContent,/已用 13 次/);
+ assert.equal(app.read('busy'),false);assert.equal(app.el('writing-outline').disabled,false);
+ assert.equal(app.el('writing-final').value,'保留人工修改');
+ assert.equal(app.calls.find(c=>c.url==='/api/writing-outline').body.supplement_latest,true);
+ assert.equal(app.calls.filter(c=>c.url.startsWith('/api/job?')).length,0);
+});
+test('outline supplement option persists and failures survive a result refresh',async()=>{
+ const e=writingEdition();e.writing.runs=[{stage:'outline',status:'failed',error:'新增资料日期无法核实'}];
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ assert.match(app.el('writing-error').textContent,/日期无法核实/);
+ app.el('writing-auto-research').checked=false;app.el('writing-auto-research').onchange();
+ await app.evaluate("writingEditionKey='';renderWriting()");
+ assert.equal(app.el('writing-auto-research').checked,false);
+});
+test('supplemental source cards escape returned text and do not fill confirmation',async()=>{
+ const e=writingEdition(),o=e.writing.versions[0];
+ o.supplemental_research={enabled:true,summary:'发现一项补充'};
+ o.supplemental_materials=[{id:'news_test',title:'<img src=x onerror=alert(1)>',relation:'与已选主题相关'}];
+ o.source_evidence=[{material_id:'news_test',name:'公开机构',title:'政策标题',url:'https://example.org/news',published_at:'2026-09-16',text_observed:false,error:'source_timeout'}];
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ assert.match(app.el('writing-outline-result').innerHTML,/本轮补查与新增资料/);
+ assert.match(app.el('writing-outline-result').innerHTML,/&lt;img/);
+ assert.match(app.el('writing-outline-result').innerHTML,/source_timeout/);
+ assert.equal(app.el('writing-final').value,'');
+});
 test('old-selection drafts remain readable but cannot be exported or rechecked',async()=>{
  const e=writingEdition();e.writing.versions.push({version_id:'stale-draft',stage:'draft',decision_revision:1,
   created_at:'2026-09-13T11:00:00Z',stale_selection:true,checks:{errors:[]},

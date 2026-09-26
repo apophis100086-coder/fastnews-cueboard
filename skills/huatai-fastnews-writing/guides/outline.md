@@ -10,4 +10,4 @@ claims 记录拟写独立陈述，绑定 material_id、source_id。quote 必须�
 
 每段 material_ids、claim_ids 对应拟写事实；dispositions 覆盖全部材料，说明采用位置或不用原因。entities 覆盖涉及的具体公司，A/H归CN，纯港股HK，其他OTHER，无法确定UNKNOWN，列可定位依据。研究阶段召回被禁公司不等于可写入公开稿，不能改成行业事实规避限制。
 
-suggestions 放编辑提醒；changes 写针对反馈的变化。blocking_gaps 只列支撑主线、关键事实和必写项尚缺的必要依据；gaps 列可选材料或已通过缩小范围避开的缺口。不把“不写当前权重”变成整篇必须补权重。材料不足以形成约1100字完整信息时，说明具体缺哪类独立事实，不用分析填篇幅。supplement_queries 最多3个公开问题，补搜由用户操作，不含私有原稿或笔记。
+suggestions 放编辑提醒；changes 写针对反馈的变化。blocking_gaps 只列支撑主线、关键事实和必写项尚缺的必要依据；gaps 列可选材料或已通过缩小范围避开的缺口。不把“不写当前权重”变成整篇必须补权重。材料不足以形成约1100字完整信息时，说明具体缺哪类独立事实，不用分析填篇幅。启用框架内补搜时按随任务加载的 supplement 指南主动补查；supplement_queries 最多3个仍需人工继续处理的公开问题，不含私有原稿或笔记。

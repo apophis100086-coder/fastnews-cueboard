@@ -62,7 +62,7 @@ class NewsWritingTests(unittest.TestCase):
             actor_type='human',config=self.config,**kw)
 
     def data(self,**kw):
-        return dict(edition_id=self.eid,decision_revision=1,request_id=uuid.uuid4().hex,**kw)
+        return dict(edition_id=self.eid,decision_revision=1,request_id=uuid.uuid4().hex,**{'supplement_latest':False,**kw})
 
     def outline(self,payload):
         source=payload['sources'][0]

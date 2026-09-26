@@ -644,8 +644,10 @@ def generate_report(conn, config, profile_id, kind, day, *, edition=None, runner
     from .host_task_budget import reservation
     rid = 'reading_'+uuid.uuid4().hex
     with reservation(conn):
-        if task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
-            raise ValueError('今天的宿主任务次数已达本地预算上限；可继续阅读已存结果，预算见 config/reader.defaults.yaml')
+        from .host_task_budget import status, exhausted_message
+        budget=status(conn,used=task_attempts(conn),limit=reader_limits()['max_tasks_per_day'])
+        if not budget['remaining']:
+            raise ValueError(exhausted_message(budget))
         with conn:
             conn.execute('INSERT INTO fn_reading_reports(report_id,profile_id,kind,day,edition_id,product_code,host,status,input_hash,input_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                 (rid,profile_id,kind,day,edition['edition_id'] if edition else None,edition['product_code'] if edition else None,

@@ -1,4 +1,4 @@
-version: huatai-writing-v6.4-20260926
+version: huatai-writing-v6.4-outline-research-20260926
 deadline_seconds: 480
 host_seconds: 390
 finalize_seconds: 30
@@ -19,4 +19,4 @@ rules:
   market_flows: 市场南向与产品资金分开，无去向证据不推断南向专买红利。
   support: 计划、预测、报道、分析分开；同现不等于因果；不得承诺收益或虚构稀缺性、持仓和最新数据。
   sources: 引用必须来自本轮材料；只有搜索摘要或模型自报引文不能算原文；转引不能改标Wind直接数据。
-  human_control: 人工主线和必写项优先，补料须人工采用，确认框架后才生成正文，绝不自动发布。
+  human_control: 人工主线和必写项优先，框架内补搜材料单列建议；用户确认含新增资料的最终框架后才进入正文，不自动改动人工选材，绝不自动发布。

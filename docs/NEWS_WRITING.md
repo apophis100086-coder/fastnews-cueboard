@@ -5,9 +5,9 @@
 ## 使用顺序
 
 1. 在人工候选池勾选本次材料，按需要排序、设置主事件和“必须体现”。补充事实请填来源；表达偏好选“写作要求”，不会作为事实使用。保存选择。
-2. 点击“生成写作框架”。模型只接收本次已选材料、选中的补充、主线说明和本次反馈。先取得可比对的出处片段，再返回主线、标题方向、段落要点、材料安排、建议及缺口，不写正文。
+2. 点击“生成写作框架”。模型接收本次已选材料、选中的补充、主线说明和本次反馈；开启补查时按下面的公开检索约束发现相关新消息。先核对已有出处，整理框架后再独立读取新增原文，返回主线、标题方向、段落要点、材料安排、建议及缺口，不写正文。
 3. 输入意见，点击“按意见修改框架”。每轮保留旧版本。关键依据不足会阻止正文；不影响当前写法的可选补料不会阻断。
-4. 如需补料，展开“按缺口补搜”，检查并修改公开检索问题后发起。结果回到产品线索，必须人工采用、保存并更新框架，才进入写作输入。
+4. 生成框架默认勾选“补查与主线相关的最新公开消息”：在同一次模型任务检查本期截点前7个自然日，最多8次公开搜索、6份新增出处，搜索上限为模型任务指令，并记录可观察到的工具轨迹，不冒充对宿主内部调用的硬限流。新增资料作为框架建议单列，核对原文后随最终框架由用户确认，不改动已保存的人工选材。关闭该选项或方案关闭联网时只用已有材料。仍需进一步补料，可展开“按缺口补搜”，检查公开问题后发起；这条独立补搜路径的结果回到产品线索，人工采用、保存并更新框架后才进入写作输入。
 5. 将满意版本放入最终框架编辑区，或自行粘贴并修改。点击“确认此框架并生成初稿”。用户的最终文本决定段落安排；新增事实与数字依然要对应证据。改变已保存选材后，旧框架需要重新整理。
 6. 初稿以正文为主，逐段来源折叠；通过检查后可复制标题、正文和来源，或下载 Markdown / JSON。风险提示独立复制，缺失的正式产品备注单独提示。
 
@@ -37,7 +37,7 @@
 
 选材草稿与框架编辑区各自按工作区、期次保存在当前浏览器本机。不要清理浏览器存储来恢复页面。已确认框架和生成版本进入SQLite；数据库和本地导出不上传GitHub。
 
-每次框架或正文默认一个已授权宿主任务，共享480秒总截止，资料核对最多60秒、模型最多390秒、预留30秒收尾。检索与写作合计每日12次（含失败尝试）；项目数据目录中的真实库与备份按任务ID去重计数，不能通过换库重获额度。选材与来源上下文上限24000字符（不含宿主自身指令），超过预算显式报错。不同产品共用一个重型后台任务；支持停止，旧成果与人工编辑保留。
+每次框架或正文默认一个已授权宿主任务，共享480秒总截止，资料核对最多60秒、模型最多390秒、预留30秒收尾。框架开启补查时前置核对最多30秒，未使用的核对时间留给模型返回后的新增出处；模型启动前预留该核对时间和30秒保存时间，两次核对共用20页总预算及每材料4页限制。检索与写作每日上限读取 `config/reader.defaults.yaml`（默认12次，含失败尝试）；项目数据目录中的真实库与备份按任务ID去重计数，不能通过换库重获额度。页面显示本地已用／剩余次数与北京时间次日00:00恢复时间，不代表宿主账号额度。受理失败、运行失败均在框架按钮附近显示原因；可恢复的任务失败原因保存到运行记录，刷新后可查看。选材与来源上下文上限24000字符（不含宿主自身指令），超过预算显式报错。不同产品共用一个重型后台任务；支持停止，旧成果与人工编辑保留。
 
 ## 接口
 
@@ -45,12 +45,12 @@
 
 | 接口 | 主要输入 | 返回 |
 |---|---|---|
-| `POST /api/writing-outline` | edition_id、decision_revision、reader_profile、request_id；修改时加parent_version_id、feedback | job_id |
+| `POST /api/writing-outline` | edition_id、decision_revision、reader_profile、request_id；可选supplement_latest（默认true，尊重方案联网开关）；修改时加parent_version_id、feedback | job_id |
 | `POST /api/writing-confirm` | edition_id、decision_revision、outline_version_id、text、request_id | 确认框架版本 |
 | `POST /api/writing-draft` | edition_id、decision_revision、confirmed_version_id、reader_profile、request_id | job_id |
 | `POST /api/writing-export` | version_id | artifact_type、markdown、risk_notice、trace |
 | `POST /api/writing-recheck` | version_id、request_id | 程序复查的新版本；不调用模型 |
-| `GET /api/edition?id=…` | 期次 | writing.versions / writing.runs |
+| `GET /api/edition?id=…` | 期次 | writing.versions / writing.runs / writing.task_budget；版本另含supplemental_research、supplemental_materials、source_evidence |
 | `GET /api/job?id=…` | 任务 | 状态、进度、开始及截止时间 |
 | `POST /api/job-stop` | job_id | 停止请求状态 |
 | `POST /api/explore` | 原字段及writing_context.outline_version_id | 补搜任务；仅发送用户可见公开问题 |

@@ -22,6 +22,12 @@ DRAFT=obj(status=enum('ready','needs_materials'),title=S,
     issues=arr(S),entities=arr(ENTITY),review=obj(faithful_to_outline=B,claims_supported=B,
         must_include_covered=B,entities_complete=B,no_new_facts=B))
 from copy import deepcopy
+OUTLINE_RESEARCH=deepcopy(OUTLINE)
+OUTLINE_RESEARCH['properties']['supplemental_sources']=arr(obj(
+    material_id=S,source_id=S,title=S,publisher=S,url=S,published_at=S,
+    excerpt=S,relation=S))
+OUTLINE_RESEARCH['properties']['research_summary']=S
+OUTLINE_RESEARCH['required']=list(OUTLINE_RESEARCH['properties'])
 DRAFT_V64=deepcopy(DRAFT)
 DRAFT_V64['properties']['editorial_review']=obj(
     main_news_first=S,independent_information=S,product_link=S,

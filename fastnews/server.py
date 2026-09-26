@@ -331,9 +331,10 @@ class LocalApplication:
                     frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
                     if action=='digest' or action in {'research','explore'} and (data.get('use_host') or action=='explore'):
                         from .writing import task_attempts
-                        from .reader_limits import reader_limits
-                        if task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
-                            raise ValueError('今天项目的模型任务已达每日预算；已存结果可继续使用，下一预算窗口可继续本批回测')
+                        from .host_task_budget import status, exhausted_message
+                        budget=status(conn,used=task_attempts(conn))
+                        if not budget['remaining']:
+                            raise ValueError(exhausted_message(budget))
                 if action == 'scan' and 'source_id' in data:
                     from .source_catalog import catalog
                     with closing(self.connection()) as conn:

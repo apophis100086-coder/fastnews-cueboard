@@ -22,7 +22,7 @@ from .reader_limits import reader_limits
 from .source_access import source_constraints, url_policy
 from .task_control import TaskControl
 from .writing_checks import issue, check_text, qualify_claim, numeric_tokens, number_units, changed_quantity_scopes, within_cutoff, normalized, reference_date, FUND_MANAGER_NAMES
-from .writing_contracts import OUTLINE, DRAFT, DRAFT_V64
+from .writing_contracts import OUTLINE, OUTLINE_RESEARCH, DRAFT, DRAFT_V64
 
 ROOT=Path(__file__).resolve().parents[1]
 SKILL=ROOT/'skills'/'huatai-fastnews-writing'
@@ -50,8 +50,10 @@ def policy():
 def instructions(stage):
     # The host receives text, not access to linked skill files. Load the shared
     # style guide explicitly so it is also covered by the frozen skill hash.
-    return '\n'.join(path.read_text(encoding='utf-8') for path in
-        (SKILL/'SKILL.md',SKILL/'guides'/'common.md',SKILL/'guides'/'style.md',SKILL/'guides'/(stage+'.md')))
+    paths=[SKILL/'SKILL.md',SKILL/'guides'/'common.md',SKILL/'guides'/'style.md',SKILL/'guides'/(stage+'.md')]
+    if stage=='outline':
+        paths.append(SKILL/'guides'/'supplement.md')
+    return '\n'.join(path.read_text(encoding='utf-8') for path in paths)
 
 
 def task_attempts(conn):
@@ -213,7 +215,16 @@ def accept_run(conn,config,stage,data,control,run_id=None):
         parent=version(conn,data['parent_version_id'])
         if parent['edition_id']!=data['edition_id'] or parent['stage']!='outline':
             raise ValueError('框架反馈必须关联本期框架')
+        if parent['decision_revision']==snapshot['decision_revision']:
+            supplemental=[m for m in parent['snapshot']['materials'] if m['origin']=='outline_supplement']
+            ids={m['id'] for m in supplemental}
+            snapshot['materials'].extend(deepcopy(supplemental))
+            snapshot['sources'].extend(deepcopy([s for s in parent['snapshot']['sources'] if s['material_id'] in ids]))
+    supplement=data.get('supplement_latest',True)
+    if type(supplement) is not bool:
+        raise ValueError('框架补搜开关必须为布尔值')
     content={'snapshot':snapshot,'host':settings['host'],'allow_verify':settings.get('web_search',True),
+        'supplement_latest':stage=='outline' and supplement and settings.get('web_search',True),
         'feedback':feedback,'parent':parent['content'] if parent else None,
         'parent_id':parent['version_id'] if parent else None,'instructions':instructions(stage)}
     # Bound selected user content, not source retrieval or instruction overhead.
@@ -224,8 +235,10 @@ def accept_run(conn,config,stage,data,control,run_id=None):
     with reservation(conn):
         conn.execute('BEGIN IMMEDIATE')
         try:
-            if task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
-                raise ValueError('今天宿主任务已达到共享预算12次（包括检索、写作及失败尝试）')
+            from .host_task_budget import status, exhausted_message
+            budget=status(conn,used=task_attempts(conn),limit=reader_limits()['max_tasks_per_day'])
+            if not budget['remaining']:
+                raise ValueError(exhausted_message(budget))
             control.check()
             conn.execute('''INSERT INTO fn_writing_runs(run_id,request_id,request_hash,edition_id,decision_revision,stage,
                 profile_id,status,input_json,created_at,deadline_at) VALUES(?,?,?,?,?,?,?,'running',?,?,?)''',
@@ -262,13 +275,19 @@ def _read_source(url,control,seconds):
         process.wait(timeout=5)
 
 
-def verify_sources(snapshot,control,progress=None,fetcher=None):
+def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,source_ids=None,budget_state=None):
     fetcher=fetcher or _read_source
-    rules=snapshot['rules']; until=min(time.monotonic()+rules['verification_seconds'],control.deadline-60)
-    seen={}; counts={}; total=0
+    rules=snapshot['rules']
+    state=budget_state if budget_state is not None else {}
+    started=time.monotonic()
+    allowance=min(seconds if seconds is not None else rules['verification_seconds'],
+                  max(0,rules['verification_seconds']-state.get('elapsed',0)))
+    until=min(started+allowance,control.deadline-rules['finalize_seconds'])
+    seen=state.setdefault('seen',{}); counts=state.setdefault('counts',{}); total=state.get('total',0)
+    selected=[s for s in snapshot['sources'] if source_ids is None or s['id'] in source_ids]
     from .live_sources import load_live_config
     program_rules=load_live_config()['sources']
-    for source in snapshot['sources']:
+    for source in selected:
         control.check()
         if source['text_observed']:
             continue
@@ -294,7 +313,7 @@ def verify_sources(snapshot,control,progress=None,fetcher=None):
         if url not in seen and (time.monotonic()>=until or total>=rules['max_pages'] or counts.get(mid,0)>=rules['pages_per_material']):
             source['error']='verification_budget'; continue
         if progress:
-            progress({'stage':'writing_verify','message':'核对已选材料出处 '+str(total+1)})
+            progress({'stage':'writing_verify','message':('核对新增资料出处 ' if source_ids is not None else '核对已选材料出处 ')+str(total+1)})
         if url not in seen:
             seen[url]=fetcher(url,control,max(.1,min(rules['page_seconds'],until-time.monotonic())))
             total+=1; counts[mid]=counts.get(mid,0)+1
@@ -316,8 +335,9 @@ def verify_sources(snapshot,control,progress=None,fetcher=None):
         except ValueError:
             pass
     # Excerpts are explicitly bounded; missing passages remain a visible gap.
+    state.update(total=total,elapsed=state.get('elapsed',0)+time.monotonic()-started)
     per_source=max(600,min(5000,14000//max(1,len(snapshot['sources']))))
-    for source in snapshot['sources']:
+    for source in selected:
         full=source.get('text','')
         source['document_hash']=hashlib.sha256(full.encode()).hexdigest() if source['text_observed'] else None
         source['text_truncated']=len(full)>per_source or source.get('upstream_text_truncated',False)
@@ -465,6 +485,8 @@ def confirm_outline(conn,data):
             product_codes=parent['snapshot']['product_codes'],cutoff=parent['snapshot']['news_cutoff'],editorial=True)
         if checks['errors']:
             raise ValueError('框架仍有关键依据或规则问题，请先补齐材料并更新框架')
+        if snapshot.get('supplemental_research',{}).get('enabled'):
+            snapshot['supplemental_research']['approval']='confirmed_with_outline'
         result=_save_version(conn,snapshot,'confirmed_outline',
             dict(reviewed,confirmed_text=body),checks,parent_id=parent['version_id'],request_id=rid,input_hash=identity)
         conn.commit()
@@ -584,6 +606,7 @@ def run_record(row):
     result=dict(row)
     saved=json.loads(result.pop('input_json'))
     result.update(job_id=result['run_id'],action='writing-'+result['stage'],reader_profile=result['profile_id'],
+        error=saved.get('failure_message'),
         product_code=saved['snapshot']['product_code'],news_cutoff=saved['snapshot']['news_cutoff'],
         started_at=result['created_at'],progress=[],usage=json.loads(result.pop('usage_json') or 'null'))
     return result
@@ -594,15 +617,24 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
     if not row or row['status']!='running':
         raise ValueError('任务不存在或已经结束')
     data=json.loads(row['input_json']); snapshot=data['snapshot']; stage=row['stage']; response=None
+    supplement=stage=='outline' and data.get('supplement_latest',False)
+    verification={}
     try:
         control.check()
         if snapshot['is_fixture'] and runner is run_host:
             raise ValueError('合成测试不能调用真实写作宿主')
         if stage=='outline':
             if data['allow_verify']:
-                verify_sources(snapshot,control,progress,fetcher)
+                verify_sources(snapshot,control,progress,fetcher,
+                    seconds=snapshot['rules']['verification_seconds']/2 if supplement else None,budget_state=verification)
             previous={k:v for k,v in (data['parent'] or {}).items() if k not in {'claims','text'}} or None
             raw=dict(snapshot,stage=stage,feedback=data['feedback'],previous_outline=previous)
+            if supplement:
+                from .writing_research import research_brief
+                raw['supplemental_research']=research_brief(snapshot)
+            else:
+                raw['supplemental_research']={'enabled':False,'status':'disabled'}
+                snapshot['supplemental_research']=deepcopy(raw['supplemental_research'])
             raw['materials']=deepcopy(snapshot['materials'])
             for material in raw['materials']:
                 if material['origin']=='user_material' and any(s['material_id']==material['id'] and s['text_observed'] for s in snapshot['sources']):
@@ -622,20 +654,35 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
                 source.pop('research_hint',None)
         # Source constraints are enforced in the reader, never extra writing material.
         raw.pop('source_constraints',None)
+        if stage=='draft':
+            # Search traces and full returned excerpts stay in the frozen audit,
+            # not in the draft's bounded evidence input a second time.
+            raw.pop('supplemental_research',None)
         raw['sources']=deepcopy(raw['sources'])
         for source in raw['sources']:
             source.pop('text_segments',None)  # server audit, duplicate of rendered excerpts
+            if source.get('text_observed'):
+                source.pop('research_hint',None)
         context=dumps(raw)
         if len(context)>reader_limits()['max_input_characters']:
             raise ValueError('本次选材及原文超过24000字符预算，请精简选材；必写项未被自动丢弃')
         if progress:
-            progress({'stage':'writing_model','message':'正在整理框架与证据' if stage=='outline' else '正在按确认框架生成正文并检查'})
+            progress({'stage':'writing_model','message':('正在补查最新消息并整理框架' if supplement else '正在整理框架与证据') if stage=='outline' else '正在按确认框架生成正文并检查'})
+        post_verify=max(0,snapshot['rules']['verification_seconds']-verification.get('elapsed',0)) if supplement else 0
         response=runner(data['host'],data['instructions']+'\nINPUT_JSON:\n'+context,
-            OUTLINE if stage=='outline' else DRAFT_V64 if 'v6.4' in snapshot['rules']['version'] else DRAFT,web_search=False,
-            timeout=control.host_timeout(snapshot['rules']['host_seconds'],snapshot['rules']['finalize_seconds']),
+            OUTLINE_RESEARCH if supplement else OUTLINE if stage=='outline' else DRAFT_V64 if 'v6.4' in snapshot['rules']['version'] else DRAFT,web_search=supplement,
+            timeout=control.host_timeout(snapshot['rules']['host_seconds'],snapshot['rules']['finalize_seconds']+post_verify),
             control=control,progress=progress)
         control.check()
-        content,checks=validate_outline(response.payload,snapshot) if stage=='outline' else validate_draft(response.payload,snapshot,data['parent'])
+        payload=response.payload
+        if supplement:
+            from .writing_research import stage_discoveries, finalize_discoveries
+            payload,added=stage_discoveries(payload,snapshot)
+            snapshot['supplemental_research']['trace']=response.trace
+            snapshot['supplemental_research']['reported_sources']=response.payload['supplemental_sources']
+            verify_sources(snapshot,control,progress,fetcher,seconds=post_verify,source_ids=added,budget_state=verification)
+            finalize_discoveries(payload,snapshot,added)
+        content,checks=validate_outline(payload,snapshot) if stage=='outline' else validate_draft(payload,snapshot,data['parent'])
         control.check()
         usage=dict(response.usage,total_elapsed_seconds=round(time.monotonic()-control.started,2))
         with conn:
@@ -649,10 +696,17 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
         if not response:
             usage.update(input_tokens=None,output_tokens=None,cost=None,usage_status='unknown')
         with conn:
+            saved_input=json.loads(row['input_json'])
+            saved_input['snapshot']=snapshot
+            failure=str(exc) if isinstance(exc,ValueError) or getattr(exc,'code',None) else '写作任务发生错误，请重试或查看本轮记录。'
+            try:
+                ed._reject_secrets(Path('writing-error.txt'),failure)
+            except ValueError:
+                failure='写作任务失败，错误信息包含敏感字段，已隐藏。'
+            saved_input['failure_message']=failure[:1000]
             if response:
-                saved_input=json.loads(row['input_json'])
                 saved_input['raw_failed_response']=response.payload
-                conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(dumps(saved_input),identifier))
+            conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(dumps(saved_input),identifier))
             conn.execute('UPDATE fn_writing_runs SET status=?,error_code=?,usage_json=?,finished_at=? WHERE run_id=?',
                 (status,code,dumps(usage),utc_now(),identifier))
         raise
@@ -663,7 +717,10 @@ def public_version(record):
     result['product_code']=record['snapshot']['product_code']
     result['news_cutoff']=record['snapshot']['news_cutoff']
     result['skill_version']=record['snapshot']['skill_version']
-    result['source_evidence']=[{k:s.get(k) for k in ('id','material_id','name','url','published_at','data_as_of','evidence_id','text_observed','identity','error','text_truncated','fingerprint')} for s in record['snapshot']['sources']]
+    result['source_evidence']=[{k:s.get(k) for k in ('id','material_id','title','name','url','published_at','data_as_of','evidence_id','text_observed','date_observed','news_freshness','identity','error','text_truncated','fingerprint')} for s in record['snapshot']['sources']]
+    research=record['snapshot'].get('supplemental_research',{})
+    result['supplemental_research']={k:deepcopy(research[k]) for k in ('enabled','status','summary','source_ids','verified_sources','approval') if k in research}
+    result['supplemental_materials']=[{k:m[k] for k in ('id','title','relation')} for m in record['snapshot']['materials'] if m['origin']=='outline_supplement']
     result['product_context'] = deepcopy(record['snapshot'].get('product_context', {}))
     return result
 
@@ -676,7 +733,8 @@ def workflow(conn,edition_id):
         item['stale_selection']=item['decision_revision']!=(decision or {}).get('decision_revision')
         item['stale_skill_version']=item['skill_version']!=current_skill
     runs=[run_record(row) for row in conn.execute('SELECT * FROM fn_writing_runs WHERE edition_id=? ORDER BY rowid',(edition_id,))]
-    return {'versions':versions,'runs':runs,'rules_version':policy()['version']}
+    from .host_task_budget import status
+    return {'versions':versions,'runs':runs,'rules_version':policy()['version'],'task_budget':status(conn)}
 
 
 def export_draft(conn,identifier):

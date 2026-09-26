@@ -5,6 +5,26 @@ import os
 import sqlite3
 from .metadata import parse_instant
 
+
+def status(conn, *, used=None, limit=None):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from .budget import utc_now
+    from .metadata import time_bounds
+    from .reader_limits import reader_limits
+    now=parse_instant(utc_now()).astimezone(ZoneInfo('Asia/Shanghai'))
+    used=attempts(conn,*time_bounds(now.date().isoformat())) if used is None else used
+    limit=reader_limits()['max_tasks_per_day'] if limit is None else limit
+    reset=(now+timedelta(days=1)).replace(hour=0,minute=0,second=0,microsecond=0)
+    return dict(used=used,limit=limit,remaining=max(0,limit-used),resets_at=reset.isoformat(),
+                scope='project_local_daily',includes_failed_attempts=True)
+
+
+def exhausted_message(budget):
+    return (f"今天宿主任务已达到共享预算上限{budget['limit']}次，已记录{budget['used']}次"
+            f"（包括检索、写作及失败尝试）。北京时间{budget['resets_at'][:10]} 00:00恢复；"
+            "这是项目本地限制，不代表账号额度用尽。")
+
 ROOT=Path(__file__).resolve().parents[1]
 
 
