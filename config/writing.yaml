@@ -5,6 +5,7 @@ finalize_seconds: 30
 verification_seconds: 90
 page_seconds: 12
 max_pages: 20
+max_source_bytes: 2000000
 pages_per_material: 4
 body_characters: [800, 1200]
 max_outline_characters: 10000

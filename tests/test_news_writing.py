@@ -171,6 +171,43 @@ class NewsWritingTests(unittest.TestCase):
         self.assertEqual(w.version(self.conn,draft['version_id']),before)
         self.assertTrue(w.workflow(self.conn,self.eid)['versions'][-1]['stale_selection'])
 
+    def test_benchmark_definition_is_not_short_term_performance(self):
+        for text in ('业绩比较基准为恒生科技指数收益率',
+                     '依据2025年第4季度报告，业绩比较基准为恒生科技指数收益率，使用估值汇率折算',
+                     '本基金业绩比较基准为沪深300指数收益率（使用估值汇率折算）'):
+            self.assertNotIn('short_performance',[x['code'] for x in check_text(text)])
+        for text in ('本基金近三个月收益率为5%，业绩比较基准为恒生科技指数收益率',
+                     '本基金业绩比较基准为恒生科技指数收益率（近三个月5%）',
+                     '本基金业绩比较基准为恒生科技指数收益率，近三个月上涨5%',
+                     '本基金的业绩比较基准指数收益率为5%'):
+            self.assertIn('short_performance',[x['code'] for x in check_text(text)])
+
+    def test_product_reference_date_is_available_only_on_its_cited_source(self):
+        outline=self.generate();confirmed=self.confirm(outline)
+        snap=confirmed['snapshot'];source=snap['sources'][0]
+        source.update(data_as_of='2025-12-31',evidence_id='evidence_fixture',date_observed=True)
+        raw=self.runner('fixture','INPUT_JSON:\n'+w.dumps(dict(stage='draft',confirmed_outline=confirmed['content']['confirmed_text'])),{},web_search=False).payload
+        raw['paragraphs'][0]['text']='资料截至2025年12月31日。'+self.statement
+        self.assertFalse(w.validate_draft(raw,snap,confirmed['content'])[1]['errors'])
+        claim=deepcopy(confirmed['content']['claims'][0]);claim['data_period']='2025-12-31'
+        self.assertFalse(qualify_claim(claim,{source['id']:source},snap['news_cutoff']))
+        claim['data_period']='2025-12-29'
+        self.assertIn('unsupported_period',{e['code'] for e in qualify_claim(claim,{source['id']:source},snap['news_cutoff'])})
+        snap['sources'].append(dict(source,id='unused_reference'))
+        source.pop('data_as_of')
+        self.assertIn('new_number',{e['code'] for e in w.validate_draft(raw,snap,confirmed['content'])[1]['errors']})
+
+    def test_known_bilingual_publisher_still_requires_its_real_quote_and_identity(self):
+        quote='Hang Seng Indexes Company launched the HSTECH in July 2020.'
+        source=dict(id='s',name='恒生指数公司',text=quote,text_observed=True)
+        entity=dict(name='恒生指数公司',source_id='s',quote=quote,market='HK')
+        self.assertFalse(w._entities([entity],{'s':source}))
+        self.assertFalse(w._entities([entity],{'s':dict(source,text=quote.replace('Company launched','\nCompany launche d'))}))
+        self.assertTrue(w._entities([dict(entity,name='任意其他公司')],{'s':source}))
+        self.assertTrue(w._entities([entity],{'s':dict(source,name='其他出处')}))
+        self.assertTrue(w._entities([entity],{'s':dict(source,text='未读到的其他内容')}))
+        self.assertTrue(w._entities([entity],{'s':dict(source,text_segments=['Hang Seng Indexes Company','launched the HSTECH in July 2020.'])}))
+
     def test_title_cannot_change_an_observed_percentage_to_money(self):
         outline=self.generate();confirmed=self.confirm(outline)
         raw=self.runner('fixture','INPUT_JSON:\n'+w.dumps(dict(stage='draft',confirmed_outline=confirmed['content']['confirmed_text'])),{},web_search=False).payload

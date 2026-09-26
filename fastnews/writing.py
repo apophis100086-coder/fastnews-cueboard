@@ -21,7 +21,7 @@ from .metadata import normalize_url, parse_instant, time_bounds
 from .reader_limits import reader_limits
 from .source_access import source_constraints, url_policy
 from .task_control import TaskControl
-from .writing_checks import issue, check_text, qualify_claim, numeric_tokens, number_units, changed_quantity_scopes, within_cutoff, normalized, FUND_MANAGER_NAMES
+from .writing_checks import issue, check_text, qualify_claim, numeric_tokens, number_units, changed_quantity_scopes, within_cutoff, normalized, reference_date, FUND_MANAGER_NAMES
 from .writing_contracts import OUTLINE, DRAFT
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -42,6 +42,8 @@ def policy():
         raise ValueError('写作时限或页面预算配置无效')
     if value['finalize_seconds']<30 or value['host_seconds']>450:
         raise ValueError('写作任务必须预留保存和清理时间')
+    if type(value['max_source_bytes']) is not int or not 100000 <= value['max_source_bytes'] <= 4000000:
+        raise ValueError('单份公开资料字节上限需在100000至4000000之间')
     return value
 
 
@@ -142,11 +144,24 @@ def _snapshot(conn, config, edition_id, revision):
                 identity=ev.get('source_type') or 'selected_fact_evidence',source_id=ev.get('source_id'),error=None))
     if not materials:
         raise ValueError('请先选择事实材料；只有写作要求不能生成框架')
+    from .product_context import public_context
+    context = public_context(conn, edition)
+    for ref in context['references']:
+        mid = ref['id']
+        materials.append(dict(id=mid,title=ref['title'],summary='有日期的产品背景依据，不能当作当天新消息或当前持仓。',
+            relation=ref['snapshot_type'],origin='product_reference',must_include=False))
+        sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,
+            name=ref['source_name'] or ref['title'],url=ref['source_url'],published_at=ref['published_at'],
+            text=ref['excerpt'],research_hint='',text_observed=True,date_observed=True,
+            identity=ref['source_type'],source_id=None,document_id=ref['document_id'],
+            evidence_id=ref['evidence_id'],data_as_of=ref['data_as_of'],error=None))
     rules=policy()
     return dict(edition_id=edition_id,product_code=edition['product_code'],product_name=edition['product_name'],
         decision_revision=revision,news_cutoff=edition['news_cutoff'],market_cutoffs=edition['market_cutoffs'],
         mainline_note=decision.get('mainline_note'),selected_event_id=decision.get('selected_event_id'),
         materials=materials,sources=sources,preferences=preferences,rules=rules,
+        product_context={'version':context['version'],'published_history':context['published_history'],
+                         'gaps':context['gaps']},
         source_constraints=source_constraints(config.get('reader_sources',[])),
         is_fixture=edition['is_fixture'],skill_version=fingerprint([instructions('outline'),instructions('draft'),rules]),
         product_codes=list(config['products']))
@@ -333,7 +348,16 @@ def _entities(raw,sources):
     errors=[]
     for e in raw:
         source=sources.get(e['source_id'])
-        if not e['name'] or not source or not source.get('text_observed') or not e['quote'] or e['quote'] not in source['text'] or e['name'] not in e['quote']:
+        # Index publishers may be attributed in Chinese from their English PDF.
+        # Only known names matching the declared publisher qualify as aliases.
+        publisher_aliases={'恒生指数公司':'Hang Seng Indexes Company','恒生指数有限公司':'Hang Seng Indexes Company',
+                           '中证指数有限公司':'China Securities Index Company'}
+        alias=publisher_aliases.get(e['name']) if source and source.get('name')==e['name'] else None
+        identified=e['name'] in e['quote'] or bool(alias and alias in e['quote'])
+        # PDF line breaks can also split an English word. Ignore layout only,
+        # checking each real segment separately, without joining omitted text.
+        observed=bool(source and e['quote'] and any(normalized(e['quote']) in normalized(part) for part in source.get('text_segments',[source.get('text','')])))
+        if not e['name'] or not source or not source.get('text_observed') or not observed or not identified:
             errors.append(issue('entity_identity','具体公司缺少可核对的身份依据',e.get('name','')))
         if e['market']=='UNKNOWN' and e['name'] not in FUND_MANAGER_NAMES:
             errors.append(issue('entity_identity','公司上市身份待核实',e['name']))
@@ -461,7 +485,7 @@ def validate_draft(raw,snapshot,outline):
             errors.append(issue('outline_mapping','段落的材料与事实引用不一致',str(index)))
         used.update(mid); seen.add(oid)
         evidence=' '.join(claims[c]['quote']+' '+claims[c]['statement'] for c in ids)
-        citation_dates=' '.join((claims[c]['published_at'] or '')+' '+claims[c]['data_period'] for c in ids if claims[c]['usable'])
+        citation_dates=' '.join((claims[c]['published_at'] or '')+' '+claims[c]['data_period']+' '+reference_date(sources[claims[c]['source_id']]) for c in ids if claims[c]['usable'])
         allowed=numeric_tokens(evidence+' '+citation_dates+' '+snapshot['product_name']+' '+snapshot['product_code'])
         allowed_title.update(allowed)
         quotes=' '.join(claims[c]['quote'] for c in ids)
@@ -612,7 +636,8 @@ def public_version(record):
     result['product_code']=record['snapshot']['product_code']
     result['news_cutoff']=record['snapshot']['news_cutoff']
     result['skill_version']=record['snapshot']['skill_version']
-    result['source_evidence']=[{k:s.get(k) for k in ('id','material_id','name','url','published_at','text_observed','identity','error','text_truncated','fingerprint')} for s in record['snapshot']['sources']]
+    result['source_evidence']=[{k:s.get(k) for k in ('id','material_id','name','url','published_at','data_as_of','evidence_id','text_observed','identity','error','text_truncated','fingerprint')} for s in record['snapshot']['sources']]
+    result['product_context'] = deepcopy(record['snapshot'].get('product_context', {}))
     return result
 
 

@@ -40,12 +40,12 @@ def add_options(sub, name):
     if name in {"show-edition"}:
         sub.add_argument("edition_id")
     if name in {"import-evidence", "import-product-data", "import-history"}:
-        sub.add_argument("file", type=Path, help="explicit local file to import; contents stay local")
+        sub.add_argument("file", type=Path, help="explicit local file; private by default, public context requires --privacy-class public")
         sub.add_argument("--declared-source")
+        sub.add_argument("--privacy-class", choices=["private_local", "public"], default="private_local")
     if name == "import-evidence":
         sub.add_argument("--edition-id", required=True)
         sub.add_argument("--event-id")
-        sub.add_argument("--privacy-class", choices=["private_local", "public"], default="private_local")
     if name in {"import-product-data", "import-history"}:
         sub.add_argument("--product-code", required=True)
     if name == "import-history":
@@ -123,10 +123,10 @@ def dispatch(conn, config, args):
         return editorial.import_evidence(conn, args.file, authorized=True, edition_id=args.edition_id,
                                         event_id=args.event_id, declared_source=args.declared_source, privacy_class=args.privacy_class)
     if command == "import-product-data":
-        return editorial.import_product_data(conn, args.file, authorized=True, product_code=args.product_code, declared_source=args.declared_source)
+        return editorial.import_product_data(conn, args.file, authorized=True, product_code=args.product_code, declared_source=args.declared_source, privacy_class=args.privacy_class)
     if command == "import-history":
         return editorial.import_history(conn, args.file, authorized=True, product_code=args.product_code,
-                                        title=args.title, publication_time=args.publication_time, completeness=args.completeness)
+                                        title=args.title, publication_time=args.publication_time, completeness=args.completeness, privacy_class=args.privacy_class)
     if command == "assess-events":
         return editorial.assess_events(conn, config, edition_id=args.edition_id, event_ids=args.event_id)
     if command == "save-decision":

@@ -790,3 +790,15 @@ test('program recheck adds a version while preserving the final editor and avoid
  assert.equal(app.read('detail.writing.versions').at(-1).parent_id,'draft-one');
  assert.deepEqual(app.calls.filter(c=>c.method==='POST').map(c=>c.url),['/api/writing-recheck']);
 });
+
+test('product relationship evidence keeps its date and untrusted content inert without adoption',async()=>{
+ const app=await harness({reader:true});
+ const item={sources:[],claims:[],product_relationship:{references:[{title:'<img src=x onerror=alert(1)>',
+  source_url:'javascript:alert(1)',data_as_of:'2025-12-31',published_at:'2026-01-22',excerpt:'<script>attack()</script>'}],
+  claims:[{statement:'待核对的关联',support_state:'unsupported_quote'}]}};
+ const output=app.evaluate('evidenceDetails('+JSON.stringify(item)+')');
+ assert.match(output,/产品关联依据/);assert.match(output,/资料时点：2025-12-31/);
+ assert.match(output,/引用原句与关联解释待核对/);
+ assert.doesNotMatch(output,/<script>|<img|href="javascript:/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});

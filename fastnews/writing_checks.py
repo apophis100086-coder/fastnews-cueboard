@@ -130,7 +130,10 @@ def check_text(text, *, location='', entities=(), product_codes=(), cutoff=None,
             market_scope=nearest and not re.fullmatch(r'ETF|基金|产品|本品',nearest,re.I)
             if not market_scope:
                 result.append(issue('product_flow','产品规模、总份额或净资金数据不得进入公开稿',location,sentence));break
-        if re.search(r'(?:ETF|基金|指数|产品).{0,45}(?:涨幅|跌幅|涨跌幅|收益率|回报率|上涨|下跌|翻倍|翻番|收涨|收跌)',sentence,re.I):
+        # A benchmark definition names a return series; it reports no return.
+        # Only remove the terminal definition token, never a following value.
+        performance_text=re.sub(r'((?:业绩比较基准|比较基准)(?:为|是|[:：])\s*[^,，。;；%]{1,60}指数)收益率(?=(?:[(（]使用估值汇率折算[)）]|[,，]\s*使用估值汇率折算)?\s*$)',r'\1',sentence)
+        if re.search(r'(?:ETF|基金|指数|产品).{0,45}(?:涨幅|跌幅|涨跌幅|收益率|回报率|上涨|下跌|翻倍|翻番|收涨|收跌)',performance_text,re.I):
             # Dividend yield / operating figures are not price returns.
             if not re.search(r'(?:ETF|基金|指数|产品)[^，,；;]{0,30}(?:营收|收入|利润|产量|销量|设备销售|资本开支).{0,8}(?:同比|环比)',sentence):
                 short=_short_period(sentence)
@@ -165,10 +168,15 @@ def qualify_claim(claim, sources, cutoff, product_code=None):
     identity=product_code if product_code and product_code in source.get('text','') else ''
     if numeric_tokens(claim['statement'])-numeric_tokens(quote+' '+(published or '')+' '+claim['data_period']+' '+identity):
         errors.append(issue('unsupported_number','陈述中的数字未出现在对应证据内',claim['id']))
-    if numeric_tokens(claim['data_period'])-numeric_tokens(source.get('text','')+' '+(published or '')):
+    if numeric_tokens(claim['data_period'])-numeric_tokens(source.get('text','')+' '+(published or '')+' '+reference_date(source)):
         errors.append(issue('unsupported_period','统计期未能对应原文日期',claim['id']))
     if number_units(claim['statement'])-number_units(quote):
         errors.append(issue('unsupported_unit','陈述的数字、单位或币种组合与原文不同',claim['id']))
     if changed_quantity_scopes(claim['statement'],quote):
         errors.append(issue('unsupported_quantity_scope','陈述改变了原文数值的约数或上下限口径',claim['id']))
     return errors
+
+
+def reference_date(source):
+    """The cutoff-frozen date of an imported, traceable product reference."""
+    return (source.get('data_as_of') or '') if source.get('evidence_id') and source.get('date_observed') else ''

@@ -22,7 +22,7 @@ from fastnews.writing_background import add_candidate
 CASES={
  '588090': [('https://fund.jrj.com.cn/2026/09/11140758410647.shtml','2026-09-11','金融界：科创50调样与产业进展')],
  '513530': [('https://fund.jrj.com.cn/2026/09/14123758425859.shtml','2026-09-14','金融界：港股红利与分红背景')],
- '517120': [('https://fund.jrj.com.cn/2026/08/20134658185658.shtml','2026-08-20','金融界：创新药临床与产业背景'),
+ '517120': [('https://www.merck.com/news/merck-and-moderna-announce-phase-3-interpath-001-trial-of-intismeran-autogene-plus-keytruda-met-endpoints-of-recurrence-free-survival-rfs-and-distant-metastasis-free-survival-dmfs-in-patient/','2026-08-19','Merck：临床结果（行业背景，非本基金持仓证明）'),
             ('https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-04-22/517120_20260422_XZ3R.pdf','2026-04-22','上交所基金披露：517120产品身份')],
 }
 

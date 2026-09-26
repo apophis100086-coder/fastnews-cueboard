@@ -30,7 +30,7 @@ def _report_snapshot(conn, path):
         return {'title': item['title'], 'summary': item['summary'], 'why': item['why'],
                 'sources': item['sources'], 'origin': 'ai_research', 'date_state': item['date_state'],
                 'report_id': parts[1], 'item_id': parts[2], 'fact_verified': False,
-                **{k:item.get(k) for k in ('claims','missing_items','research_identity','event_identity','material_fingerprints','time_role')}}
+                **{k:item.get(k) for k in ('claims','missing_items','research_identity','event_identity','material_fingerprints','time_role','product_relationship')}}
 
 
 def snapshot_event(conn, config, edition_id, event_id, *, retained=False):

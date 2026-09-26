@@ -51,7 +51,7 @@ Fingerprint可根据主体/指标/统计期/币种/数值/事件阶段规范化�
 
 `product_code, profile_version, observation_variables, route_config_ref, entity_aliases, coverage_rules, snapshot_id, snapshot_type, data_as_of, published_at, effective_at, evidence_refs`
 
-snapshot_type至少区分index_constituents / fund_holdings / target_fund_holdings / business_segment。权重、业务收入占比、概念重叠比例不可加总混用。原路由实体例子不自动成为当前成份股。
+snapshot_type区分product_identity / index_methodology / index_constituents / fund_holdings / target_fund_holdings / business_segment。产品身份、编制范围和实际成份分别保存；权重、业务收入占比、概念重叠比例不可加总混用。原路由实体例子不自动成为当前成份股。公开依据的截点、隐私与输入上限见[产品依据与已发稿回流](PRODUCT_CONTEXT.md)。
 
 ### CandidateAssessment
 
@@ -63,7 +63,7 @@ JSON契约在`contracts/candidate.schema.json`。source_quality/continuity可作
 
 `history_doc_id, product_codes, publication_time, title, content_or_local_ref, completeness, used_claims, lead_event_signature, conclusions, editor_tag, imported_at, content_hash`
 
-completeness为title_only / partial_text / full_text。禁止根据标题就保证正文数据没重复；旧编辑样本不能当现时经济事实。
+completeness为title_only / partial_text / full_text。导入支持可选source_url；运行时仅将显式公开且有URL的历史稿作为旧主题参考。禁止根据标题就保证正文数据没重复；旧编辑样本不能当现时经济事实。
 
 ### UserDecision与Export
 

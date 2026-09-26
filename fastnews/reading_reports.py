@@ -243,12 +243,13 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
         cutoff = edition['news_cutoff']
         start = (parse_instant(cutoff)-timedelta(days=product_reading.policy()['recent_days'])).isoformat()
         code = edition['product_code']
-        # Only the public configuration profile is sent. Authorized private
-        # snapshots and imported product documents remain local.
+        # Only explicitly public, frozen references can accompany the profile.
+        from .product_context import public_context
         product = dict(product_code=code,name=config['products'][code]['name'],
             observation_variables=edition['profile']['observation_variables'],
             relation_boundaries=edition['profile']['relation_boundaries'],
             holdings_status='关键词和观察变量，不代表当前持仓')
+        product['context'] = public_context(conn, edition)
         routed = route_product(conn,config,code,edition_date=edition['edition_date'],news_cutoff=cutoff,now=clock,
                                market_cutoffs=edition['market_cutoffs'])
         events = [e for group in ('within_cutoff','pending_time') for e in routed['groups'][group]]
@@ -279,6 +280,8 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
                'allow_web_search':bool(reader['settings'].get('web_search',True)),
                'coverage_notes':[],'category_names':CATEGORIES,'task_limits':reader_limits()}
     payload['source_constraints'] = source_constraints(config['reader_sources'])
+    if product:
+        payload['coverage_notes'].extend(product['context']['gaps'])
     if plan is not None:
         payload['selected_sources']=[{k:s.get(k) for k in ('source_id','name','url','fact_question','host_read_allowed')} for s in sources]
         payload.update(request_mode=request_mode,research_question=research_question,
@@ -382,7 +385,8 @@ def validate_report(raw, payload, trace):
             blocked.add(sid)
         else:
             sources[sid] = accepted
-    items, seen = [], set()
+    items, seen, rejected_items = [], set(), []
+    product_refs = {r['id']:r for r in ((payload.get('product') or {}).get('context') or {}).get('references', [])}
     for item in raw['items']:
         base_fields = {'title','summary','category','why','source_refs'}
         if not isinstance(item,dict) or set(item) not in (base_fields,base_fields|{'claims','event_identity'},base_fields|{'claims','event_identity'}|product_reading.FIELDS):
@@ -394,13 +398,36 @@ def validate_report(raw, payload, trace):
         refs = item['source_refs']
         if not isinstance(refs,list) or not 1<=len(refs)<=limits['max_refs_per_item'] or any(not isinstance(r,str) for r in refs):
             raise ValueError('每条线索需有 1—4 个可追溯来源')
+        relationship_refs = [r for r in dict.fromkeys(refs) if r in product_refs]
+        if relationship_refs:
+            # Product scope supports the relationship, never the news event.
+            # Keep it outside event fingerprints so every event sharing the
+            # same prospectus does not become a duplicate of every other one.
+            refs = [r for r in refs if r not in product_refs]
+            if not refs:
+                rejected_items.append({'title':item['title'],'reason':'product_background_only',
+                                       'source_refs':item['source_refs']})
+                continue
+            item = dict(item, source_refs=refs)
         if any(ref not in sources or ref in blocked for ref in refs):
             warnings.append('已剔除引用缺失或日期超出范围的模型条目')
+            rejected_items.append({'title':item['title'],'reason':'unavailable_source_ref',
+                'source_refs':refs,'unavailable_refs':[ref for ref in refs if ref not in sources or ref in blocked]})
             continue
         cited = [sources[ref] for ref in dict.fromkeys(refs)]
+        relation_claims = []
+        if relationship_refs and item.get('claims'):
+            context_sources = [dict(id=r,url=product_refs[r]['source_url'],excerpt=product_refs[r]['excerpt'],
+                source_excerpt_verified=True,material_identity='public_product_reference',
+                published_at=product_refs[r]['published_at'],missing_items=[]) for r in relationship_refs]
+            # Reuse the normal contract/quote checker before separating claims.
+            checked = enrich_item({'sources':cited+context_sources},item,payload)
+            relation_claims = [c for c in checked['claims'] if c['source_ref'] in product_refs]
+            item = dict(item,claims=[c for c in item['claims'] if c['source_ref'] not in product_refs])
         dated = [time_bounds(s.get('published_at')) for s in cited]
         if any(lo is not None and (lo>cutoff or (hi<start and s.get('time_role')!='background' and not semantic)) for s,(lo,hi) in zip(cited,dated)) or any(time_bounds(s.get('first_published_at'))[0] is not None and time_bounds(s.get('first_published_at'))[0]>cutoff for s in cited):
             warnings.append('已剔除新闻截点或采集窗口之外的条目')
+            rejected_items.append({'title':item['title'],'reason':'outside_time_window','source_refs':refs})
             continue
         identity = re.sub(r'\s+','',item['title']+item['summary'])
         if payload['kind']=='morning' and identity in seen:
@@ -423,6 +450,9 @@ def validate_report(raw, payload, trace):
                     normalized(s['title'])==normalized(item['title']) and s.get('origin')=='saved_metadata'}
         prepared['local_event_id'] = next(iter(grounded)) if len(grounded)==1 else None
         enriched=enrich_item(prepared,item,payload)
+        if relationship_refs:
+            enriched['product_relationship'] = {'references':[product_refs[r] for r in relationship_refs],
+                                               'claims':relation_claims,'purpose':'product_scope_not_news_evidence'}
         if payload['kind']=='product':
             product_reading.judgment(enriched,item,payload)
             product_reading.reconcile_identity(enriched,payload.get('known_events',[]))
@@ -468,7 +498,10 @@ def validate_report(raw, payload, trace):
     warnings.append('AI 研究摘要；列表元数据与宿主检索结果均需核对原文，未自动转为已核实事实。')
     if payload['kind']=='product':
         warnings.append(f'本次返回 {len(items)} 条有引用材料；数量不足不凑数，当前用途按条目判断。')
+    if rejected_items:
+        warnings.append(f'模型返回{len(raw["items"])}条，经引用、日期和材料用途检查，{len(rejected_items)}条未作为新闻展示；不等于没有搜到消息')
     return {'items':items,'coverage':coverage,'gaps':list(dict.fromkeys(warnings)),
+            'validation_audit':{'proposed_items':len(raw['items']),'accepted_items':len(items),'rejected_items':rejected_items},
             'sources':list(sources.values()),'auto_select':False,
             'web_actions':trace.get('web_actions'),'visited_urls':trace.get('visited_urls',[]),
             'tool_trace':trace,
@@ -665,7 +698,7 @@ def adopt_report_item(conn, profile_id, report_id, item_id, edition_id):
         'title': item['title'], 'summary': item['summary'], 'why': item['why'], 'sources': item['sources'],
         'origin': 'ai_research', 'date_state': item['date_state'], 'report_id': report_id,
         'item_id': item_id, 'fact_verified': False, 'evidence_ids': result['evidence_ids'],
-        **{k:item.get(k) for k in ('research_identity','event_identity','claims','missing_items','material_fingerprints','time_role')},
+        **{k:item.get(k) for k in ('research_identity','event_identity','claims','missing_items','material_fingerprints','time_role','product_relationship')},
         **{k:item[k] for k in product_reading.FIELDS if k in item}}
     add_candidate(conn, {}, edition_id, result['event_id'], snapshot=snapshot)
     if current:

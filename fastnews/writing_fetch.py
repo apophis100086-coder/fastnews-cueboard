@@ -41,7 +41,8 @@ class PublicationMetadata(HTMLParser):
 
 
 def read_page(url):
-    client=SafeHTTPClient(cache_dir='data/writing/http',timeout=5,max_bytes=600000,
+    from .writing import policy
+    client=SafeHTTPClient(cache_dir='data/writing/http',timeout=5,max_bytes=policy()['max_source_bytes'],
                           retries=0,max_redirects=2,rate_per_minute=10,dns_mode='public_fallback')
     response=client.get(url,allowed_hosts={urlsplit(url).hostname})
     mime=response.headers.get('content-type','').lower()

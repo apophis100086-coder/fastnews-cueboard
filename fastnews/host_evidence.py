@@ -158,6 +158,17 @@ def merge_materials(original, newer):
     result['claims'] = list(claims.values())
     result['missing_items'] = list(dict.fromkeys((result.get('missing_items') or []) + (newer.get('missing_items') or [])))
     result['material_fingerprints'] = list(sources)
+    if newer.get('product_relationship'):
+        old_relation=result.get('product_relationship') or {}
+        new_relation=newer['product_relationship']
+        references={r['id']:deepcopy(r) for r in old_relation.get('references',[])}
+        for ref in new_relation.get('references',[]):
+            references.setdefault(ref['id'],deepcopy(ref))
+        relationship_claims={fingerprint(c):deepcopy(c) for c in old_relation.get('claims',[])}
+        for claim in new_relation.get('claims',[]):
+            relationship_claims.setdefault(fingerprint(claim),deepcopy(claim))
+        result['product_relationship']=dict(purpose='product_scope_not_news_evidence',
+            references=list(references.values()),claims=list(relationship_claims.values()))
     return result
 
 

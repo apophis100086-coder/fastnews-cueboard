@@ -24,7 +24,7 @@ from .metadata import KINDS, PHASES, normalize_url, parse_instant, time_bounds
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENTS = ('core_variable', 'coverage', 'linkage', 'magnitude', 'timeliness', 'incrementality')
-SNAPSHOT_TYPES = {'index_constituents', 'fund_holdings', 'target_fund_holdings', 'business_segment', 'product_identity'}
+SNAPSHOT_TYPES = {'index_constituents', 'fund_holdings', 'target_fund_holdings', 'business_segment', 'product_identity', 'index_methodology'}
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_EXCERPT = 2000
 
@@ -524,14 +524,19 @@ def import_product_data(conn, path, *, authorized, product_code, declared_source
 def import_history(conn, path, *, authorized, product_code, title=None, publication_time=None,
                    completeness=None, privacy_class='private_local'):
     local, raw, payload = _read_authorized(path, authorized)
-    fields = {'is_fixture', 'title', 'content', 'product_code', 'publication_time', 'completeness', 'used_claims', 'conclusions', 'editor_tag', 'note'}
+    fields = {'is_fixture', 'title', 'content', 'product_code', 'publication_time', 'completeness', 'used_claims', 'conclusions', 'editor_tag', 'note', 'source_url'}
     _fields(payload, fields, {'content', 'title'}, 'history document')
     if not conn.execute('SELECT 1 FROM fn_products WHERE code=?', (product_code,)).fetchone() or payload.get('product_code', product_code) != product_code:
         raise EditorialError('Unknown or mismatched history product_code')
+    history_title = title or payload['title']
+    title_codes = set(re.findall(r'[（(]\s*(\d{6})\s*[）)]', history_title))
+    if 'ETF' in history_title.upper() and title_codes and product_code not in title_codes:
+        raise EditorialError('History title identifies a different ETF code; confirm the actual product before import')
     publication = publication_time or payload.get('publication_time')
     if publication is None:
         raise EditorialError('History import requires explicit publication time')
     time_bounds(publication)
+    source_url = normalize_url(payload['source_url']) if payload.get('source_url') else None
     quality = completeness or payload.get('completeness', 'partial_text')
     if quality not in {'title_only', 'partial_text', 'full_text'}:
         raise EditorialError('Unsupported history completeness')
@@ -542,10 +547,12 @@ def import_history(conn, path, *, authorized, product_code, title=None, publicat
         raise EditorialError('Title-only history cannot assert previously used facts')
     with conn:
         doc_id, _ = _document(conn, local, hashlib.sha256(raw).hexdigest(), payload, privacy_class)
-        entry = {'document_id': doc_id, 'product_code': product_code, 'title': title or payload['title'],
+        entry = {'document_id': doc_id, 'product_code': product_code, 'title': history_title,
                  'publication_time': publication, 'completeness': quality, 'used_claims': claims,
                  'conclusions': payload.get('conclusions', []), 'editor_tag': payload.get('editor_tag'),
                  'is_fixture': _fixture(conn)}
+        if source_url:
+            entry['source_url'] = source_url
         entry['history_doc_id'] = _id('historydoc_', entry)
         conn.execute('INSERT OR IGNORE INTO fn_history VALUES(?,?,?,?,?)', (entry['history_doc_id'], product_code, doc_id, publication, _json(entry)))
     return entry

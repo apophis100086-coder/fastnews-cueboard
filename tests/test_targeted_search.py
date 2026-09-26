@@ -234,6 +234,31 @@ class TargetedSearchTests(TestCase):
         self.assertEqual(merged['summary'],old['summary'])
         self.assertEqual(len(merged['sources']),2)
 
+    def test_product_relation_survives_adoption_and_incremental_merge_without_changing_choice(self):
+        payload=self.payload()
+        reference=dict(id='snapshot_one',source_url='https://example.org/product',published_at='2026-01-01',
+                       data_as_of='2025-12-31',excerpt='合成产品范围。')
+        payload['product']['context']={'references':[reference]}
+        raw=report_raw();raw['items'][0]['source_refs'].append(reference['id'])
+        raw['items'][0]['claims'].append(dict(statement='合成产品关系',kind='reported',source_ref=reference['id'],quote=reference['excerpt']))
+        with patch('fastnews.reading_reports.build_input',return_value=payload):
+            first=self.generate(raw,'产品依据回放')
+        event=adopt_report_item(self.conn,'default',first['report_id'],'item_1',self.eid)['event_id']
+        before=pool_items(self.conn,self.config,self.eid)[0]
+        self.assertEqual(before['product_relationship']['references'][0]['id'],'snapshot_one')
+        self.save([event],[self.note()]);choice=ed.latest_decision(self.conn,self.eid)
+        reference=dict(reference,id='snapshot_two');payload['product']['context']['references']=[reference]
+        raw['items'][0]['source_refs'][-1]=reference['id'];raw['items'][0]['claims'][-1]['source_ref']=reference['id']
+        with patch('fastnews.reading_reports.build_input',return_value=payload):
+            newer=self.generate(raw,'增加产品依据')
+        adopt_report_item(self.conn,'default',newer['report_id'],'item_1',self.eid)
+        current=pool_items(self.conn,self.config,self.eid)[0]
+        self.assertEqual(len(current['product_relationship']['references']),2)
+        self.assertEqual(len(current['sources']),1)
+        self.assertEqual(ed.latest_decision(self.conn,self.eid),choice)
+        self.assertEqual(merge_materials(current,current)['product_relationship'],current['product_relationship'])
+        self.assertEqual(len(before['product_relationship']['references']),1)
+
     def test_empty_or_failed_refresh_preserves_candidate_draft_and_previous_report(self):
         first=self.generate(report_raw(),'首次检索')
         event=adopt_report_item(self.conn,'default',first['report_id'],'item_1',self.eid)['event_id']

@@ -317,7 +317,11 @@ class ReportValidationTests(unittest.TestCase):
             self.assertEqual(self.validate()['items'],[])
         self.raw['web_sources'][0]['published_at']='2026-09-14'
         self.raw['items'][0]['source_refs']=['web_invented']
-        self.assertEqual(self.validate()['items'],[])
+        result=self.validate()
+        self.assertEqual(result['items'],[])
+        self.assertEqual(result['validation_audit']['proposed_items'],1)
+        self.assertEqual(result['validation_audit']['rejected_items'][0]['unavailable_refs'],['web_invented'])
+        self.assertTrue(any('不等于没有搜到消息' in gap for gap in result['gaps']))
 
     def test_more_than_fifteen_product_items_or_four_citations_is_rejected(self):
         self.raw['items']*=16
@@ -327,6 +331,26 @@ class ReportValidationTests(unittest.TestCase):
         self.raw['items'][0]['source_refs']=['web_1']*5
         with self.assertRaises(ValueError):
             self.validate()
+
+    def test_product_relationship_reference_is_not_a_news_source_or_event(self):
+        reference=dict(id='snapshot_test',source_url='https://example.org/product',published_at='2026-01-01',
+                       excerpt='合成指数覆盖设备材料领域。')
+        self.payload['product']={'context':{'references':[reference]}}
+        self.raw['items'][0]['source_refs'].append('snapshot_test')
+        self.raw['items'][0]['claims']=[dict(statement='合成产品范围',kind='reported',source_ref='snapshot_test',
+                                           quote=reference['excerpt'])]
+        self.raw['items'][0]['event_identity']={'subject':'测试主体','action':'披露','object':'新消息','phase':'announcement','event_date':'2026-09-14'}
+        result=self.validate();item=result['items'][0]
+        self.assertEqual(item['source_refs'],['web_1'])
+        self.assertEqual([s['id'] for s in item['sources']],['web_1'])
+        self.assertEqual(item['claims'],[])
+        self.assertEqual(item['product_relationship']['claims'][0]['support_state'],'excerpt_located_statement_pending')
+        self.raw['items'][0]['source_refs']=['snapshot_test']
+        result=self.validate()
+        self.assertEqual(result['items'],[])
+        self.assertEqual(result['validation_audit']['rejected_items'][0]['reason'],'product_background_only')
+        self.raw['items'][0]['source_refs']=['web_1','snapshot_unknown']
+        self.assertEqual(self.validate()['items'],[])
 
     def test_duplicate_item_is_only_shown_once(self):
         self.raw['items']*=2
