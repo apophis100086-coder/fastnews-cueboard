@@ -45,6 +45,17 @@ class NewsWritingTests(unittest.TestCase):
         self.no_network=patch('socket.create_connection',side_effect=AssertionError('fixture forbids network'))
         self.no_network.start(); self.addCleanup(self.no_network.stop)
 
+    def test_failed_model_contract_keeps_raw_response_for_audit(self):
+        control=TaskControl()
+        run=w.accept_run(self.conn,self.cfg,'outline',self.data(),control)
+        bad={'title':'合成未通过结构检查的原始内容'}
+        with self.assertRaises(ValueError):
+            w.execute_run(self.conn,run['run_id'],control,runner=lambda *a,**k:HostResult(bad,{},{}))
+        row=self.conn.execute('SELECT status,input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()
+        self.assertEqual(row['status'],'failed')
+        self.assertEqual(json.loads(row['input_json'])['raw_failed_response'],bad)
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],0)
+
     def save(self,revision,**kw):
         return ed.save_decision(self.conn,edition_id=self.eid,selected_event_id=self.mid,selected_fact_ids=[],
             selected_clue_ids=[self.mid],manual_notes=[],must_include_ids=[self.mid],expected_revision=revision,

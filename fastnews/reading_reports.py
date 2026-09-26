@@ -209,6 +209,7 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
     cutoff = min(time_bounds(day)[1],clock).isoformat()
     start = time_bounds(day)[0].isoformat()
     material = []
+    deferred_events = []
     product = None
     if kind=='morning':
         start = time_bounds(morning_reading.window(day,lookback_days))[0].isoformat()
@@ -248,7 +249,9 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
         broad=[e for e in events if e.get('product_match',{}).get('lane') not in {'core','background'}]
         ordered=events[:5]+broad[:3]+events[5:]
         events=list({e['event_id']:e for e in ordered}.values())
-        for event in events[:max(1,config['runtime']['second_round']['max_event_candidates']-4)]:
+        event_cap=max(1,config['runtime']['second_round']['max_event_candidates']-4)
+        deferred_events=[dict(event_id=e['event_id'],title=e['title'],reason='local_event_input_budget') for e in events[event_cap:]]
+        for event in events[:event_cap]:
             for version in event['metadata_versions'][:4]:
                 m = version['metadata']
                 if m.get('source_id') not in selected:
@@ -335,10 +338,13 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
         payload['items'].append(item)
     payload['input_coverage']={'available_items':len(material),'included_items':len(payload['items']),
         'omitted_count':len(omitted),'excerpt_truncated_count':len(truncated),
+        'deferred_local_events_count':len(deferred_events),
         'omitted_ids':omitted[:8],'excerpt_truncated_ids':truncated[:8]}
     if input_audit is not None:
         input_audit.update(payload['input_coverage'],omitted_ids=omitted,excerpt_truncated_ids=truncated,
-            included_ids=[s['id'] for s in payload['items']])
+            included_ids=[s['id'] for s in payload['items']],deferred_local_events=deferred_events)
+    if deferred_events:
+        payload['coverage_notes'].append(f'本地候选预算：另有{len(deferred_events)}个事件未送入本轮模型，不能视为逐项已检查；完整清单保留在输入审计中')
     if omitted or truncated:
         payload['coverage_notes'].append(f'输入长度受限：{len(omitted)}条未送入、{len(truncated)}条摘录截短；本地完整材料保留，不能称全部已检查')
     if not payload['items']:

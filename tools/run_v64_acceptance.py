@@ -32,6 +32,12 @@ def read(path):return json.loads(path.read_text(encoding='utf-8'))
 def save(path,value):path.write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8')
 
 
+def recorded_status(path):
+    if not path.exists():return 'not_run'
+    value=read(path)
+    return value.get('status') or value.get('checks',{}).get('status') or 'recorded'
+
+
 def prepare():
     FOLDER.mkdir(exist_ok=True)
     path=FOLDER/'live.db'
@@ -136,7 +142,7 @@ def compare(holdout):
                 if any(all(term.casefold() in text for term in group) for group in event['match_groups']):hits.append(item)
             raw=json.dumps(output.get('raw_model_output',{}),ensure_ascii=False).casefold()
             raw_hit=any(all(term.casefold() in raw for term in group) for group in event['match_groups'])
-            status='candidate_match_needs_review' if hits else 'discovered_not_displayed' if raw_hit else 'not_found'
+            status='candidate_match_needs_review' if hits else 'discovered_not_displayed' if raw_hit else 'run_failed' if report.get('status')=='failed' else 'not_found'
             rows.append(dict(id=event['id'],product=code,status=status,expected_role=event.get('expected_role'),
                 candidates=[dict(title=i['title'],role=i.get('editorial_role'),sources=i.get('sources',[])) for i in hits],
                 reason='match_is_not_fact_verification' if hits else 'inspect_raw_output_and_validation_audit' if raw_hit else 'not_in_saved_output'))
@@ -144,7 +150,7 @@ def compare(holdout):
     for code in ['513130','588710','517120']:
         old=FOLDER/'old'/(code+'-draft.md');new=FOLDER/(code+'-draft.json')
         drafts.append(dict(code=code,old_path=str(old) if old.exists() else None,new_path=str(new) if new.exists() else None,
-            status='awaiting_editor_review' if new.exists() else 'not_run',fact_omissions=None,main_news_position=None,
+            status='failed_no_complete_draft' if recorded_status(new)=='failed' else 'awaiting_editor_review' if new.exists() else 'not_run',fact_omissions=None,main_news_position=None,
             product_relationship=None,repeated_paragraphs=None,structure_retained=None,actual_edit_minutes=None,accepted=None))
     result=dict(recall=rows,draft_comparison=drafts,quality_acceptance='pending_actual_editor_feedback',
         adoption_rate=None,holdout_in_search_prompt=False)
@@ -163,11 +169,30 @@ def main():
         cfg=configured_view(conn,load_config());cfg['_reader_profile']=profile(conn,'default')
         if args.action=='status':
             result=dict(used=w.task_attempts(conn),limit=reader_limits()['max_tasks_per_day'],host=cfg['_reader_profile']['settings']['host'],
-                research={key:(FOLDER/(key+'.json')).exists() for key in ['morning']+[c+'-research' for c in CODES]},
-                drafts={c:(FOLDER/(c+'-draft.json')).exists() for c in ['513130','588710','517120']})
-        elif args.action=='research':result=research(conn,cfg,args)
-        elif args.action=='select':result=select(conn,cfg,args)
-        else:result=write(conn,cfg,args)
+                research={key:recorded_status(FOLDER/(key+'.json')) for key in ['morning']+[c+'-research' for c in CODES]},
+                drafts={c:recorded_status(FOLDER/(c+'-draft.json')) for c in ['513130','588710','517120']})
+        else:
+            from fastnews.budget import utc_now
+            started=utc_now()
+            try:
+                if args.action=='research':result=research(conn,cfg,args)
+                elif args.action=='select':result=select(conn,cfg,args)
+                else:result=write(conn,cfg,args)
+            except Exception as exc:
+                # Freeze failed attempts too. A later batch cannot silently
+                # rerun the same case or erase a rejected original response.
+                result=dict(status='failed',error=type(exc).__name__,message=str(exc),started_at=started)
+                if args.action=='research':
+                    key='morning' if args.kind=='morning' else args.code+'-research'
+                    row=conn.execute('SELECT * FROM fn_reading_reports WHERE created_at>=? ORDER BY rowid DESC LIMIT 1',(started,)).fetchone()
+                    if row:result['record']=rr.report_record(row)
+                    result['output']=(result.get('record') or {}).get('output') or {}
+                elif args.action=='write':
+                    key=args.code+'-'+args.stage
+                    row=conn.execute('SELECT input_json,run_id FROM fn_writing_runs WHERE created_at>=? ORDER BY rowid DESC LIMIT 1',(started,)).fetchone()
+                    if row:result.update(run_id=row['run_id'],raw_failed_response=json.loads(row['input_json']).get('raw_failed_response'))
+                else:key=args.code+'-selection-error'
+                save(FOLDER/(key+'.json'),result)
         progress(result)
 
 

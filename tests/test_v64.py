@@ -112,6 +112,16 @@ class V64Tests(unittest.TestCase):
         self.assertTrue(check_text('本基金连续11日获资金增持。'))
         self.assertEqual(check_text('南向资金净流入100亿元，本基金截至9月25日连续11日获资金增持。'),[])
 
+    def test_local_event_budget_deferral_is_distinct_from_character_truncation(self):
+        for number in range(16):self.article('2026-09-14',title=f'合成产业事件{number}',number=number)
+        edition=ed.create_edition(self.conn,self.config,product_code='588090',edition_date='2026-09-14',
+            news_cutoff='2026-09-14T23:59:59+08:00',market_cutoffs={})
+        audit={}
+        payload=build_input(self.conn,self.view(),'default','product','2026-09-14',edition,input_audit=audit)
+        self.assertGreater(payload['input_coverage']['deferred_local_events_count'],0)
+        self.assertEqual(payload['input_coverage']['deferred_local_events_count'],len(audit['deferred_local_events']))
+        self.assertTrue(all(e['reason']=='local_event_input_budget' for e in audit['deferred_local_events']))
+
     def test_editorial_review_is_not_human_acceptance(self):
         raw=dict(status='ready',paragraphs=[{'text':'本段增加合成事实。'}],editorial_review=editorial_review())
         q=quality_checks(raw,1100,True)

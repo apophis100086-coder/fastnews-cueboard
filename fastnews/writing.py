@@ -649,6 +649,10 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
         if not response:
             usage.update(input_tokens=None,output_tokens=None,cost=None,usage_status='unknown')
         with conn:
+            if response:
+                saved_input=json.loads(row['input_json'])
+                saved_input['raw_failed_response']=response.payload
+                conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(dumps(saved_input),identifier))
             conn.execute('UPDATE fn_writing_runs SET status=?,error_code=?,usage_json=?,finished_at=? WHERE run_id=?',
                 (status,code,dumps(usage),utc_now(),identifier))
         raise
