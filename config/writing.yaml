@@ -10,6 +10,8 @@ pages_per_material: 4
 body_characters: [1000, 1200]
 max_outline_characters: 10000
 max_feedback_characters: 2000
+# Includes the previous outline, feedback, verified sources and public access rules.
+max_input_characters: 48000
 rules:
   a_share_companies: 标题与正文禁止A股、港股具体上市公司名称、简称及股票代码；未知身份待核。产品正式名称与代码正常保留；来源区保留真实出处，不将公司事实冒充行业事实。
   index_identity: 底层指数资料仅供内部核对；标题与正文不出现跟踪指数名称、代码或独立指数介绍。产品正式名称、代码不误禁。用有依据的产品覆盖方向和相关特点说明关系。

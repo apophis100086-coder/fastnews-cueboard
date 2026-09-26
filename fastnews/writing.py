@@ -44,6 +44,8 @@ def policy():
         raise ValueError('写作任务必须预留保存和清理时间')
     if type(value['max_source_bytes']) is not int or not 100000 <= value['max_source_bytes'] <= 4000000:
         raise ValueError('单份公开资料字节上限需在100000至4000000之间')
+    if type(value['max_input_characters']) is not int or not 24000<=value['max_input_characters']<=96000:
+        raise ValueError('写作输入容量需在24000至96000字符之间')
     return value
 
 
@@ -726,8 +728,9 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
             if source.get('text_observed'):
                 source.pop('research_hint',None)
         context=dumps(raw)
-        if len(context)>reader_limits()['max_input_characters']:
-            raise ValueError('本次选材及原文超过24000字符预算，请精简选材；必写项未被自动丢弃')
+        capacity=snapshot['rules'].get('max_input_characters',reader_limits()['max_input_characters'])
+        if len(context)>capacity:
+            raise ValueError(f'本次写作输入超过{capacity}字符容量，请精简选材；必写项未被自动丢弃')
         if progress:
             progress({'stage':'writing_model','message':('正在补查最新消息并整理框架' if supplement else '正在整理框架与证据') if stage=='outline' else '正在按确认框架生成正文并检查'})
         post_verify=max(0,snapshot['rules']['verification_seconds']-verification.get('elapsed',0)) if supplement else 0

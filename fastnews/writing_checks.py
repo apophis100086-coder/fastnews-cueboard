@@ -73,13 +73,13 @@ def changed_quantity_scopes(text, evidence):
 
 
 def date_present(day, text):
-    text=re.sub(r'\s+','',text)
+    text=re.sub(r'\s+',' ',text)
     try:
         value=date.fromisoformat(day[:10])
     except (ValueError,TypeError):
         return False
     y,m,d=value.year,value.month,value.day
-    return bool(re.search(fr'{y}(?:年|[-/.])0?{m}(?:月|[-/.])0?{d}(?:日|\b)',text))
+    return bool(re.search(fr'{y}\s*(?:年|[-/.])\s*0?{m}\s*(?:月|[-/.])\s*0?{d}(?:\s*日|\b|(?=T\d{{2}}:))',text))
 
 
 def within_cutoff(value, cutoff):

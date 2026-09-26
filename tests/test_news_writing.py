@@ -89,6 +89,19 @@ class NewsWritingTests(unittest.TestCase):
         self.assertEqual(numeric_tokens('twenty four months; one hundred and six months'),set())
         self.assertEqual(numeric_tokens('four different models'),set())
 
+    def test_publication_header_space_before_time_is_not_deleted(self):
+        from fastnews.writing_checks import date_present
+        for value in ['2026-09-15 17:48','2026 年 9 月 15 日 17:48','2026-09-15T17:48:00+08:00']:
+            self.assertTrue(date_present('2026-09-15',value))
+        for value in ['2026-09-150','2026-09-16 17:48','2026-09-1517:48']:
+            self.assertFalse(date_present('2026-09-15',value))
+        snapshot=w._snapshot(self.conn,self.cfg,self.eid,1)
+        source=snapshot['sources'][0];source.update(date_observed=False,text=source['text']+'\n2026-09-15 17:48')
+        raw=self.outline(snapshot);raw['claims'][0]['publication_quote']='2026-09-15 17:48'
+        self.assertFalse(w.validate_outline(raw,snapshot)[1]['errors'])
+        raw['claims'][0]['published_at']='2026-09-17'
+        self.assertTrue(w.validate_outline(raw,snapshot)[1]['errors'])
+
     def test_interrupted_host_keeps_search_trace_without_a_confirmable_outline(self):
         control=TaskControl()
         run=w.accept_run(self.conn,self.cfg,'outline',self.data(),control)
