@@ -154,6 +154,8 @@ def scan_morning(conn: sqlite3.Connection, config: dict, *, offline=False,
                   "max_items_per_source": limit, "fetch_full_text": False, "llm_enabled": False,
                   "no_network": no_network, "adapter": type(adapter).__name__,
                   "explicit_source_ids": source_ids}
+    if config.get('_collection_task_id'):
+        parameters['collection_task_id']=config['_collection_task_id']
     if dated_window:
         parameters.update(collection_date=collection_date, date_timezone=COLLECTION_TIMEZONE,
                           window_start=dated_window[0].isoformat(), window_end=dated_window[1].isoformat(),

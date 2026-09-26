@@ -1,20 +1,20 @@
-version: huatai-writing-20260919-v2
+version: huatai-writing-v6.4-20260926
 deadline_seconds: 480
-host_seconds: 450
+host_seconds: 390
 finalize_seconds: 30
-verification_seconds: 90
+verification_seconds: 60
 page_seconds: 12
 max_pages: 20
 max_source_bytes: 2000000
 pages_per_material: 4
-body_characters: [800, 1200]
+body_characters: [1000, 1200]
 max_outline_characters: 10000
 max_feedback_characters: 2000
 rules:
-  a_share_companies: 禁止A股具体公司名称、简称及股票代码，包括A/H双重上市公司；港股独有公司可写，未知身份待核。基金管理人、基金及指数身份不能误判为个股。
-  index_identity: 允许有依据的跟踪指数名称、代码和结构；关键词路由不是成份或持仓证据。
+  a_share_companies: 标题与正文禁止A股、港股具体上市公司名称、简称及股票代码；未知身份待核。产品正式名称与代码正常保留；来源区保留真实出处，不将公司事实冒充行业事实。
+  index_identity: 底层指数资料仅供内部核对；标题与正文不出现跟踪指数名称、代码或独立指数介绍。产品正式名称、代码不误禁。用有依据的产品覆盖方向和相关特点说明关系。
   performance: 禁止六个月及以内的基金或指数涨跌幅、收益率及翻倍等变体；期限不明先待核，不误禁产业经营同比、利率与股息率。
-  product_flows: 禁止产品规模、总份额及增减、净流入流出、净申赎、对应排名与连续天数，也不能换成吸金或资金追捧。A/C类份额名称不属于总份额数据。
+  product_flows: 不写产品规模、份额、净流入、净申购等精确量值；允许有来源、有统计区间的连续增持趋势及天数，不附金额或新增份额。A/C类份额名称不属于总份额数据。
   turnover: 有来源的成交额、成交量可以使用；比较需同口径，不据此推断净流入或基本面。
   market_flows: 市场南向与产品资金分开，无去向证据不推断南向专买红利。
   support: 计划、预测、报道、分析分开；同现不等于因果；不得承诺收益或虚构稀缺性、持仓和最新数据。

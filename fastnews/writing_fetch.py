@@ -13,7 +13,7 @@ from .metadata import time_bounds
 
 class PublicationMetadata(HTMLParser):
     def __init__(self):
-        super().__init__(); self.dates=[]
+        super().__init__(); self.dates=[];self.titles=[];self.publishers=[];self.in_title=False;self.title_parts=[]
 
     @property
     def published_at(self):
@@ -33,11 +33,25 @@ class PublicationMetadata(HTMLParser):
 
     def handle_starttag(self,tag,attrs):
         attr=dict(attrs)
+        if tag=='title':
+            self.in_title=True
         key=(attr.get('property') or attr.get('name') or attr.get('itemprop') or '').lower()
+        if tag=='meta' and key in {'og:title','twitter:title'} and attr.get('content'):
+            self.titles.append(attr['content'])
+        if tag=='meta' and key in {'og:site_name','publisher','sitename'} and attr.get('content'):
+            self.publishers.append(attr['content'])
         if tag=='meta' and key in {'article:published_time','datepublished','pubdate','publishdate','publish_time','publication_date'}:
             self.dates.append(attr.get('content'))
         if tag=='time' and key=='datepublished':
             self.dates.append(attr.get('datetime'))
+
+    def handle_endtag(self,tag):
+        if tag=='title':
+            self.in_title=False
+
+    def handle_data(self,data):
+        if self.in_title:
+            self.title_parts.append(data)
 
 
 def read_page(url):
@@ -55,10 +69,11 @@ def read_page(url):
         if len(''.join(text.strip() for _,text in pages))<80:
             raise ValueError('pdf_requires_ocr')
         text='\n'.join(f'【PDF第{i}页】\n'+body for i,body in pages if body.strip())
-        found=re.search(r'报告送出日期[：:]?\s*(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日',text)
+        found=re.search(r'(?:报告)?送出日期[：:]?\s*(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日',text)
         published='-'.join([found[1],found[2].zfill(2),found[3].zfill(2)]) if found else None
         return dict(text=text[:60000],url=response.url,retrieved_at=response.retrieved_at,published_at=published,
-                    pages_read=min(len(reader.pages),20),format='pdf')
+                    pages_read=min(len(reader.pages),20),pages_total=len(reader.pages),
+                    text_truncated=len(reader.pages)>20 or len(text)>60000,format='pdf')
     if not any(t in mime for t in ('text/html','text/plain','application/xhtml')):
         raise ValueError('unsupported_format')
     parser=PageText()
@@ -78,7 +93,8 @@ def read_page(url):
         'sign in to continue','登录后阅读全文','付费后阅读全文','订阅后阅读全文','访问验证')):
         raise ValueError('restricted_content')
     return dict(text=text[:60000],url=response.url,retrieved_at=response.retrieved_at,
-                published_at=published)
+                published_at=published,title=(metadata.titles or [''.join(metadata.title_parts)])[0][:500],
+                publisher=(metadata.publishers or [''])[0][:200],text_truncated=len(text)>60000)
 
 
 if __name__=='__main__':

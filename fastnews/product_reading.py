@@ -12,12 +12,13 @@ from .source_access import url_policy
 ROOT = Path(__file__).resolve().parents[1]
 FIELDS = {'editorial_role', 'why_now', 'validity_state', 'validity_reason',
           'newness_hint', 'related_research_identity'}
+RECOMMENDATION_FIELDS = {'primary_recommendation','recommendation_reason'}
 
 
 def policy():
     value = yaml.safe_load((ROOT/'config/product_reading.yaml').read_text(encoding='utf-8'))
     for key, low, high in [('recent_days',1,30), ('background_days',1,730),
-        ('recent_items',1,10), ('background_items',1,5), ('exploration_items',1,5),
+        ('recent_items',1,60), ('background_items',1,60), ('exploration_items',1,60),
         ('exploration_seconds',40,480), ('host_seconds',10,450),
         ('finalize_seconds',30,60), ('history_reports',1,50)]:
         if type(value.get(key)) is not int or not low <= value[key] <= high:
@@ -34,7 +35,13 @@ def decorate_plan(plan):
         observations = [q for q in plan['queries'] if q['lane']=='observation'] + extra
         keywords = [q for q in plan['queries'] if q['lane'] in {'keywords','user_keywords'}]
         sites = [q for q in plan['queries'] if q['lane']=='sector_sites']
-        plan['queries'] = (observations+keywords+sites)[:plan['max_queries']-plan['fallback_queries']]
+        # At most eight checks; the remaining budget belongs to discovery.
+        plan['query_hints'] = keywords+sites
+        plan['queries'] = observations[:8]
+    plan['mandatory_queries_max'] = 8
+    plan['autonomous_queries_min'] = max(0,plan['max_queries']-8)
+    plan['allocation_policy'] = 'reallocate_on_evidence_not_site_completion'
+    plan['observation_queries'] = [dict(q, domains=[]) for q in plan['observation_queries']]
     plan['background'] = dict(days=settings['background_days'], max_items=settings['background_items'],
                               source_ids=[], soft_window=True)
     plan['recent_days'] = settings['recent_days']
@@ -51,6 +58,7 @@ def extend_schema(schema):
     result = deepcopy(schema)
     item = result['properties']['items']['items']
     item['properties'].update(
+        primary_recommendation={'type':'boolean'},recommendation_reason={'type':'string'},
         editorial_role={'type':'string','enum':['recent','background']},
         why_now={'type':'string'}, validity_reason={'type':'string'},
         validity_state={'type':'string','enum':['active','superseded','uncertain']},
@@ -61,6 +69,10 @@ def extend_schema(schema):
 
 
 def judgment(item, raw, payload):
+    if RECOMMENDATION_FIELDS <= set(raw):
+        if type(raw['primary_recommendation']) is not bool or not isinstance(raw['recommendation_reason'],str) or not 1<=len(raw['recommendation_reason'])<=600:
+            raise ValueError('主要推荐及取舍理由无效')
+        item.update({k:raw[k] for k in RECOMMENDATION_FIELDS})
     if FIELDS <= set(raw):
         if raw['editorial_role'] not in {'recent','background'} or raw['validity_state'] not in {'active','superseded','uncertain'} or raw['newness_hint'] not in {'new_event','new_stage','new_evidence','repeated'}:
             raise ValueError('产品判读字段无效')
@@ -75,6 +87,10 @@ def judgment(item, raw, payload):
         item.update(editorial_role='background' if item.get('time_role')=='background' else 'recent',
             why_now='', validity_state='uncertain', validity_reason='旧格式材料，尚未完成有效性判断',
             newness_hint='new_event', related_research_identity=None)
+    dates=[time_bounds(s.get('first_published_at') or s.get('published_at'))[1] for s in item['sources']]
+    if dates and all(d is not None and d<parse_instant(payload['window_start']) for d in dates):
+        item['editorial_role']='background'
+        item['recency_reason']='首次公开均早于7日发现窗口；保留为背景，不冒充近期新催化'
     if item['editorial_role']=='background':
         item['time_role']='background'
     elif item.get('time_role')=='background':
@@ -191,7 +207,7 @@ def aggregate_reports(conn, profile_id, edition_id):
                 'background' if item.get('time_role')=='background' else 'recent'),last_report_id=row['report_id'])
             if key in grouped:
                 old=grouped[key]; merged=merge_materials(old,item)
-                merged.update({k:item[k] for k in FIELDS if k in item})
+                merged.update({k:item[k] for k in FIELDS|RECOMMENDATION_FIELDS if k in item})
                 # New evidence stays in the original card and column. A new
                 # stage has its own identity and can use a different role.
                 merged['editorial_role']=old['editorial_role']
@@ -202,7 +218,7 @@ def aggregate_reports(conn, profile_id, edition_id):
                 grouped[key]=item
     latest=runs[-1]['report_id'] if runs else None
     result={'recent':[],'background':[],'pending':[],'runs':runs,'latest_report_id':latest,
-            'limits':{k:policy()[k] for k in ('recent_items','background_items')}}
+            'limits':{'recent_items':10,'background_items':5}}
     for item in grouped.values():
         item['latest_increment']=bool(runs and runs[-1]['mode']=='explore' and item['last_report_id']==latest)
         lane='pending' if item.get('validity_state')=='superseded' else item['editorial_role']

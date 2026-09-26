@@ -3,7 +3,7 @@
 timeout_seconds: 480
 max_input_characters: 24000
 max_tasks_per_day: 12
-max_product_items: 15
-max_morning_items: 40
-max_web_sources: 20
+max_product_items: 60
+max_morning_items: 60
+max_web_sources: 60
 max_refs_per_item: 4

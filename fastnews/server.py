@@ -162,16 +162,22 @@ class LocalApplication:
                     def progress(item):
                         with self.guard:
                             self.jobs[job_id]['progress'].append({k: item.get(k) for k in ('source_id', 'status', 'error_code','stage','message')})
-                    source_ids = section_ids(config,data.get('section','morning'),collect_only=True)
+                    source_ids = section_ids(config,'all' if action=='digest' else data.get('section','morning'),collect_only=True)
                     if action == 'scan' and data.get('source_id'):
                         source_ids = [data['source_id']]
                     if not source_ids and action == 'scan':
                         raise ValueError('此板块没有启用的自动采集来源。可打开手动查阅链接，或在来源设置中启用自动来源。')
-                    result = scan_morning(conn, config, offline=self.offline, progress=progress,
-                                          collection_date=data.get('date'),source_ids=source_ids,
-                                          adapter=None if self.offline else ReaderAdapter(config)) if source_ids else None
                     if action=='digest':
-                        result = generate_report(conn,config,profile_id,'morning',data['date'],progress=progress)
+                        from .collection_task import collect
+                        control=self.controls[job_id]
+                        collected=collect(conn,config,'digest',dict(collection_date=data.get('date'),source_ids=source_ids),
+                            control,progress) if source_ids else None
+                        result = generate_report(conn,config,profile_id,'morning',data['date'],progress=progress,
+                            lookback_days=data.get('lookback_days',7),control=control,task_id=job_id,collection_result=collected)
+                    else:
+                        result = scan_morning(conn, config, offline=self.offline, progress=progress,
+                            collection_date=data.get('date'),source_ids=source_ids,
+                            adapter=None if self.offline else ReaderAdapter(config)) if source_ids else None
                 elif action == 'probe':
                     from types import SimpleNamespace
                     from .cli_actions import dispatch
@@ -206,11 +212,19 @@ class LocalApplication:
                         result['fixed_source_cache_reused']=True
                         research_progress({'stage':'cache','message':'复用本期已存元数据，模型继续核对重点来源与背景'})
                     else:
-                        result = research_product(conn, config, edition['product_code'], **options)
+                        if data.get('use_host') or not self.offline:
+                            from .collection_task import collect
+                            result=collect(conn,config,'research',dict(product_code=edition['product_code'],
+                                edition_id=edition['edition_id'],fetch_public_text=bool(data.get('fetch_public_text'))),
+                                self.controls[job_id],research_progress)
+                        else:
+                            result = research_product(conn, config, edition['product_code'], **options)
                     if data.get('use_host'):
                         result['reading_report'] = generate_report(conn,config,profile_id,'product',edition['edition_date'],
                                                                   edition=edition,progress=research_progress,
-                                                                  extra_keywords=data.get('extra_keywords'))
+                                                                  extra_keywords=data.get('extra_keywords'),
+                                                                  control=self.controls[job_id],task_id=job_id,
+                                                                  collection_result=result)
                 else:
                     raise ValueError('Unknown job action')
             with self.guard:
@@ -229,7 +243,7 @@ class LocalApplication:
     def mutate(self, action, data):
         if not isinstance(data, dict):
             raise ValueError('JSON object required')
-        if action=='explore':
+        if action in {'explore','digest','research'}:
             from .task_control import TaskControl
             from .product_reading import policy
             seconds=policy()['exploration_seconds']
@@ -265,7 +279,7 @@ class LocalApplication:
                 return {'job_id':jid}
             if action=='job-stop':
                 job=self.jobs.get(data.get('job_id'))
-                if not job or job['action'] not in {'explore','writing-outline','writing-draft'}:
+                if not job or job['action'] not in {'explore','digest','research','writing-outline','writing-draft'}:
                     raise ValueError('没有可停止的探查或写作任务')
                 control=self.controls.get(data['job_id'])
                 if control:
@@ -315,6 +329,11 @@ class LocalApplication:
                     frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
                     from .source_catalog import profile
                     frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
+                    if action=='digest' or action in {'research','explore'} and (data.get('use_host') or action=='explore'):
+                        from .writing import task_attempts
+                        from .reader_limits import reader_limits
+                        if task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
+                            raise ValueError('今天项目的模型任务已达每日预算；已存结果可继续使用，下一预算窗口可继续本批回测')
                 if action == 'scan' and 'source_id' in data:
                     from .source_catalog import catalog
                     with closing(self.connection()) as conn:
@@ -327,6 +346,9 @@ class LocalApplication:
                 if action in {'scan','digest'} and 'date' in data:
                     with closing(self.connection()) as conn:
                         collection_window(data['date'], working_now(conn, self.offline))
+                    if action=='digest':
+                        from .morning_reading import window
+                        window(data['date'],data.get('lookback_days',7))
                 if action in {'research','explore'}:
                     with closing(self.connection()) as conn:
                         edition = editorial.get_edition(conn,data['edition_id'])
@@ -346,10 +368,11 @@ class LocalApplication:
                 self.jobs[job_id] = {'job_id': job_id, 'action': action, 'date': data.get('date'),
                                      'edition_id':data.get('edition_id'),'reader_profile':data.get('reader_profile','default'),
                                      'request_id':data.get('request_id'),'status': 'running', 'progress': []}
-                if action=='explore':
+                if action in {'explore','digest','research'}:
                     self.controls[job_id]=accepted_control
-                    self.jobs[job_id].update(started_at=accepted_at,deadline_at=accepted_control.deadline_at,
-                        product_code=edition['product_code'],news_cutoff=edition['news_cutoff'])
+                    self.jobs[job_id].update(started_at=accepted_at,deadline_at=accepted_control.deadline_at)
+                    if action in {'explore','research'}:
+                        self.jobs[job_id].update(product_code=edition['product_code'],news_cutoff=edition['news_cutoff'])
                 self.active_job = job_id
                 job_data=dict(deepcopy(data),_config=deepcopy(frozen))
                 if action in {'research','explore'}:

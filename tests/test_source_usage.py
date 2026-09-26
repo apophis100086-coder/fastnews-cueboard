@@ -38,9 +38,9 @@ class SourceUsageTests(unittest.TestCase):
         self.assertIn('dxy_insight', {s['source_id'] for s in plan['manual_sources']})
         cde = next(s for s in plan['selected_sources'] if s['source_id']=='cde')
         self.assertFalse(cde['host_read_allowed'])
-        self.assertTrue(any('cde.org.cn' in q['query'] for q in plan['queries']))
+        self.assertTrue(any('cde.org.cn' in q['query'] for q in plan['query_hints']))
         self.assertTrue({'cls_innovative_drug', 'wscn_medicine'} <= {s['source_id'] for s in plan['selected_sources']})
-        self.assertTrue(any(q['lane'] == 'keywords' for q in plan['queries']))
+        self.assertTrue(any(q['lane'] == 'keywords' for q in plan['query_hints']))
 
     def test_complements_respect_disabled_preferences_and_do_not_overclaim(self):
         save_source(self.conn, self.base, 'default', {'source_id':'cls_innovative_drug','enabled':False})

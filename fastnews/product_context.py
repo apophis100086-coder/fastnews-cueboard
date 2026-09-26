@@ -4,20 +4,22 @@ Private imports never become host input through this module. References are
 background evidence, not automatically selected news or current holdings.
 """
 import json
+import re
 
 from . import editorial as ed
 from .metadata import normalize_url
 
-VERSION = 'public-product-context-v1'
+VERSION = 'public-product-context-v2-writing-scope'
 
 
 def public_context(conn, edition):
     references, history, gaps = [], [], []
+    writing_candidates={}
     seen = set()
     snapshots = sorted(ed._snapshots(conn, edition),
                        key=lambda s: (s['data_as_of'], s['published_at'], s['snapshot_id']), reverse=True)
     for item in snapshots:
-        if item['product_code'] != edition['product_code'] or item['snapshot_type'] in seen:
+        if item['product_code'] != edition['product_code']:
             continue
         for ev in item['evidence']:
             if ev.get('privacy_class') != 'public' or not ev.get('source_url'):
@@ -26,16 +28,18 @@ def public_context(conn, edition):
                 continue
             # Syntax validation only; any later retrieval uses the safe reader.
             url = normalize_url(ev['source_url'])
-            references.append(dict(id=item['snapshot_id'], title=item['title'],
+            ref=dict(id=item['snapshot_id'], title=item['title'],
                 snapshot_type=item['snapshot_type'], data_as_of=item['data_as_of'],
                 published_at=item['published_at'], effective_at=item.get('effective_at'),
                 source_url=url, excerpt=ev['excerpt'], evidence_id=ev['evidence_id'],
                 source_type=ev['source_type'], source_name=ev.get('declared_source'),
                 document_id=item['document_id'], structure_status=item['structure_status'],
-                purpose='dated_product_background_not_current_news'))
-            seen.add(item['snapshot_type'])
-            break
-        if len(references) == 3:
+                purpose='dated_product_background_not_current_news')
+            if item['snapshot_type'] not in seen and len(references)<3:
+                references.append(ref)
+                seen.add(item['snapshot_type'])
+            if item['snapshot_type'] in {'product_identity','business_segment'} and not re.search(r'定期报告|季度报告|第.?季|中期报告|年度报告|年报|季报|20\d{2}\s*[Qq][1-4]',item['title']):
+                writing_candidates.setdefault(item['snapshot_type'],ref)
             break
     if not references:
         gaps.append('本期没有可传给宿主的公开产品依据；关键词不是持仓证明')
@@ -60,4 +64,16 @@ def public_context(conn, edition):
             purpose='prior_publication_only_not_evidence_for_new_claims'))
     if not history:
         gaps.append('本期没有可用的公开已发稿记录，不能声称已排除与历史稿重复')
-    return dict(version=VERSION, references=references, published_history=history, gaps=gaps)
+    writing_references=[dict(r,purpose='product_identity_and_scope_only_not_current_quantities')
+        for r in writing_candidates.values()]
+    excluded=[]
+    for ref in references:
+        quarterly=bool(re.search(r'定期报告|季度报告|第.?季|中期报告|年度报告|年报|季报|20\d{2}\s*[Qq][1-4]',ref['title']))
+        internal=ref['snapshot_type'] not in {'product_identity','business_segment'}
+        if quarterly or internal:
+            excluded.append(dict(id=ref['id'],title=ref['title'],reason=
+                'periodic_report_not_current_product_description' if quarterly else 'internal_relationship_verification'))
+    if not writing_references:
+        gaps.append('缺少可用于本期正文的产品定位与覆盖资料；旧定期报告和指数资料仅供内部核对')
+    return dict(version=VERSION, references=references, writing_references=writing_references,
+        excluded_from_writing=excluded,published_history=history,gaps=gaps)

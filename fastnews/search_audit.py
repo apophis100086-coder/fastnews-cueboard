@@ -44,6 +44,6 @@ def audit_search(payload, trace):
             'source_disabled' if axis['status'] == 'source_disabled' else
             'queried' if matches else 'no_query_observed', 'observed_queries': matches})
     return {'sources': sources, 'directions': directions, 'observed_query_count': len(queries),
-            'query_budget': plan.get('max_queries', 8),
-            'budget_exceeded': len(queries) > plan.get('max_queries', 8),
+            'query_budget': plan.get('max_queries', 24),
+            'budget_exceeded': len(queries) > plan.get('max_queries', 24),
             'note': '仅核对工具可观察查询；查过不等于找到，未观察到不等于网站没有信息。'}

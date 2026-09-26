@@ -21,3 +21,10 @@ DRAFT=obj(status=enum('ready','needs_materials'),title=S,
     paragraphs=arr(obj(text=S,claim_ids=arr(S),material_ids=arr(S),outline_paragraph_id=S,outline_anchor=S)),
     issues=arr(S),entities=arr(ENTITY),review=obj(faithful_to_outline=B,claims_supported=B,
         must_include_covered=B,entities_complete=B,no_new_facts=B))
+from copy import deepcopy
+DRAFT_V64=deepcopy(DRAFT)
+DRAFT_V64['properties']['editorial_review']=obj(
+    main_news_first=S,independent_information=S,product_link=S,
+    repeated_mechanisms=S,generic_endings=S,product_manual_style=S,
+    material_sufficient=B,issues=arr(S))
+DRAFT_V64['required']=list(DRAFT_V64['properties'])

@@ -134,7 +134,8 @@ class ReaderDatabaseTests(unittest.TestCase):
         payload=build_input(self.conn,self.view(),'default','morning','2026-09-14')
         self.assertEqual(len(payload['items']),1)
         self.assertEqual(payload['items'][0]['evidence_level'],'listing_metadata')
-        self.assertEqual(len(payload['selected_sources']),3)
+        self.assertGreater(len(payload['selected_sources']),3)
+        self.assertEqual(payload['lookback_days'],7)
         save_source(self.conn,self.base,'default',{'source_id':'cls_morning','enabled':False})
         self.assertEqual(build_input(self.conn,self.view(),'default','morning','2026-09-14')['items'],[])
 
@@ -157,7 +158,7 @@ class ReaderDatabaseTests(unittest.TestCase):
         restricted = next(s for s in payload['source_constraints'] if s['source_id']=='dxy_insight')
         self.assertFalse(restricted['search_enabled'])
         self.assertTrue(any('手动参考入口' in note for note in payload['coverage_notes']))
-        self.assertTrue(any(q['lane']=='keywords' for q in payload['search_plan']['queries']))
+        self.assertTrue(any(q['lane']=='keywords' for q in payload['search_plan']['query_hints']))
 
     def runner(self, host, prompt, schema, **kwargs):
         payload=json.loads(prompt.split('INPUT_JSON:\n',1)[1])
@@ -186,11 +187,8 @@ class ReaderDatabaseTests(unittest.TestCase):
         report=generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=self.runner)
         payload=build_input(self.conn,self.view(),'default','product','2026-09-15',self.edition())
         reused=[s for s in payload['items'] if s.get('origin')=='saved_research_report']
-        self.assertEqual(len(reused),1)
-        self.assertEqual(reused[0]['prior_report_id'],report['report_id'])
-        self.assertEqual(reused[0]['url'],'https://example.org/test-article')
-        self.assertEqual(reused[0]['evidence_level'],'prior_ai_reading_hint')
-        self.assertIn('原文待核实',reused[0]['excerpt'])
+        # This fixture labels example.org as cls.cn: never reuse a false identity.
+        self.assertEqual(reused,[])
 
     def test_today_refresh_reuses_recent_report_and_keeps_original_cutoff(self):
         self.save_article()
@@ -323,8 +321,8 @@ class ReportValidationTests(unittest.TestCase):
         self.assertEqual(result['validation_audit']['rejected_items'][0]['unavailable_refs'],['web_invented'])
         self.assertTrue(any('不等于没有搜到消息' in gap for gap in result['gaps']))
 
-    def test_more_than_fifteen_product_items_or_four_citations_is_rejected(self):
-        self.raw['items']*=16
+    def test_more_than_sixty_product_items_or_four_citations_is_rejected(self):
+        self.raw['items']*=61
         with self.assertRaises(ValueError):
             self.validate()
         self.raw['items']=self.raw['items'][:1]

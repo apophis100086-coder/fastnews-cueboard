@@ -1,0 +1,33 @@
+version: official-product-identity-20260926
+note: 名称与代码依据交易所刊载的产品资料概要；底层指数名称仅用于正文口径检查。不是当前持仓或权重数据。公开资料正文经核验后另存本地版本化来源，不把此配置当作事实引文。
+products:
+  '588090':
+    name: 华泰柏瑞上证科创板50成份交易型开放式指数证券投资基金
+    aliases: [科创50ETF华泰柏瑞, 华泰柏瑞上证科创板50成份ETF, 科创50ETF]
+    internal_index_names: [上证科创板50成份指数, 科创50指数, '000688']
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/588090_20260318_3YJ3.pdf
+    published_at: '2026-03-18'
+  '588710':
+    name: 华泰柏瑞上证科创板半导体材料设备主题交易型开放式指数证券投资基金
+    aliases: [科创半导体设备ETF华泰柏瑞, 科创半导体设备ETF, 华泰柏瑞上证科创板半导体材料设备主题ETF]
+    internal_index_names: [上证科创板半导体材料设备主题指数, 科创半导体材料设备指数]
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/588710_20260318_HXM9.pdf
+    published_at: '2026-03-18'
+  '513130':
+    name: 华泰柏瑞南方东英恒生科技指数交易型开放式指数证券投资基金（QDII）
+    aliases: [恒生科技ETF华泰柏瑞, 恒生科技ETF, 华泰柏瑞南方东英恒生科技指数ETF(QDII), 华泰柏瑞南方东英恒生科技指数ETF（QDII）]
+    internal_index_names: [恒生科技指数, HSTECH]
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/513130_20260318_KTAP.pdf
+    published_at: '2026-03-18'
+  '513530':
+    name: 华泰柏瑞中证港股通高股息投资交易型开放式指数证券投资基金（QDII）
+    aliases: [港股通红利ETF华泰柏瑞, 港股通红利ETF, 华泰柏瑞中证港股通高股息投资ETF（QDII）]
+    internal_index_names: [中证港股通高股息投资指数, '930914']
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/513530_20260318_H8CD.pdf
+    published_at: '2026-03-18'
+  '517120':
+    name: 华泰柏瑞中证沪港深创新药产业交易型开放式指数证券投资基金
+    aliases: [创新药ETF华泰柏瑞, 创新药ETF, 华泰柏瑞中证沪港深创新药产业ETF]
+    internal_index_names: [中证沪港深创新药产业指数, '931409']
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/517120_20260318_T0WR.pdf
+    published_at: '2026-03-18'

@@ -1,4 +1,4 @@
-version: product-search-v4-industry-recall
+version: product-search-v5-autonomous-recall
 note: 领域来源与关键词双路检索；分类和词表仅用于检索，不代表当前持仓。
 max_queries: 24
 site_queries: 12
@@ -33,7 +33,7 @@ source_terms:
   medcube: 创新药 授权
   cls_innovative_drug: 创新药 临床
   wscn_medicine: 创新药 商业化
-evidence: {max_events: 3, max_pages_per_event: 2}
+evidence: {max_events: 6, max_pages: 20, max_pages_per_event: 4}
 products:
   "588090":
     categories: [technology]

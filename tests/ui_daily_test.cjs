@@ -383,7 +383,7 @@ test('AI digest sends chosen day and shows a saved report without selecting any 
   });
   app.el('news-day').value='2026-09-14';
   await app.el('digest').onclick();
-  assert.deepEqual(app.calls.find(c=>c.url==='/api/digest').body,{date:'2026-09-14',section:'morning'});
+  assert.deepEqual(app.calls.find(c=>c.url==='/api/digest').body,{date:'2026-09-14',section:'all',lookback_days:7});
   assert.match(app.el('morning-report').innerHTML,/合成研究线索/);
   assert.equal(app.read('basket'),null);
   assert.ok(!app.calls.some(c=>c.url.includes('decision')||c.url.includes('reading-adopt')));
@@ -800,5 +800,16 @@ test('product relationship evidence keeps its date and untrusted content inert w
  assert.match(output,/产品关联依据/);assert.match(output,/资料时点：2025-12-31/);
  assert.match(output,/引用原句与关联解释待核对/);
  assert.doesNotMatch(output,/<script>|<img|href="javascript:/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('morning timeline shows dated evidence and gaps without executing source content',async()=>{
+ const app=await harness({reader:true});
+ const report={output:{lookback_days:7,timeline:[{theme:'<img src=x>',development:'ongoing',summary:'已有两次进展',events:[
+  {date:'2026-09-24',event:'<script>bad()</script>',sources:[{url:'javascript:alert(1)',title:'公开材料'}]}]}],
+  domain_coverage:[{name:'医药',status:'not_checked',note:'尚未检查'}]}};
+ const html=app.evaluate('morningContextHTML('+JSON.stringify(report)+')');
+ assert.match(html,/近7个自然日/);assert.match(html,/2026-09-24/);assert.match(html,/医药/);
+ assert.doesNotMatch(html,/<script>|<img|href="javascript:/);
  assert.ok(app.calls.every(c=>c.method==='GET'));
 });

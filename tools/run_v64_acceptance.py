@@ -1,0 +1,174 @@
+"""Resumable, explicit live acceptance. Never invoked by application or CI.
+
+All attempts share the project quota. Holdout answers are read ONLY by compare,
+after retrieval. Test selection/confirmation require explicit commands and occur
+only in the fixed acceptance database; they are not editorial approval.
+"""
+import argparse
+from contextlib import closing
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import sqlite3
+import sys
+import uuid
+
+ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from fastnews import db,editorial as ed,writing as w,reading_reports as rr
+from fastnews.config import load_config
+from fastnews.source_catalog import configured_view,profile
+from fastnews.task_control import TaskControl
+from fastnews.collection_task import collect
+from fastnews.reader_limits import reader_limits
+from fastnews.writing_background import add_candidate
+
+FOLDER=ROOT/'data/v64_acceptance_20260926'
+OLD=ROOT/'data/product_backtest_20260926'
+CODES=['588090','588710','513130','513530','517120']
+
+
+def read(path):return json.loads(path.read_text(encoding='utf-8'))
+def save(path,value):path.write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8')
+
+
+def prepare():
+    FOLDER.mkdir(exist_ok=True)
+    path=FOLDER/'live.db'
+    if not path.exists():
+        with closing(sqlite3.connect((ROOT/'data/fastnews.db').resolve().as_uri()+'?mode=ro',uri=True)) as source:
+            with closing(sqlite3.connect(path)) as target:source.backup(target)
+    if (FOLDER/'editions.json').exists():return
+    with closing(db.connect(path,mode='live')) as conn:
+        cfg=load_config();db.sync_registry(conn,cfg)
+        editions={code:ed.create_edition(conn,cfg,product_code=code,edition_date='2026-09-26',
+            news_cutoff='2026-09-25T23:59:59+08:00',market_cutoffs={})['edition_id'] for code in CODES}
+        save(FOLDER/'editions.json',editions)
+    old_dir=FOLDER/'old';old_dir.mkdir(exist_ok=True)
+    hashes={}
+    for code in CODES:
+        for suffix in ['draft.json','draft.md','research.json','selection.json']:
+            source=OLD/(code+'-'+suffix)
+            if source.exists():
+                target=old_dir/source.name
+                if not target.exists():shutil.copyfile(source,target)
+                hashes[target.name]=hashlib.sha256(target.read_bytes()).hexdigest()
+    save(FOLDER/'baseline-hashes.json',hashes)
+
+
+def progress(item):print(json.dumps(item,ensure_ascii=True),flush=True)
+
+
+def research(conn,cfg,args):
+    key='morning' if args.kind=='morning' else args.code+'-research'
+    out=FOLDER/(key+'.json')
+    if out.exists():return dict(status='already_recorded',path=str(out))
+    if w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
+        return dict(status='budget_wait',reason='shared_project_daily_limit',used=w.task_attempts(conn))
+    control=TaskControl(480)
+    edition=None
+    if args.kind=='morning':
+        from fastnews.source_catalog import section_ids
+        params=dict(collection_date='2026-09-26',source_ids=section_ids(cfg,'all',collect_only=True))
+        collected=collect(conn,cfg,'digest',params,control,progress)
+    else:
+        edition=ed.get_edition(conn,read(FOLDER/'editions.json')[args.code])
+        collected=collect(conn,cfg,'research',dict(product_code=args.code,edition_id=edition['edition_id']),control,progress)
+    result=rr.generate_report(conn,cfg,'default',args.kind,'2026-09-26',edition=edition,
+        control=control,progress=progress,lookback_days=7,collection_result=collected)
+    save(out,result)
+    return dict(status=result['status'],items=len((result.get('output') or {}).get('items',[])),path=str(out))
+
+
+def select(conn,cfg,args):
+    if not args.selection:raise ValueError('select requires a public-material selection file')
+    eid=read(FOLDER/'editions.json')[args.code]
+    if ed.latest_decision(conn,eid):raise ValueError('Test selection already exists; preserve it and review explicitly')
+    selection=read(Path(args.selection));ids=[]
+    for source in selection['sources']:
+        page=read(Path(source['page_file']))
+        if page.get('error') or not page.get('text'):raise ValueError('Unread public source')
+        data=dict(title=source['title'],content=page['text'],source_type=source.get('source_type','original_publication'),
+            source_url=source['url'],declared_source=source['name'],first_published_at=source['published_at'],
+            origin_role='reported',facts=[],event=dict(subject=args.code,action='隔离回测明确选材',object=source['title'],phase='announcement'))
+        imported=ed.import_evidence_payload(conn,data,edition_id=eid,privacy_class='public',actual_source_path='backtest:explicit-v64-selection')
+        mid=imported['event_id'];add_candidate(conn,cfg,eid,mid);ids.append(mid)
+    result=ed.save_decision(conn,edition_id=eid,selected_event_id=ids[0],selected_fact_ids=[],selected_clue_ids=ids,
+        mainline_note=selection['mainline'],manual_notes=[],must_include_ids=[],expected_revision=0,actor_type='human',config=cfg)
+    save(FOLDER/(args.code+'-test-selection.json'),dict(purpose='isolated_test_not_editorial_approval',selection=selection,decision=result))
+    return dict(status='test_selected',edition_id=eid)
+
+
+def write(conn,cfg,args):
+    out=FOLDER/(args.code+'-'+args.stage+'.json')
+    if out.exists():return dict(status='already_recorded',path=str(out))
+    if w.task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
+        return dict(status='budget_wait',reason='shared_project_daily_limit',used=w.task_attempts(conn))
+    eid=read(FOLDER/'editions.json')[args.code];decision=ed.latest_decision(conn,eid)
+    if not decision:raise ValueError('Explicit test selection is required')
+    data=dict(edition_id=eid,decision_revision=decision['decision_revision'],reader_profile='default',request_id=uuid.uuid4().hex)
+    if args.stage=='draft':
+        if not args.confirm_test_outline:raise ValueError('Explicit --confirm-test-outline required; not editorial approval')
+        outline=read(FOLDER/(args.code+'-outline.json'))
+        confirmed=w.confirm_outline(conn,dict(data,outline_version_id=outline['version_id'],text=outline['content']['text']))
+        save(FOLDER/(args.code+'-test-confirmation.json'),dict(purpose='isolated_test_not_editorial_approval',
+            outline_id=outline['version_id'],confirmed_version_id=confirmed['version_id']))
+        data.update(request_id=uuid.uuid4().hex,confirmed_version_id=confirmed['version_id'])
+    control=TaskControl(480);run=w.accept_run(conn,cfg,args.stage,data,control)
+    result=w.execute_run(conn,run['run_id'],control,progress=progress)
+    save(out,result)
+    # Preserve every raw draft, including rejected or incomplete ones.
+    (FOLDER/(args.code+'-'+args.stage+'.md')).write_text(result['content']['text'],encoding='utf-8')
+    return dict(status=result['checks']['status'],path=str(out),checks=result['checks'])
+
+
+def compare(holdout):
+    """Mechanical recall candidates require later evidence review; no AI grades."""
+    rows=[]
+    for event in read(Path(holdout))['events']:
+        for code in event['products']:
+            path=FOLDER/(code+'-research.json')
+            if not path.exists():
+                rows.append(dict(id=event['id'],product=code,status='not_run',reason='live_report_pending'));continue
+            report=read(path);output=report.get('output') or {};hits=[]
+            for item in output.get('items',[]):
+                text=json.dumps(item,ensure_ascii=False).casefold()
+                if any(all(term.casefold() in text for term in group) for group in event['match_groups']):hits.append(item)
+            raw=json.dumps(output.get('raw_model_output',{}),ensure_ascii=False).casefold()
+            raw_hit=any(all(term.casefold() in raw for term in group) for group in event['match_groups'])
+            status='candidate_match_needs_review' if hits else 'discovered_not_displayed' if raw_hit else 'not_found'
+            rows.append(dict(id=event['id'],product=code,status=status,expected_role=event.get('expected_role'),
+                candidates=[dict(title=i['title'],role=i.get('editorial_role'),sources=i.get('sources',[])) for i in hits],
+                reason='match_is_not_fact_verification' if hits else 'inspect_raw_output_and_validation_audit' if raw_hit else 'not_in_saved_output'))
+    drafts=[]
+    for code in ['513130','588710','517120']:
+        old=FOLDER/'old'/(code+'-draft.md');new=FOLDER/(code+'-draft.json')
+        drafts.append(dict(code=code,old_path=str(old) if old.exists() else None,new_path=str(new) if new.exists() else None,
+            status='awaiting_editor_review' if new.exists() else 'not_run',fact_omissions=None,main_news_position=None,
+            product_relationship=None,repeated_paragraphs=None,structure_retained=None,actual_edit_minutes=None,accepted=None))
+    result=dict(recall=rows,draft_comparison=drafts,quality_acceptance='pending_actual_editor_feedback',
+        adoption_rate=None,holdout_in_search_prompt=False)
+    save(FOLDER/'comparison.json',result);return result
+
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument('action',choices=['prepare','status','research','select','write','compare'])
+    p.add_argument('--code',choices=CODES);p.add_argument('--kind',choices=['morning','product'],default='product')
+    p.add_argument('--stage',choices=['outline','draft'],default='outline');p.add_argument('--selection');p.add_argument('--holdout')
+    p.add_argument('--confirm-test-outline',action='store_true');args=p.parse_args()
+    if args.action=='prepare':prepare();print('prepared');return
+    if args.action=='compare':progress(compare(args.holdout));return
+    if not (FOLDER/'editions.json').exists():raise ValueError('Run prepare once; never reset the acceptance database')
+    with closing(db.connect(FOLDER/'live.db',mode='live')) as conn:
+        cfg=configured_view(conn,load_config());cfg['_reader_profile']=profile(conn,'default')
+        if args.action=='status':
+            result=dict(used=w.task_attempts(conn),limit=reader_limits()['max_tasks_per_day'],host=cfg['_reader_profile']['settings']['host'],
+                research={key:(FOLDER/(key+'.json')).exists() for key in ['morning']+[c+'-research' for c in CODES]},
+                drafts={c:(FOLDER/(c+'-draft.json')).exists() for c in ['513130','588710','517120']})
+        elif args.action=='research':result=research(conn,cfg,args)
+        elif args.action=='select':result=select(conn,cfg,args)
+        else:result=write(conn,cfg,args)
+        progress(result)
+
+
+if __name__=='__main__':main()

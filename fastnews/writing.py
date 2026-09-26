@@ -22,7 +22,7 @@ from .reader_limits import reader_limits
 from .source_access import source_constraints, url_policy
 from .task_control import TaskControl
 from .writing_checks import issue, check_text, qualify_claim, numeric_tokens, number_units, changed_quantity_scopes, within_cutoff, normalized, reference_date, FUND_MANAGER_NAMES
-from .writing_contracts import OUTLINE, DRAFT
+from .writing_contracts import OUTLINE, DRAFT, DRAFT_V64
 
 ROOT=Path(__file__).resolve().parents[1]
 SKILL=ROOT/'skills'/'huatai-fastnews-writing'
@@ -51,14 +51,14 @@ def instructions(stage):
     # The host receives text, not access to linked skill files. Load the shared
     # style guide explicitly so it is also covered by the frozen skill hash.
     return '\n'.join(path.read_text(encoding='utf-8') for path in
-        (SKILL/'SKILL.md',SKILL/'guides'/'style.md',SKILL/'guides'/(stage+'.md')))
+        (SKILL/'SKILL.md',SKILL/'guides'/'common.md',SKILL/'guides'/'style.md',SKILL/'guides'/(stage+'.md')))
 
 
 def task_attempts(conn):
     today=parse_instant(utc_now()).astimezone(ZoneInfo('Asia/Shanghai')).date().isoformat()
     lo,hi=time_bounds(today)
-    return sum(lo<=parse_instant(row[0])<=hi for table in ('fn_reading_reports','fn_writing_runs')
-               for row in conn.execute('SELECT created_at FROM '+table))
+    from .host_task_budget import attempts
+    return attempts(conn,lo,hi)
 
 
 def _decision(conn, edition_id, revision):
@@ -108,6 +108,7 @@ def _snapshot(conn, config, edition_id, revision):
                         source=dict(source,published_at=evidence['first_published_at'])
                         break
             sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,
+                title=source.get('title') or clue['title'],
                 name=source.get('source_name') or source.get('title') or '公开资料',
                 url=source.get('url'),published_at=source.get('first_published_at') or source.get('published_at'),
                 text=text if observed else '',research_hint=text if not observed else '',
@@ -135,10 +136,11 @@ def _snapshot(conn, config, edition_id, revision):
                              must_include=mid in decision.get('must_include_ids',[])))
         for eid in fact.get('evidence_refs',[]):
             ev=ed._evidence(conn,eid)
-            doc=conn.execute('SELECT content FROM fn_documents WHERE document_id=?',(ev['document_id'],)).fetchone()
+            doc=conn.execute('SELECT content,metadata_json FROM fn_documents WHERE document_id=?',(ev['document_id'],)).fetchone()
             original=ev.get('source_type') not in {'search_snippet','user_text'} and ev.get('access_status')!='search_snippet_only'
             observed=bool(doc) and original and fact['evidence_state'] in {'reported','verified'}
             sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,name=ev.get('declared_source') or '提供的原始资料',
+                title=json.loads(doc['metadata_json']).get('title') if doc else None,
                 url=ev.get('source_url'),published_at=ev.get('first_published_at'),text=doc[0] if observed else '',
                 research_hint='' if observed else ev.get('excerpt',''),text_observed=observed,date_observed=observed,
                 identity=ev.get('source_type') or 'selected_fact_evidence',source_id=ev.get('source_id'),error=None))
@@ -146,12 +148,12 @@ def _snapshot(conn, config, edition_id, revision):
         raise ValueError('请先选择事实材料；只有写作要求不能生成框架')
     from .product_context import public_context
     context = public_context(conn, edition)
-    for ref in context['references']:
+    for ref in context.get('writing_references',context['references']):
         mid = ref['id']
         materials.append(dict(id=mid,title=ref['title'],summary='有日期的产品背景依据，不能当作当天新消息或当前持仓。',
             relation=ref['snapshot_type'],origin='product_reference',must_include=False))
         sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,
-            name=ref['source_name'] or ref['title'],url=ref['source_url'],published_at=ref['published_at'],
+            name=ref['source_name'] or ref['title'],title=ref['title'],url=ref['source_url'],published_at=ref['published_at'],
             text=ref['excerpt'],research_hint='',text_observed=True,date_observed=True,
             identity=ref['source_type'],source_id=None,document_id=ref['document_id'],
             evidence_id=ref['evidence_id'],data_as_of=ref['data_as_of'],error=None))
@@ -164,6 +166,7 @@ def _snapshot(conn, config, edition_id, revision):
                          'gaps':context['gaps']},
         source_constraints=source_constraints(config.get('reader_sources',[])),
         is_fixture=edition['is_fixture'],skill_version=fingerprint([instructions('outline'),instructions('draft'),rules]),
+        product_names=[p['name'] for p in config['products'].values()],
         product_codes=list(config['products']))
 
 
@@ -217,18 +220,20 @@ def accept_run(conn,config,stage,data,control,run_id=None):
     if len(dumps(snapshot['materials'])+dumps(snapshot['preferences'])+feedback)>reader_limits()['max_input_characters']:
         raise ValueError('选材超出本次输入预算，请精简补充；未丢弃任何必写项')
     identifier=run_id or 'writing_'+uuid.uuid4().hex
-    conn.execute('BEGIN IMMEDIATE')
-    try:
-        if task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
-            raise ValueError('今天宿主任务已达到共享预算12次（包括检索、写作及失败尝试）')
-        control.check()
-        conn.execute('''INSERT INTO fn_writing_runs(run_id,request_id,request_hash,edition_id,decision_revision,stage,
-            profile_id,status,input_json,created_at,deadline_at) VALUES(?,?,?,?,?,?,?,'running',?,?,?)''',
-            (identifier,data['request_id'],request_signature(stage,data),data['edition_id'],data['decision_revision'],
-             stage,pid,dumps(content),control.started_at,control.deadline_at))
-        conn.commit()
-    except BaseException:
-        conn.rollback(); raise
+    from .host_task_budget import reservation
+    with reservation(conn):
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            if task_attempts(conn)>=reader_limits()['max_tasks_per_day']:
+                raise ValueError('今天宿主任务已达到共享预算12次（包括检索、写作及失败尝试）')
+            control.check()
+            conn.execute('''INSERT INTO fn_writing_runs(run_id,request_id,request_hash,edition_id,decision_revision,stage,
+                profile_id,status,input_json,created_at,deadline_at) VALUES(?,?,?,?,?,?,?,'running',?,?,?)''',
+                (identifier,data['request_id'],request_signature(stage,data),data['edition_id'],data['decision_revision'],
+                 stage,pid,dumps(content),control.started_at,control.deadline_at))
+            conn.commit()
+        except BaseException:
+            conn.rollback(); raise
     return run_record(conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(identifier,)).fetchone())
 
 
@@ -298,6 +303,11 @@ def verify_sources(snapshot,control,progress=None,fetcher=None):
             source['error']=result['error']; continue
         source.update(text=result['text'],text_observed=True,identity='program_fragment',
                       retrieved_at=result.get('retrieved_at'),error=None)
+        if result.get('title'):
+            source['title']=result['title']
+        if result.get('publisher'):
+            source['name']=result['publisher']
+        source['upstream_text_truncated']=result.get('text_truncated',False)
         observed_date=result.get('published_at')
         try:
             if observed_date:
@@ -310,7 +320,7 @@ def verify_sources(snapshot,control,progress=None,fetcher=None):
     for source in snapshot['sources']:
         full=source.get('text','')
         source['document_hash']=hashlib.sha256(full.encode()).hexdigest() if source['text_observed'] else None
-        source['text_truncated']=len(full)>per_source
+        source['text_truncated']=len(full)>per_source or source.get('upstream_text_truncated',False)
         material=next((m for m in snapshot['materials'] if m['id']==source['material_id']),{})
         focus=' '.join([snapshot.get('mainline_note') or '',material.get('title',''),material.get('summary','')])
         source['text_segments']=source_segments(full,per_source,focus)
@@ -464,7 +474,8 @@ def confirm_outline(conn,data):
 
 
 def validate_draft(raw,snapshot,outline):
-    _validate_shape(raw,DRAFT)
+    v64='v6.4' in snapshot.get('rules',{}).get('version','')
+    _validate_shape(raw,DRAFT_V64 if v64 else DRAFT)
     errors=[issue('model_review',t) for t in raw['issues']]
     if raw['status']!='ready':
         errors.append(issue('needs_materials','最终框架有事实缺口，未生成可复制稿'))
@@ -497,7 +508,8 @@ def validate_draft(raw,snapshot,outline):
         if changed_quantity_scopes(p['text'],quotes):
             errors.append(issue('new_quantity_scope','正文改变了原文数值的约数或上下限口径',str(index)))
         errs=check_text(p['text'],location=str(index),entities=outline['entities']+raw['entities'],
-                        product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff'])
+                        product_codes=snapshot['product_codes'],product_names=snapshot.get('product_names',[]),
+                        cutoff=snapshot['news_cutoff'])
         errors.extend(errs)
         refs=list(dict.fromkeys(claims[c]['source_id'] for c in ids))
         citation=[]
@@ -505,7 +517,7 @@ def validate_draft(raw,snapshot,outline):
             s=sources[sid]; cited=[claims[c] for c in ids if claims[c]['source_id']==sid]
             periods=list(dict.fromkeys(c['data_period'] for c in cited if c['data_period']))
             dates=list(dict.fromkeys(c['published_at'] or s.get('published_at') or '日期待核' for c in cited))
-            citation.append(dict(source_id=sid,name=s['name'],url=s.get('url'),published_at='、'.join(dates),
+            citation.append(dict(source_id=sid,name=s['name'],title=s.get('title') or s['name'],url=s.get('url'),published_at='、'.join(dates),
                                  data_period='；'.join(periods)))
         rendered.append(dict(p,sources=citation))
     if raw['status']=='ready' and (not raw['title'].strip() or not raw['paragraphs']):
@@ -520,11 +532,20 @@ def validate_draft(raw,snapshot,outline):
     if changed_quantity_scopes(raw['title'],' '.join(title_evidence)):
         errors.append(issue('title_quantity_scope','标题改变了原文数值的约数或上下限口径'))
     errors.extend(check_text(raw['title'],location='title',entities=outline['entities']+raw['entities'],
-        product_codes=snapshot['product_codes'],cutoff=snapshot['news_cutoff']))
+        product_codes=snapshot['product_codes'],product_names=snapshot.get('product_names',[]),cutoff=snapshot['news_cutoff']))
     content=dict(raw,paragraphs=rendered,risk_notice=risk_notice(snapshot),news_cutoff=snapshot['news_cutoff'],
                  body_characters=sum(len(p['text']) for p in raw['paragraphs']))
     content['text']=render_draft(content)
-    return content,dict(errors=errors,status='needs_changes' if errors else 'ready')
+    from .writing_quality import quality_checks
+    editorial=quality_checks(raw,content['body_characters'],v64)
+    errors.extend(editorial['errors'])
+    policy_codes={'a_share_company','hk_company','unknown_company','a_share_code','hk_code',
+        'index_identity','product_flow','short_performance','certainty','flow_period'}
+    return content,dict(errors=errors,status='needs_changes' if errors else 'ready',
+        policy_version=snapshot.get('rules',{}).get('version','legacy'),
+        factual={'errors':[e for e in errors if e['code'] not in policy_codes and e not in editorial['errors']]},
+        policy={'errors':[e for e in errors if e['code'] in policy_codes]},
+        editorial=editorial,human_acceptance='pending',adoption_ready=None)
 
 
 def risk_notice(snapshot):
@@ -542,10 +563,12 @@ def render_draft(content):
     for p in content['paragraphs']:
         refs=[]
         for s in p.get('sources',[]):
-            refs.append(s['name']+'；公开日期：'+s['published_at']+
+            title=s.get('title') or s['name']
+            publisher=s['name'] if s['name']!=title else '发布机构待核'
+            refs.append(publisher+'《'+title+'》，'+s['published_at']+
                 ('；统计期：'+s['data_period'] if s['data_period'] else '')+
                 ('；'+s['url'] if s.get('url') else '；用户提供的原始资料'))
-        lines.extend(['',p['text'],'','资料／数据来源：'+'；'.join(refs)+'；本期新闻截点：'+content['news_cutoff']])
+        lines.extend(['',p['text'],'','资料／数据来源：'+'；'.join(refs)])
     return '\n'.join(lines)
 
 
@@ -608,7 +631,7 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
         if progress:
             progress({'stage':'writing_model','message':'正在整理框架与证据' if stage=='outline' else '正在按确认框架生成正文并检查'})
         response=runner(data['host'],data['instructions']+'\nINPUT_JSON:\n'+context,
-            OUTLINE if stage=='outline' else DRAFT,web_search=False,
+            OUTLINE if stage=='outline' else DRAFT_V64 if 'v6.4' in snapshot['rules']['version'] else DRAFT,web_search=False,
             timeout=control.host_timeout(snapshot['rules']['host_seconds'],snapshot['rules']['finalize_seconds']),
             control=control,progress=progress)
         control.check()
@@ -677,7 +700,8 @@ def review_stored_draft(conn,parent):
     for claim in outline['claims']:
         claim['checks']=qualify_claim(claim,sources,parent['snapshot']['news_cutoff'],parent['snapshot']['product_code'])
         claim['usable']=not claim['checks']
-    raw={key:deepcopy(parent['content'][key]) for key in DRAFT['properties']}
+    schema=DRAFT_V64 if 'v6.4' in parent['snapshot']['rules']['version'] else DRAFT
+    raw={key:deepcopy(parent['content'][key]) for key in schema['properties']}
     raw['paragraphs']=[{k:p[k] for k in DRAFT['properties']['paragraphs']['items']['properties']} for p in raw['paragraphs']]
     return validate_draft(raw,parent['snapshot'],outline)
 

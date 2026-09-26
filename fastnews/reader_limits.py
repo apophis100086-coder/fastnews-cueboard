@@ -4,8 +4,8 @@ import yaml
 
 PATH=Path(__file__).resolve().parents[1]/'config'/'reader.defaults.yaml'
 BOUNDS={'timeout_seconds':(10,600),'max_input_characters':(1000,24000),
-        'max_tasks_per_day':(1,50),'max_product_items':(1,15),
-        'max_morning_items':(1,40),'max_web_sources':(1,20),'max_refs_per_item':(1,4)}
+        'max_tasks_per_day':(1,50),'max_product_items':(1,60),
+        'max_morning_items':(1,60),'max_web_sources':(1,60),'max_refs_per_item':(1,4)}
 
 
 def reader_limits():

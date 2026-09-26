@@ -1,11 +1,11 @@
-version: product-reading-v1
+version: product-reading-v2-recall
 recent_days: 7
 background_days: 120
-recent_items: 10
-background_items: 5
-exploration_items: 5
+recent_items: 60
+background_items: 60
+exploration_items: 60
 exploration_seconds: 480
-host_seconds: 450
+host_seconds: 390
 finalize_seconds: 30
 history_reports: 24
 products:
