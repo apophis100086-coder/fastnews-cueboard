@@ -40,12 +40,30 @@ def numeric_tokens(text):
     return result
 
 
-def number_units(text):
+def table_number_units(text,context):
+    """Read a four-column quantity/growth table only with its explicit header."""
+    lines=lambda value:[line.strip() for line in unicodedata.normalize('NFKC',value).splitlines() if line.strip()]
+    header=lines(context)
+    expected=['绝对量','同比增长','(%)','绝对量','同比增长','(%)']
+    if header.count('绝对量')!=2 or not any(header[i:i+6]==expected for i in range(len(header))):return set()
+    rows=lines(text);result=set()
+    for i,label in enumerate(rows):
+        match=re.fullmatch(r'.+\((亿块|万块|块|亿元|万元|元|亿份|万份|份)\)',label)
+        values=rows[i+1:i+5]
+        if not match or len(values)!=4 or not all(re.fullmatch(r'-?\d+(?:\.\d+)?',v) for v in values):continue
+        if i+5<len(rows) and re.fullmatch(r'-?\d+(?:\.\d+)?',rows[i+5]):continue
+        for value,unit in zip(values,[match[1],'%',match[1],'%']):
+            result.add((str(Decimal(value).normalize()),unit))
+    return result
+
+
+def number_units(text,*,table_context=None):
     text=unicodedata.normalize('NFKC',text).replace(',','')
     # PDF layout may split a Chinese unit, but never join adjacent numeric rows.
     for unit in ('人民币元','亿美元','亿港元','万元','亿元','美元','港元','亿块','万块','亿份','万份','个百分点'):
         text=re.sub(r'\s*'.join(re.escape(c) for c in unit),unit,text)
-    return {(str(Decimal(number).normalize()),unit.replace('人民币','')) for number,unit in QUANTITY.findall(text)}
+    result={(str(Decimal(number).normalize()),unit.replace('人民币','')) for number,unit in QUANTITY.findall(text)}
+    return result|table_number_units(text,table_context if table_context is not None else text)
 
 
 def quantity_scopes(text):
@@ -198,7 +216,7 @@ def qualify_claim(claim, sources, cutoff, product_code=None):
         errors.append(issue('unsupported_number','陈述中的数字未出现在对应证据内',claim['id']))
     if numeric_tokens(claim['data_period'])-numeric_tokens(source.get('text','')+' '+(published or '')+' '+reference_date(source)):
         errors.append(issue('unsupported_period','统计期未能对应原文日期',claim['id']))
-    if number_units(claim['statement'])-number_units(quote):
+    if number_units(claim['statement'])-number_units(quote,table_context=source.get('text','')):
         errors.append(issue('unsupported_unit','陈述的数字、单位或币种组合与原文不同',claim['id']))
     if changed_quantity_scopes(claim['statement'],quote):
         errors.append(issue('unsupported_quantity_scope','陈述改变了原文数值的约数或上下限口径',claim['id']))

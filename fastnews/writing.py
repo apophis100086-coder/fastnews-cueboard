@@ -588,7 +588,11 @@ def validate_draft(raw,snapshot,outline):
         title_evidence.append(quotes)
         if numeric_tokens(p['text'])-allowed:
             errors.append(issue('new_number','正文包含所引事实没有的数字',str(index)))
-        if number_units(p['text'])-number_units(evidence):
+        supported_units=number_units(evidence)
+        for cid in ids:
+            claim=claims[cid]
+            supported_units.update(number_units(claim['quote'],table_context=sources[claim['source_id']].get('text','')))
+        if number_units(p['text'])-supported_units:
             errors.append(issue('new_unit','正文的数值、单位或币种组合不对应所引事实',str(index)))
         if changed_quantity_scopes(p['text'],quotes):
             errors.append(issue('new_quantity_scope','正文改变了原文数值的约数或上下限口径',str(index)))

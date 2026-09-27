@@ -211,6 +211,20 @@ class V64Tests(unittest.TestCase):
         self.assertEqual(content,before)
         self.assertIn('统计期',w.render_draft(content))
 
+    def test_quantity_table_requires_explicit_header_and_four_distinct_cells(self):
+        from fastnews.writing_checks import number_units,qualify_claim
+        header='指标\n8月\n1—8月\n绝对量\n同比增长\n（%）\n绝对量\n同比增长\n（%）\n'
+        quote='合成产品（亿块）\n529\n20.6\n3860\n22.3'
+        source=dict(id='s1',material_id='m1',text=header+quote,text_observed=True,date_observed=True,published_at='2026-09-15')
+        claim=dict(id='c1',source_id='s1',material_id='m1',quote=quote,statement='8月产量529亿块，同比增长20.6%。',supported=True,
+            data_period='8月',published_at='2026-09-15',publication_quote='',reason='')
+        self.assertEqual(qualify_claim(claim,{'s1':source},'2026-09-25T23:59:59+08:00'),[])
+        for text in ['8月产量20.6亿块。','8月同比增长529%。','8月产量529美元。']:
+            self.assertIn('unsupported_unit',[e['code'] for e in qualify_claim(dict(claim,statement=text),{'s1':source},'2026-09-25T23:59:59+08:00')])
+        self.assertEqual(number_units(quote),set())
+        self.assertEqual(number_units(quote+'\n7',table_context=header+quote+'\n7'),set())
+        self.assertEqual(number_units(quote,table_context=header.replace('同比增长','环比增长')+quote),set())
+
     def test_full_draft_records_separate_checks_and_compact_sources(self):
         # Deliberately synthetic prose verifies the pipeline, not writing quality.
         text=('合成政策明确设备检验的范围和实施步骤，新增办理环节并公开申请安排。'
