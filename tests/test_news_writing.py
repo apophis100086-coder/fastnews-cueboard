@@ -469,6 +469,21 @@ class NewsWritingTests(unittest.TestCase):
         raw['claims'][0]['quote']='前一片段\n后一片段'
         self.assertIn('unobserved_quote',{e['code'] for e in w.validate_outline(raw,snap)[1]['errors']})
 
+    def test_writing_excerpts_reuse_short_sources_capacity_without_losing_prior_gap(self):
+        snap=w._snapshot(self.conn,self.cfg,self.eid,1);seed=deepcopy(snap['sources'][0])
+        lengths=[1700,5200,1100,1650,24000,1550,650]
+        snap['sources']=[dict(seed,id='s'+str(i),text='证'*size,text_observed=True) for i,size in enumerate(lengths)]
+        snap['sources'][2]['text_truncated']=True
+        fetcher=Mock(side_effect=AssertionError('Already read'))
+        w.verify_sources(snap,TaskControl(),fetcher=fetcher)
+        self.assertEqual(snap['sources'][1]['text'],'证'*5200)
+        self.assertFalse(snap['sources'][1]['text_truncated'])
+        self.assertTrue(snap['sources'][2]['text_truncated'])
+        self.assertTrue(snap['sources'][4]['text_truncated'])
+        self.assertLessEqual(sum(sum(map(len,s['text_segments'])) for s in snap['sources']),snap['rules']['max_input_characters']*7//12)
+        self.assertEqual(w.source_segments('材料',0,''),[])
+        fetcher.assert_not_called()
+
     def test_new_currency_or_unit_cannot_borrow_an_existing_number(self):
         snap=w._snapshot(self.conn,self.cfg,self.eid,1);raw=self.outline(snap)
         raw['claims'][0]['statement']='设备订单20亿元。'

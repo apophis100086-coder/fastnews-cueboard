@@ -357,11 +357,23 @@ def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,so
             pass
     # Excerpts are explicitly bounded; missing passages remain a visible gap.
     state.update(total=total,elapsed=state.get('elapsed',0)+time.monotonic()-started)
-    per_source=max(600,min(5000,14000//max(1,len(snapshot['sources']))))
+    # Small documents do not consume an equal slice of every source's capacity.
+    # Reuse that space for longer news articles instead of discarding already-read
+    # detail while the writing input still has room. The full input gate below
+    # remains authoritative; every omitted passage is still labelled.
+    excerpt_budget=rules.get('max_input_characters',24000)*7//12
+    selected_ids={s['id'] for s in selected}
+    available=max(0,excerpt_budget-sum(len(s.get('text','')) for s in snapshot['sources'] if s['id'] not in selected_ids))
+    low,high=0,6000
+    while low<high:
+        middle=(low+high+1)//2
+        if sum(min(len(s.get('text','')),middle) for s in selected)<=available:low=middle
+        else:high=middle-1
+    per_source=low
     for source in selected:
         full=source.get('text','')
         source['document_hash']=hashlib.sha256(full.encode()).hexdigest() if source['text_observed'] else None
-        source['text_truncated']=len(full)>per_source or source.get('upstream_text_truncated',False)
+        source['text_truncated']=len(full)>per_source or source.get('text_truncated',False) or source.get('upstream_text_truncated',False)
         material=next((m for m in snapshot['materials'] if m['id']==source['material_id']),{})
         focus=' '.join([snapshot.get('mainline_note') or '',material.get('title',''),material.get('summary','')])
         source['text_segments']=source_segments(full,per_source,focus)
@@ -372,6 +384,7 @@ def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,so
 
 def source_segments(text,limit,focus):
     """Keep the lead and located passages; never pretend disjoint text is whole."""
+    if limit<=0:return []
     if len(text)<=limit:return [text] if text else []
     lead=limit//2; ranges=[(0,lead)]; remaining=limit-lead
     terms=list(dict.fromkeys(re.findall(r'\d+(?:\.\d+)?\s*(?:%|亿元|亿美元|亿港元)',focus)))
