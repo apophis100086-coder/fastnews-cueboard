@@ -18,12 +18,13 @@ class AcceptanceToolTests(unittest.TestCase):
             folder=Path(root);live.save(folder/'editions.json',{'513130':'e1'})
             parent=folder/'513130-outline.json';live.save(parent,{'stage':'outline','product_code':'513130','edition_id':'e1','version_id':'v1'})
             original=parent.read_bytes();notes=folder/'review.txt';notes.write_text('Explicit synthetic review',encoding='utf-8')
-            args=SimpleNamespace(code='513130',stage='outline',revision=2,parent_outline=parent,feedback_file=notes)
+            args=SimpleNamespace(code='513130',stage='outline',revision=2,parent_outline=parent,feedback_file=notes,no_supplement=True)
             live.write(None,{},args)
             self.assertEqual(parent.read_bytes(),original)
             self.assertEqual(live.read(folder/'513130-outline-r2.json')['content']['text'],'new original')
             self.assertEqual(accept.call_args.args[3]['parent_version_id'],'v1')
             self.assertEqual(accept.call_args.args[3]['feedback'],'Explicit synthetic review')
+            self.assertFalse(accept.call_args.args[3]['supplement_latest'])
 
     def test_revision_waits_on_shared_budget_before_loading_feedback(self):
         with tempfile.TemporaryDirectory() as root,patch.object(live,'FOLDER',Path(root)),\

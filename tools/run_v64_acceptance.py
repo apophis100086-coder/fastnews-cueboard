@@ -151,6 +151,9 @@ def write(conn,cfg,args):
     eid=read(FOLDER/'editions.json')[args.code];decision=ed.latest_decision(conn,eid)
     if not decision:raise ValueError('Explicit test selection is required')
     data=dict(edition_id=eid,decision_revision=decision['decision_revision'],reader_profile='default',request_id=uuid.uuid4().hex)
+    if getattr(args,'no_supplement',False):
+        if args.stage!='outline':raise ValueError('no-supplement is only for outline revision')
+        data['supplement_latest']=False
     parent_path=getattr(args,'parent_outline',None);feedback_path=getattr(args,'feedback_file',None)
     if parent_path or feedback_path:
         if args.stage!='outline' or not parent_path or not feedback_path or getattr(args,'revision',1)==1:
@@ -215,6 +218,7 @@ def main():
     p.add_argument('--parent-outline',help='Existing outline for an explicit feedback revision')
     p.add_argument('--feedback-file',help='Local .txt/.md review notes; requires parent-outline and revision > 1')
     p.add_argument('--outline-file',help='Exact saved outline to explicitly confirm for a draft')
+    p.add_argument('--no-supplement',action='store_true',help='Explicitly revise already-researched outline without another search')
     p.add_argument('--retry-reason',help='Explicit diagnosed retry of a failed case; archives the untouched original and shares quota')
     p.add_argument('--codex-model',help='Explicit model experiment through the existing ChatGPT subscription; recorded in task input')
     p.add_argument('--codex-reasoning',choices=['low','medium','high','xhigh','max','ultra'])
