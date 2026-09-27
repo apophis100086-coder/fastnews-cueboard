@@ -620,7 +620,7 @@ def validate_draft(raw,snapshot,outline):
         product_codes=snapshot['product_codes'],product_names=snapshot.get('product_names',[]),cutoff=snapshot['news_cutoff']))
     content=dict(raw,paragraphs=rendered,risk_notice=risk_notice(snapshot),news_cutoff=snapshot['news_cutoff'],
                  body_characters=sum(len(p['text']) for p in raw['paragraphs']))
-    content['text']=render_draft(content)
+    content['text']=render_draft(content,compact_sources=v64)
     from .writing_quality import quality_checks
     editorial=quality_checks(raw,content['body_characters'],v64)
     errors.extend(editorial['errors'])
@@ -643,15 +643,19 @@ def risk_notice(snapshot):
         missing=[templates['missing']]+([] if product in sources else ['本产品特殊风险模板尚未取得本期可用出处，请补充正式备注。']))
 
 
-def render_draft(content):
+def render_draft(content,*,compact_sources=False):
     lines=[content['title']]
     for p in content['paragraphs']:
-        refs=[]
+        refs=[]; seen=set()
         for s in p.get('sources',[]):
-            title=s.get('title') or s['name']
-            publisher=s['name'] if s['name']!=title else '发布机构待核'
-            refs.append(publisher+'《'+title+'》，'+s['published_at']+
-                ('；统计期：'+s['data_period'] if s['data_period'] else '')+
+            single=lambda value:' '.join(str(value or '').split())
+            title=single(s.get('title') or s['name'])
+            publisher=single(s['name']) if single(s['name'])!=title else '发布机构待核'
+            key=(publisher,title,single(s['published_at']),s.get('url'))
+            if compact_sources and key in seen:continue
+            seen.add(key)
+            refs.append(publisher+'《'+title+'》，'+single(s['published_at'])+
+                ('；统计期：'+s['data_period'] if not compact_sources and s['data_period'] else '')+
                 ('；'+s['url'] if s.get('url') else '；用户提供的原始资料'))
         lines.extend(['',p['text'],'','资料／数据来源：'+'；'.join(refs)])
     return '\n'.join(lines)

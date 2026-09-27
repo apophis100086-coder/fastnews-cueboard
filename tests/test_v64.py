@@ -190,6 +190,27 @@ class V64Tests(unittest.TestCase):
         self.assertIn('editorial_review',DRAFT_V64['required'])
         self.assertLessEqual(w.policy()['host_seconds'],390)
 
+    def test_known_internal_caveats_fail_but_material_conditions_remain_allowed(self):
+        raw=dict(status='ready',paragraphs=[{'text':'相关措施的具体实施情况仍应以正式发布为准。'},
+            {'text':'展会案例不能据此推断展示项目属于基金持仓。'},
+            {'text':'基金2026年3月更新的产品资料概要显示相关范围。'}],editorial_review=editorial_review())
+        errors=quality_checks(raw,1100,True)['errors']
+        self.assertEqual([e['code'] for e in errors],['editorial_internal_caveat','editorial_internal_caveat','editorial_product_provenance'])
+        raw['paragraphs']=[{'text':'协议约定最高1亿美元首付款和近期里程碑付款，后续款项以满足里程碑条件为前提。申请获受理，尚未获批。政策提出将优化服务。'}]
+        self.assertEqual(quality_checks(raw,1100,True)['errors'],[])
+
+    def test_v64_source_rendering_deduplicates_document_and_keeps_audit_periods(self):
+        refs=[dict(name='合成机构',title='\n  合成资料标题\n ',published_at='2026-09-14',
+            url='https://example.org/source',data_period=period) for period in ['资料送出日期2026-09-14','本次资料日期2026-09-14']]
+        content=dict(title='合成标题',paragraphs=[dict(text='原样正文。',sources=refs)])
+        before=deepcopy(content)
+        text=w.render_draft(content,compact_sources=True)
+        self.assertEqual(text.count('https://example.org/source'),1)
+        self.assertIn('合成机构《合成资料标题》，2026-09-14',text)
+        self.assertNotIn('统计期',text)
+        self.assertEqual(content,before)
+        self.assertIn('统计期',w.render_draft(content))
+
     def test_full_draft_records_separate_checks_and_compact_sources(self):
         # Deliberately synthetic prose verifies the pipeline, not writing quality.
         text=('合成政策明确设备检验的范围和实施步骤，新增办理环节并公开申请安排。'

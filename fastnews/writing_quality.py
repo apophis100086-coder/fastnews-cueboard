@@ -25,4 +25,8 @@ def quality_checks(raw, characters, v64):
         # This is a narrow known regression, not a substitute for semantic review.
         if re.search(r'跨市场推广的空间能否打开|仍需观察[。！]?\s*$|有待验证[。！]?\s*$',text):
             result['errors'].append(issue('editorial_ending','出现无新增信息的对冲收尾，需删除或用具体事实收束',str(i+1)))
+        if re.search(r'(?:具体实施情况|相关措施.{0,8}实施).{0,12}以正式发布为准|不能据此推断.{0,20}(?:基金持仓|当前持仓)',text):
+            result['errors'].append(issue('editorial_internal_caveat','内部核验边界进入新闻正文；保留计划或适用范围，删除无信息增量的提示',str(i+1)))
+        if re.search(r'(?:\d{4}年.{0,14}(?:资料概要|招募说明书)|(?:资料概要|招募说明书).{0,14}\d{4}年)',text):
+            result['errors'].append(issue('editorial_product_provenance','产品资料日期与核验叙述应放入逐段来源区，正文直接说明有依据的相关特点',str(i+1)))
     return result
