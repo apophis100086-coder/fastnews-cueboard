@@ -8,7 +8,7 @@ from fastnews import writing as w
 from fastnews.host_provider import HostResult
 from fastnews.task_control import TaskControl, TaskStopped
 from fastnews.writing_contracts import NEWS_EDIT
-from fastnews.writing_newsroom import build_input, validate_edited, located_quote
+from fastnews.writing_newsroom import build_input, validate_edited, located_quote, editorial_brief
 from fastnews.product_context import writing_examples
 from tests import test_news_writing as legacy_fixtures
 
@@ -146,6 +146,18 @@ class NewsroomTests(unittest.TestCase):
         old=w.skill_fingerprint();original=w.instructions
         with patch('fastnews.writing.instructions',side_effect=lambda s:original(s)+(' changed' if s=='edit' else '')):
             self.assertNotEqual(old,w.skill_fingerprint())
+
+    def test_planning_notes_are_separate_but_human_edits_are_not_removed(self):
+        outline=deepcopy(self.confirmed['content'])
+        outline['paragraphs'][0]['analysis']='合成内部备注：不同统计对象，不混用。'
+        outline['confirmed_text']=w.outline_text(outline)
+        result=editorial_brief(self.snapshot,outline)
+        self.assertNotIn('合成内部备注',result['confirmed_outline'])
+        self.assertIn('合成内部备注',result['internal_planning_notes'][0])
+        self.assertGreater(result['generated_source_lines_removed'],0)
+        outline['confirmed_text']=outline['confirmed_text'].replace('分析：合成内部备注：不同统计对象，不混用。','分析：用户明确要求解释这项实际差异。')
+        result=editorial_brief(self.snapshot,outline)
+        self.assertIn('用户明确要求解释这项实际差异',result['confirmed_outline'])
 
     def test_quote_layout_keeps_actual_text_and_does_not_join_omissions_or_numbers(self):
         source=dict(text_segments=['合成产品的\n科技方向，数值20\n30元。','另一段内容'])

@@ -58,6 +58,8 @@ def run(args):
             # to this tool and fixed test DB, never exposed through public APIs.
             replay=deepcopy(original)
             replay['host_runtime']=config['_host_runtime']
+            current_input=json.loads(conn.execute('SELECT input_json FROM fn_writing_runs WHERE run_id=?',(task['run_id'],)).fetchone()[0])
+            replay['implementation_hashes']=current_input['implementation_hashes']
             replay['comparison_test']=dict(original_version=frozen['original_version'],
                 purpose='isolated_test_not_editorial_approval',confirmed_test_version=confirmed['version_id'])
             with conn:conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(w.dumps(replay),task['run_id']))

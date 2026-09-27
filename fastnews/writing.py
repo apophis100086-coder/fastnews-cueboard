@@ -248,6 +248,9 @@ def accept_run(conn,config,stage,data,control,run_id=None):
         'supplement_latest':stage=='outline' and supplement and settings.get('web_search',True),
         'feedback':feedback,'parent':parent['content'] if parent else None,
         'parent_id':parent['version_id'] if parent else None,'instructions':instructions(stage)}
+    content['implementation_hashes']={name:hashlib.sha256((ROOT/'fastnews'/name).read_bytes()).hexdigest()
+        for name in ('writing.py','writing_newsroom.py','writing_checks.py','writing_contracts.py',
+                     'writing_quality.py','product_context.py','host_provider.py')}
     from .writing_newsroom import enabled
     if stage=='draft' and enabled(snapshot):
         content['editing_instructions']=instructions('edit')

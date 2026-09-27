@@ -55,6 +55,35 @@ def source_dates(snapshot, outline):
     return sources
 
 
+def editorial_brief(snapshot, outline):
+    """Separate unchanged generated planning notes, preserving human edits.
+
+    Matching is exact and counted. Anything the user changed remains in the
+    confirmed writing brief, including custom analysis and source-like lines.
+    The complete original confirmation remains immutable in the version store.
+    """
+    from collections import Counter
+    from .writing import outline_source_line
+    sources=Counter(outline_source_line(refs) for refs in outline.get('paragraph_sources',{}).values() if refs)
+    notes=Counter()
+    for paragraph in outline['paragraphs']:
+        notes['分析：'+paragraph['analysis']]+=1
+        notes['产品承接：'+paragraph['product_connection']]+=1
+    text=[]; internal=[]; removed=0
+    for line in outline['confirmed_text'].splitlines():
+        if sources[line]>0:
+            sources[line]-=1;removed+=1
+        elif notes[line]>0:
+            notes[line]-=1
+            if line.partition('：')[2].strip():internal.append(line)
+        else:text.append(line)
+    return dict(confirmed_outline='\n'.join(text),mainline_note=snapshot.get('mainline_note'),
+        preferences=snapshot.get('preferences',[]),
+        internal_planning_notes=internal,
+        planning_notes_usage='供编辑核对关系和范围；不是要求正文逐段解释这些边界。通过准确措辞落实，不照抄核验备忘。',
+        generated_source_lines_removed=removed)
+
+
 def build_input(snapshot, outline):
     """Preserve whole available passages; omit whole optional records explicitly."""
     from .writing import dumps
@@ -80,11 +109,11 @@ def build_input(snapshot, outline):
     missing=required-{s['material_id'] for s in used}
     if missing:
         raise ValueError('必写或主新闻原文、日期尚未核实：'+'；'.join(materials[mid]['title'] for mid in sorted(missing)))
+    brief=editorial_brief(snapshot,outline)
+    brief['must_include']=[dict(id=m['id'],title=m['title']) for m in materials.values() if m['id'] in required]
     result=dict(format_version=FORMAT,news_cutoff=snapshot['news_cutoff'],
         product=dict(name=snapshot['product_name'],code=snapshot['product_code']),
-        editorial_brief=dict(confirmed_outline=outline['confirmed_text'],
-            mainline_note=snapshot.get('mainline_note'),preferences=snapshot.get('preferences',[]),
-            must_include=[dict(id=m['id'],title=m['title']) for m in materials.values() if m['id'] in required]),
+        editorial_brief=brief,
         news_sources=news,product_sources=product,
         style_examples=deepcopy(snapshot.get('style_examples',[])),
         input_coverage=dict(omitted=omitted,style_omitted=[],truncated_sources=[s['source_id'] for s in news+product if s['text_truncated']]))
