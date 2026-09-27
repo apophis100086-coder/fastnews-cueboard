@@ -404,7 +404,7 @@ def _entities(raw,sources):
         publisher_aliases={'恒生指数公司':'Hang Seng Indexes Company','恒生指数有限公司':'Hang Seng Indexes Company',
                            '中证指数有限公司':'China Securities Index Company'}
         alias=publisher_aliases.get(e['name']) if source and source.get('name')==e['name'] else None
-        identified=e['name'] in e['quote'] or bool(alias and alias in e['quote'])
+        identified=normalized(e['name']) in normalized(e['quote']) or bool(alias and normalized(alias) in normalized(e['quote']))
         # PDF line breaks can also split an English word. Ignore layout only,
         # checking each real segment separately, without joining omitted text.
         observed=bool(source and e['quote'] and any(normalized(e['quote']) in normalized(part) for part in source.get('text_segments',[source.get('text','')])))

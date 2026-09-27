@@ -42,6 +42,9 @@ def numeric_tokens(text):
 
 def number_units(text):
     text=unicodedata.normalize('NFKC',text).replace(',','')
+    # PDF layout may split a Chinese unit, but never join adjacent numeric rows.
+    for unit in ('人民币元','亿美元','亿港元','万元','亿元','美元','港元','亿块','万块','亿份','万份','个百分点'):
+        text=re.sub(r'\s*'.join(re.escape(c) for c in unit),unit,text)
     return {(str(Decimal(number).normalize()),unit.replace('人民币','')) for number,unit in QUANTITY.findall(text)}
 
 

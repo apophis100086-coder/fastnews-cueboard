@@ -89,6 +89,16 @@ class NewsWritingTests(unittest.TestCase):
         self.assertEqual(numeric_tokens('twenty four months; one hundred and six months'),set())
         self.assertEqual(numeric_tokens('four different models'),set())
 
+    def test_pdf_unit_and_entity_layout_does_not_change_identity_or_magnitude(self):
+        from fastnews.writing_checks import number_units
+        self.assertEqual(number_units('2.5 亿 美元'),number_units('2.5亿美元'))
+        self.assertEqual(number_units('20\n30元'),{('3E+1','元')})
+        source=dict(name='合成出处',text_observed=True,text='合成药业有限 公司',text_segments=['合成药业有限 公司'])
+        entity=dict(name='合成药业有限公司',market='OTHER',quote='合成药业有限 公司',source_id='s1')
+        self.assertEqual(w._entities([entity],{'s1':source}),[])
+        entity['name']='另一家合成公司'
+        self.assertTrue(w._entities([entity],{'s1':source}))
+
     def test_publication_header_space_before_time_is_not_deleted(self):
         from fastnews.writing_checks import date_present
         for value in ['2026-09-15 17:48','2026 年 9 月 15 日 17:48','2026-09-15T17:48:00+08:00']:
