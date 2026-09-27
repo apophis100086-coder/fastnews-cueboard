@@ -726,6 +726,28 @@ test('old-selection drafts remain readable but cannot be exported or rechecked',
  assert.match(output,/旧版初稿/);assert.match(output,/对应旧选材，请更新框架/);
  for(const action of ['copy','download','recheck'])assert.match(output,new RegExp('data-'+action+'-draft="stale-draft" disabled'));
 });
+
+test('two-step writing shows actual revision and escapes the preserved first draft',async()=>{
+ const e=writingEdition();
+ const initial={version_id:'working-copy',stage:'draft',decision_revision:1,created_at:'2026-09-13T11:00:00Z',checks:{errors:[{message:'编辑未完成'}]},content:{title:'起草',text:'<script>原始起草稿</script>',paragraphs:[],body_characters:0,risk_notice:{text:'风险',missing:[]},pipeline:{status:'editing_incomplete'}}};
+ e.writing.versions.push(initial,{...initial,version_id:'edited-copy',checks:{errors:[]},content:{...initial.content,title:'编辑后的标题',pipeline:{status:'complete',working_version_id:'working-copy',changes:['删除重复段落'],input_coverage:{omitted:[{title:'可选背景',reason:'input_capacity_whole_source_omitted'}]}}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/删除重复段落/);assert.match(output,/&lt;script&gt;原始起草稿/);
+ assert.doesNotMatch(output,/<script>原始起草稿/);assert.match(output,/可选背景/);
+});
+
+test('unfinished editing is readable and never displayed as fact checks passed',async()=>{
+ const e=writingEdition();e.writing.versions.push({version_id:'working-copy',stage:'draft',decision_revision:1,created_at:'2026-09-13T11:00:00Z',
+  checks:{errors:[{message:'编辑未完成'}],factual:{status:'pending',errors:[]},policy:{status:'pending',errors:[]},editorial:{version:'v6.4',human_status:'pending'}},
+  content:{title:'起草稿',paragraphs:[],body_characters:0,risk_notice:{text:'风险',missing:[]},pipeline:{status:'editing_incomplete'}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/编辑步骤尚未完成/);assert.match(output,/待编辑后核对/);
+ assert.doesNotMatch(output,/对应程序检查通过/);assert.match(output,/data-copy-draft="working-copy" disabled/);
+});
 test('writing renders a framework without copying it into the confirmation editor',async()=>{
  const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
  await app.evaluate("loadEdition('ed-one')");

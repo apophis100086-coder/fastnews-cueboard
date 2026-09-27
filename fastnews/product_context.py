@@ -8,8 +8,38 @@ import re
 
 from . import editorial as ed
 from .metadata import normalize_url
+from .writing_checks import within_cutoff
 
 VERSION = 'public-product-context-v2-writing-scope'
+
+
+def writing_examples(conn, edition):
+    """Complete public examples, separate from dated facts and frozen on use.
+
+    Publication memory remains edition-specific. Style examples may come from
+    another product, but never from a private, partial or future publication.
+    """
+    candidates=[]
+    technology={'588090','588710','513130'}
+    for row in conn.execute('SELECT h.data_json,d.content,d.privacy_class FROM fn_history h JOIN fn_documents d USING(document_id)'):
+        item=json.loads(row['data_json'])
+        if row['privacy_class']!='public' or item.get('completeness')!='full_text' or not row['content']:
+            continue
+        if not item.get('source_url') or not within_cutoff(item['publication_time'],edition['news_cutoff']):
+            continue
+        code=item['product_code']; same=code==edition['product_code']
+        related=code in technology and edition['product_code'] in technology
+        candidates.append((same,related,item['publication_time'],item['history_doc_id'],dict(
+            id=item['history_doc_id'],title=item['title'],product_code=code,
+            published_at=item['publication_time'],url=normalize_url(item['source_url']),
+            text=row['content'],complete=True,purpose='style_only_not_current_facts',
+            selection_reason='same_product' if same else 'related_product' if related else 'public_house_style')))
+    unique=[]; seen=set()
+    for *_,value in sorted(candidates,key=lambda c:c[:4],reverse=True):
+        if value['text'] in seen:continue
+        seen.add(value['text']);unique.append(value)
+        if len(unique)==2:break
+    return unique
 
 
 def public_context(conn, edition):

@@ -46,6 +46,8 @@ def policy():
         raise ValueError('单份公开资料字节上限需在100000至4000000之间')
     if type(value['max_input_characters']) is not int or not 24000<=value['max_input_characters']<=96000:
         raise ValueError('写作输入容量需在24000至96000字符之间')
+    if value.get('draft_pipeline')=='newsroom-v1' and not 30<=value.get('compose_seconds',0)<=min(240,value['host_seconds']):
+        raise ValueError('起草步骤时限应在30至240秒内，并为编辑预留时间')
     return value
 
 
@@ -56,6 +58,10 @@ def instructions(stage):
     if stage=='outline':
         paths.append(SKILL/'guides'/'supplement.md')
     return '\n'.join(path.read_text(encoding='utf-8') for path in paths)
+
+
+def skill_fingerprint(rules=None):
+    return fingerprint([instructions('outline'),instructions('draft'),instructions('edit'),rules or policy()])
 
 
 def task_attempts(conn):
@@ -182,7 +188,7 @@ def _snapshot(conn, config, edition_id, revision):
         product_context={'version':context['version'],'published_history':context['published_history'],
                          'gaps':context['gaps']},
         source_constraints=source_constraints(config.get('reader_sources',[])),
-        is_fixture=edition['is_fixture'],skill_version=fingerprint([instructions('outline'),instructions('draft'),rules]),
+        is_fixture=edition['is_fixture'],skill_version=skill_fingerprint(rules),
         product_names=[p['name'] for p in config['products'].values()],
         product_codes=list(config['products']))
 
@@ -242,6 +248,9 @@ def accept_run(conn,config,stage,data,control,run_id=None):
         'supplement_latest':stage=='outline' and supplement and settings.get('web_search',True),
         'feedback':feedback,'parent':parent['content'] if parent else None,
         'parent_id':parent['version_id'] if parent else None,'instructions':instructions(stage)}
+    from .writing_newsroom import enabled
+    if stage=='draft' and enabled(snapshot):
+        content['editing_instructions']=instructions('edit')
     if config.get('_host_runtime'):
         content['host_runtime']={k:v for k,v in config['_host_runtime'].items() if k in {'model','reasoning_effort'}}
     # Bound selected user content, not source retrieval or instruction overhead.
@@ -542,7 +551,9 @@ def confirm_outline(conn,data):
             if len(labels)==1:
                 source.update(name=labels.pop(),publisher_label_basis='selected_document_declaration')
         snapshot['rules']=policy()
-        snapshot['skill_version']=fingerprint([instructions('outline'),instructions('draft'),snapshot['rules']])
+        snapshot['skill_version']=skill_fingerprint(snapshot['rules'])
+        from .product_context import writing_examples
+        snapshot['style_examples']=writing_examples(conn,ed.get_edition(conn,data['edition_id']))
         proposal={key:deepcopy(parent['content'].get(key,[])) for key in OUTLINE['properties']}
         for claim in proposal['claims']:
             claim.pop('checks',None);claim.pop('usable',None)
@@ -571,7 +582,7 @@ def confirm_outline(conn,data):
     return result
 
 
-def validate_draft(raw,snapshot,outline):
+def validate_draft(raw,snapshot,outline,*,anchors_required=True):
     v64='v6.4' in snapshot.get('rules',{}).get('version','')
     _validate_shape(raw,DRAFT_V64 if v64 else DRAFT)
     errors=[issue('model_review',t) for t in raw['issues']]
@@ -586,7 +597,8 @@ def validate_draft(raw,snapshot,outline):
     allowed_title=set(); title_evidence=[]
     for index,p in enumerate(raw['paragraphs'],1):
         ids=p['claim_ids']; mid=p['material_ids']; oid=p['outline_paragraph_id']
-        if not ids or set(ids)-set(claims) or not oid or not p['outline_anchor'].strip() or p['outline_anchor'] not in outline['confirmed_text']:
+        if not ids or set(ids)-set(claims) or (anchors_required and (
+                not oid or not p['outline_anchor'].strip() or p['outline_anchor'] not in outline['confirmed_text'])):
             errors.append(issue('paragraph_citation','段落缺少有效事实或框架引用',str(index))); continue
         if any(not claims[c]['usable'] for c in ids):
             errors.append(issue('unverified_fact','段落引用了尚待核实的陈述',str(index)))
@@ -701,6 +713,9 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
     if not row or row['status']!='running':
         raise ValueError('任务不存在或已经结束')
     data=json.loads(row['input_json']); snapshot=data['snapshot']; stage=row['stage']; response=None
+    from .writing_newsroom import enabled, execute
+    if stage=='draft' and enabled(snapshot):
+        return execute(conn,row,data,control,runner=runner,progress=progress)
     supplement=stage=='outline' and data.get('supplement_latest',False)
     verification={}
     try:
@@ -817,7 +832,7 @@ def public_version(record):
 def workflow(conn,edition_id):
     decision=ed.latest_decision(conn,edition_id)
     versions=[public_version(version(conn,row[0])) for row in conn.execute('SELECT version_id FROM fn_writing_versions WHERE edition_id=? ORDER BY rowid',(edition_id,))]
-    current_skill=fingerprint([instructions('outline'),instructions('draft'),policy()])
+    current_skill=skill_fingerprint()
     for item in versions:
         item['stale_selection']=item['decision_revision']!=(decision or {}).get('decision_revision')
         item['stale_skill_version']=item['skill_version']!=current_skill
@@ -831,7 +846,7 @@ def export_draft(conn,identifier):
     if record['stage']!='draft' or record['checks']['errors']:
         raise ValueError('当前稿件尚有检查问题，请修改框架或补齐依据后重新生成')
     _decision(conn,record['edition_id'],record['decision_revision'])
-    current_version=fingerprint([instructions('outline'),instructions('draft'),policy()])
+    current_version=skill_fingerprint()
     if record['snapshot']['skill_version']!=current_version:
         raise ValueError('写作规则已更新，请按新规则重新检查生成')
     if review_stored_draft(conn,record)[1]['errors']:
@@ -847,6 +862,13 @@ def review_stored_draft(conn,parent):
     while confirmed['stage']=='draft':confirmed=version(conn,confirmed['parent_id'])
     if confirmed['stage']!='confirmed_outline':raise ValueError('稿件没有可追溯的确认框架')
     outline=deepcopy(confirmed['content'])
+    if parent['content'].get('format_version')=='newsroom-v1':
+        if parent['content'].get('pipeline',{}).get('status')!='complete':
+            raise ValueError('编辑步骤尚未完成，程序复查不能替代编辑')
+        from .writing_newsroom import validate_edited
+        content,checks=validate_edited(parent['content']['raw_article'],parent['snapshot'],outline)
+        content['pipeline']=deepcopy(parent['content']['pipeline'])
+        return content,checks
     sources={s['id']:s for s in parent['snapshot']['sources']}
     for claim in outline['claims']:
         claim['checks']=qualify_claim(claim,sources,parent['snapshot']['news_cutoff'],parent['snapshot']['product_code'])
@@ -863,7 +885,7 @@ def recheck_draft(conn,data):
     if parent['stage']!='draft' or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
         raise ValueError('重新检查需要稿件版本和有效请求编号')
     _decision(conn,parent['edition_id'],parent['decision_revision'])
-    current=fingerprint([instructions('outline'),instructions('draft'),policy()])
+    current=skill_fingerprint()
     if parent['snapshot']['skill_version']!=current:
         raise ValueError('写作技能或规则已更新，请回到框架确认后生成；程序复查不能代替新语义检查')
     previous=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()

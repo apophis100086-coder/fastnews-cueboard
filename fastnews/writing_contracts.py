@@ -34,3 +34,15 @@ DRAFT_V64['properties']['editorial_review']=obj(
     repeated_mechanisms=S,generic_endings=S,product_manual_style=S,
     material_sufficient=B,issues=arr(S))
 DRAFT_V64['required']=list(DRAFT_V64['properties'])
+
+# The composing call writes prose. Evidence bookkeeping belongs to editing.
+NEWS_ARTICLE=obj(status=enum('ready','needs_materials'),title=S,
+    paragraphs=arr(obj(text=S,source_ids=arr(S))),issues=arr(S))
+NEWS_EDIT=deepcopy(NEWS_ARTICLE)
+NEWS_EDIT['properties'].update(
+    evidence=arr(obj(paragraph_index={'type':'integer'},source_id=S,statement=S,
+        quote=S,kind=enum('fact','reported','plan','forecast','analysis'),
+        data_period=S,supported=B,reason=S)),
+    entities=arr(ENTITY),review=deepcopy(DRAFT['properties']['review']),
+    editorial_review=deepcopy(DRAFT_V64['properties']['editorial_review']),changes=arr(S))
+NEWS_EDIT['required']=list(NEWS_EDIT['properties'])

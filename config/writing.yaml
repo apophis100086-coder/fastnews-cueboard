@@ -1,4 +1,6 @@
-version: huatai-writing-v6.4-outline-research-20260926
+version: huatai-writing-v6.4-newsroom-20260927
+draft_pipeline: newsroom-v1
+compose_seconds: 240
 deadline_seconds: 480
 host_seconds: 390
 finalize_seconds: 30
@@ -10,7 +12,7 @@ pages_per_material: 4
 body_characters: [1000, 1200]
 max_outline_characters: 10000
 max_feedback_characters: 2000
-# Includes the previous outline, feedback, verified sources and public access rules.
+# Per model input, including source context and complete public style examples.
 max_input_characters: 48000
 rules:
   a_share_companies: 标题与正文禁止A股、港股具体上市公司名称、简称及股票代码；未知身份待核。产品正式名称与代码正常保留；来源区保留真实出处，不将公司事实冒充行业事实。
