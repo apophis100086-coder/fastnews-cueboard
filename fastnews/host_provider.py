@@ -166,7 +166,9 @@ def parse_codex_output(output, final, *, incomplete=False):
 
 
 def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None, control=None,
-             model=None, reasoning_effort=None):
+             model=None, reasoning_effort=None, input_character_limit=36000):
+    if type(input_character_limit) is not int or not 1000<=input_character_limit<=128000:
+        raise ValueError('宿主任务输入容量无效')
     if model is not None and (host!='codex' or not isinstance(model,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,79}',model)):
         raise ValueError('显式模型设置仅支持有效的Codex模型标识')
     if reasoning_effort is not None and (host!='codex' or reasoning_effort not in {'none','minimal','low','medium','high','xhigh','max','ultra'}):
@@ -178,7 +180,7 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
     command = host_command(host)
     if command is None:
         raise HostUnavailable('未找到所选宿主的命令行入口，请先安装并登录对应软件')
-    if not isinstance(prompt,str) or len(prompt)>36000:
+    if not isinstance(prompt,str) or len(prompt)>input_character_limit:
         raise ValueError('本次资料超过宿主任务输入上限，请减少来源或缩短时间范围')
     env = clean_environment()
     flags = {'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {}
@@ -198,7 +200,7 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
     prompt=(f'运行时限：本次模型最多使用 {timeout:.0f} 秒，必须在 {model_deadline} 前返回完整JSON。'
             '这早于资料中可能出现的整项任务截止时间，以本条为准。预留最后至少90秒组织和输出结果；'
             '时间不足立即结束检索，用已取得材料交付并列明未检查缺口。查询和容量均为上限，不要求用满。\n'+prompt)
-    if len(prompt)>36000:
+    if len(prompt)>input_character_limit:
         raise ValueError('本次资料及运行指令超过宿主任务输入上限')
     # Use the OS temporary directory for ephemeral runs. Packaged Windows apps
     # can redirect new LOCALAPPDATA children into a package's LocalCache while

@@ -758,6 +758,7 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
         response=runner(data['host'],data['instructions']+'\nINPUT_JSON:\n'+context,
             OUTLINE_RESEARCH if supplement else OUTLINE if stage=='outline' else DRAFT_V64 if 'v6.4' in snapshot['rules']['version'] else DRAFT,web_search=supplement,
             timeout=control.host_timeout(snapshot['rules']['host_seconds'],snapshot['rules']['finalize_seconds']+post_verify),
+            input_character_limit=capacity+len(data['instructions'])+1024,
             control=control,progress=progress,**data.get('host_runtime',{}))
         control.check()
         payload=response.payload

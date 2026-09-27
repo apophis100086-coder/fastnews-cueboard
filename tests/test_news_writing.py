@@ -184,6 +184,7 @@ class NewsWritingTests(unittest.TestCase):
         saved=json.loads(self.conn.execute('SELECT input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()[0])
         self.assertEqual(saved['host_runtime'],cfg['_host_runtime'])
         self.assertEqual(calls[0]['model'],'gpt-6-sol')
+        self.assertGreater(calls[0]['input_character_limit'],w.policy()['max_input_characters'])
         self.assertEqual(ed.latest_decision(self.conn,self.eid),original)
 
     def test_program_recheck_preserves_old_version_and_does_not_call_model(self):

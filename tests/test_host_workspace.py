@@ -116,6 +116,24 @@ class HostWorkspaceTests(unittest.TestCase):
             with self.assertRaises(ValueError):host_provider.run_host('codex','public fixture',{},model='bad\nmodel')
         launch.assert_not_called()
 
+    def test_writing_capacity_can_exceed_reader_default_but_includes_runtime_prefix(self):
+        process=Mock(returncode=0)
+        process.communicate.return_value=(json.dumps({'structured_output':{'items':[]},'usage':{}}),'')
+        process.poll.return_value=0
+        with patch.object(host_provider,'host_command',return_value=['fixture-host']), \
+             patch.object(host_provider.subprocess,'Popen',return_value=process) as launch, \
+             patch.object(host_provider,'ProcessGroup'):
+            with self.assertRaisesRegex(ValueError,'输入上限'):
+                host_provider.run_host('workbuddy','x'*37000,{})
+            launch.assert_not_called()
+            result=host_provider.run_host('workbuddy','x'*37000,{},input_character_limit=50000)
+            self.assertEqual(result.payload,{'items':[]})
+            with self.assertRaisesRegex(ValueError,'运行指令'):
+                host_provider.run_host('workbuddy','x'*37000,{},input_character_limit=37000)
+            self.assertEqual(launch.call_count,1)
+            with self.assertRaises(ValueError):
+                host_provider.run_host('workbuddy','x',{},input_character_limit=True)
+
 
 if __name__ == '__main__':
     unittest.main()
