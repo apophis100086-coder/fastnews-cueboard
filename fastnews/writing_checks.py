@@ -128,7 +128,7 @@ def _short_period(sentence):
     return None
 
 
-def check_text(text, *, location='', entities=(), product_codes=(), product_names=(), cutoff=None, editorial=False):
+def check_text(text, *, location='', entities=(), product_codes=(), product_names=(), cutoff=None, editorial=False, rules=None):
     result=[]
     body=unicodedata.normalize('NFKC',text or '')
     if editorial:
@@ -149,7 +149,7 @@ def check_text(text, *, location='', entities=(), product_codes=(), product_name
             code={'CN':'a_share_company','HK':'hk_company','UNKNOWN':'unknown_company'}[e['market']]
             result.append(issue(code,'标题和正文不能出现A股、港股具体上市公司' if e['market']!='UNKNOWN' else '公司上市身份待核实',location,e['name']))
     compact=normalized(body)
-    if any(normalized(name) in compact for name in index_names()) or re.search(r'跟踪.{0,35}指数|(?:标的|跟踪)指数|指数(?:名称|代码)',body):
+    if not (rules or {}).get('allow_index_identity') and (any(normalized(name) in compact for name in index_names()) or re.search(r'跟踪.{0,35}指数|(?:标的|跟踪)指数|指数(?:名称|代码)',body)):
         result.append(issue('index_identity','跟踪指数仅供内部核对，标题和正文不介绍其名称、代码或机制',location))
     if re.search(r'(?:港股|股票|证券|个股)(?:代码)?\s*[:：]?\s*\d{4,5}\b',body):
         result.append(issue('hk_code','标题和正文不能出现港股股票代码',location))
@@ -172,7 +172,7 @@ def check_text(text, *, location='', entities=(), product_codes=(), product_name
                 right=min([pos for mark in '，,；;' if (pos:=sentence.find(mark,finding.end()))>=0] or [len(sentence)])
                 flow_clause=sentence[left:right]
                 precise=bool(re.search(r'(?:规模|份额|净流入|净流出|净申购|净赎回|净买入|净卖出|资金增持|吸金|增持).{0,16}(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万亿]+)\s*(?:万亿|亿|万|千|百)?(?:元|美元|港元|份)|(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万亿]+)\s*(?:万亿|亿|万|千|百)?(?:元|美元|港元|份).{0,8}(?:净流入|净申购|增持)',flow_clause))
-                if precise:
+                if precise and not (rules or {}).get('allow_precise_product_data'):
                     result.append(issue('product_flow','产品规模、份额或净资金精确量值不得进入公开稿',location,sentence));break
                 if re.search(r'连续.{0,8}(?:天|日).{0,12}(?:增持|净流入|吸金|净买入)',sentence) and not re.search(r'截至|自.{2,20}至|\d{1,2}月\d{1,2}日',sentence):
                     result.append(issue('flow_period','连续增持趋势需注明统计区间或截止日期',location,sentence));break

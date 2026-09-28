@@ -152,7 +152,7 @@ class LocalApplication:
                 config = data.get('_config') or configured_view(conn,self.config,profile_id)
                 if not action.startswith('writing-'):
                     sync_registry(conn,config)
-                if action in {'writing-outline','writing-draft'}:
+                if action in {'writing-outline','writing-draft','writing-generate'}:
                     from .writing import execute_run
                     def writing_progress(item):
                         with self.guard:
@@ -249,12 +249,16 @@ class LocalApplication:
             seconds=policy()['exploration_seconds']
             accepted_control=TaskControl(seconds)
             accepted_at=accepted_control.started_at
-        elif action in {'writing-outline','writing-draft'}:
+        elif action in {'writing-outline','writing-draft','writing-generate'}:
             from .task_control import TaskControl
             from .writing import policy
-            accepted_control=TaskControl(policy()['deadline_seconds'])
+            if action=='writing-generate':
+                from .writing_direct import policy as direct_policy
+                accepted_control=TaskControl(direct_policy()['deadline_seconds'])
+            else:
+                accepted_control=TaskControl(policy()['deadline_seconds'])
         with self.guard:
-            if action in {'writing-outline','writing-draft'}:
+            if action in {'writing-outline','writing-draft','writing-generate'}:
                 from .writing import previous_request, accept_run, policy
                 from .source_catalog import configured_view, profile
                 from .task_control import TaskControl
@@ -279,7 +283,7 @@ class LocalApplication:
                 return {'job_id':jid}
             if action=='job-stop':
                 job=self.jobs.get(data.get('job_id'))
-                if not job or job['action'] not in {'explore','digest','research','writing-outline','writing-draft'}:
+                if not job or job['action'] not in {'explore','digest','research','writing-outline','writing-draft','writing-generate'}:
                     raise ValueError('没有可停止的探查或写作任务')
                 control=self.controls.get(data['job_id'])
                 if control:

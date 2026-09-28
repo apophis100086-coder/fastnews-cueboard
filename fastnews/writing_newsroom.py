@@ -149,9 +149,11 @@ def render_article(raw, snapshot):
             source=sources.get(sid)
             if source:
                 refs.append(dict(source_id=sid,name=source['name'],title=source.get('title') or source['name'],
-                    url=source.get('url'),published_at=source.get('published_at') or '日期待核',data_period=''))
+                    url=source.get('url'),published_at=source.get('published_at') or '日期待核',
+                    data_period='；'.join(dict.fromkeys(e['data_period'] for e in raw.get('evidence',[])
+                        if e['paragraph_index']==len(paragraphs)+1 and e['source_id']==sid and e.get('data_period')))))
         paragraphs.append(dict(paragraph,sources=refs))
-    content=dict(raw,paragraphs=paragraphs,format_version=FORMAT,news_cutoff=snapshot['news_cutoff'],
+    content=dict(raw,paragraphs=paragraphs,format_version=snapshot.get('workflow',FORMAT),news_cutoff=snapshot['news_cutoff'],
         body_characters=sum(len(p['text']) for p in paragraphs),risk_notice=risk_notice(snapshot))
     content['text']=render_draft(content,compact_sources=True)
     return content
@@ -212,12 +214,14 @@ def combined_usage(steps, control):
     return usage
 
 
-def execute(conn, row, data, control, *, runner, progress=None):
+def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
     """Persist the composing version before starting editing, even on failure."""
     from . import writing as w
     snapshot=data['snapshot']; outline=data['parent']; identifier=row['run_id']
+    direct=data.get('workflow')=='direct-newsroom-v2'
+    format_version='direct-newsroom-v2' if direct else FORMAT
     steps=[]; first_id=None; response=None
-    pipeline=dict(format_version=FORMAT,status='preparing',steps=[])
+    pipeline=dict(format_version=format_version,status='preparing',steps=[])
     def persist():
         data['pipeline']=pipeline
         with conn:conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(w.dumps(data),identifier))
@@ -231,12 +235,12 @@ def execute(conn, row, data, control, *, runner, progress=None):
         timeout=control.host_timeout(maximum,snapshot['rules']['finalize_seconds'])
         step=dict(stage=stage,status='running',input=payload,instructions=instructions,timeout=timeout)
         pipeline['steps'].append(step);pipeline['status']=stage;persist()
-        if progress:progress(dict(stage='writing_'+stage,message='正在起草完整快讯（1/2）' if stage=='compose' else '正在编辑正文并核对来源（2/2）'))
+        if progress:progress(dict(stage='writing_'+stage,message={'research':'正在补充相关新闻与产品资料','compose':'正在起草完整快讯','edit':'正在编辑正文并核对来源'}[stage]))
         start=time.monotonic()
         try:
-            response=runner(data['host'],prompt,schema,web_search=False,timeout=timeout,control=control,
+            response=runner(data['host'],prompt,schema,web_search=stage=='research',timeout=timeout,control=control,
                 progress=progress,input_character_limit=capacity+len(instructions)+1024,
-                task_kind='writing',**data.get('host_runtime',{}))
+                task_kind='research' if stage=='research' else 'writing',**data.get('host_runtime',{}))
             step.update(status='returned',raw_output=response.payload,trace=response.trace)
             usage=response.usage
             return response
@@ -252,13 +256,18 @@ def execute(conn, row, data, control, *, runner, progress=None):
     try:
         if snapshot['is_fixture'] and runner is w.run_host:
             raise ValueError('合成测试不能调用真实写作宿主')
-        base,checked_snapshot=build_input(snapshot,outline)
+        if direct:
+            from .writing_direct import prepare,build_input as build_direct
+            prepare(snapshot,data,control,invoke,persist,progress,fetcher)
+            base,checked_snapshot=build_direct(snapshot,data.get('feedback',''),data.get('previous_draft'))
+        else:
+            base,checked_snapshot=build_input(snapshot,outline)
         pipeline['input_coverage']=base['input_coverage'];persist()
         first=invoke('compose',dict(base,stage='compose'),data['instructions'],NEWS_ARTICLE,
-            min(snapshot['rules']['compose_seconds'],snapshot['rules']['host_seconds']))
+            snapshot['rules']['compose_seconds'] if direct else min(snapshot['rules']['compose_seconds'],snapshot['rules']['host_seconds']))
         w._validate_shape(first.payload,NEWS_ARTICLE)
         first_content=render_article(first.payload,checked_snapshot)
-        first_content['pipeline']=dict(format_version=FORMAT,status='editing_incomplete',input_coverage=base['input_coverage'])
+        first_content['pipeline']=dict(format_version=format_version,status='editing_incomplete',input_coverage=base['input_coverage'])
         first_checks=dict(status='editing_incomplete',errors=[issue('editing_incomplete','已保存起草稿，编辑步骤尚未完成')],
             factual=dict(status='pending',errors=[]),policy=dict(status='pending',errors=[]),
             editorial=dict(version='v6.4',human_status='pending',model_review=None,actual_edit_minutes=None,target_edit_minutes=10,errors=[],notes=[]),
@@ -271,17 +280,22 @@ def execute(conn, row, data, control, *, runner, progress=None):
         control.check()
         if first.payload['status']!='ready' or not first.payload['paragraphs']:
             raise ValueError('起草未完成：'+'；'.join(first.payload['issues'] or ['没有完整正文']))
-        available=snapshot['rules']['host_seconds']-sum(s['elapsed_seconds'] for s in steps)
+        available=snapshot['rules']['edit_seconds'] if direct else snapshot['rules']['host_seconds']-sum(s['elapsed_seconds'] for s in steps)
         if available<=0:
             from .task_control import TaskStopped
             raise TaskStopped('timed_out')
         edited=invoke('edit',dict(base,stage='edit',composing_draft=first.payload),data['editing_instructions'],NEWS_EDIT,available)
-        content,checks=validate_edited(edited.payload,checked_snapshot,outline)
+        if direct:
+            from .writing_direct import validate_edited as validate_direct
+            content,checks=validate_direct(edited.payload,checked_snapshot)
+        else:
+            content,checks=validate_edited(edited.payload,checked_snapshot,outline)
         control.check()
-        content['pipeline']=dict(format_version=FORMAT,status='complete',working_version_id=first_id,
+        content['pipeline']=dict(format_version=format_version,status='complete',working_version_id=first_id,
             changes=edited.payload['changes'],input_coverage=base['input_coverage'])
         pipeline['status']='complete';persist()
         usage=combined_usage(steps,control)
+        usage['pipeline']=format_version
         with conn:
             saved=w._save_version(conn,checked_snapshot,'draft',content,checks,parent_id=first_id,run_id=identifier)
             conn.execute("UPDATE fn_writing_runs SET status='completed',version_id=?,usage_json=?,finished_at=? WHERE run_id=?",

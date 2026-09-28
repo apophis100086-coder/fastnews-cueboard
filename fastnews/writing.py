@@ -54,7 +54,7 @@ def policy():
 def instructions(stage):
     # The host receives text, not access to linked skill files. Load the shared
     # style guide explicitly so it is also covered by the frozen skill hash.
-    paths=[SKILL/'SKILL.md',SKILL/'guides'/'common.md',SKILL/'guides'/'style.md',SKILL/'guides'/(stage+'.md')]
+    paths=[SKILL/'guides'/'legacy_entry.md',SKILL/'guides'/'common.md',SKILL/'guides'/'style.md',SKILL/'guides'/(stage+'.md')]
     if stage=='outline':
         paths.append(SKILL/'guides'/'supplement.md')
     return '\n'.join(path.read_text(encoding='utf-8') for path in paths)
@@ -208,6 +208,9 @@ def previous_request(conn,stage,data):
 
 
 def accept_run(conn,config,stage,data,control,run_id=None):
+    if stage=='generate':
+        from .writing_direct import accept_run as accept_direct
+        return accept_direct(conn,config,data,control,run_id)
     prior=previous_request(conn,stage,data)
     if prior:
         return prior
@@ -304,7 +307,7 @@ def _read_source(url,control,seconds):
         process.wait(timeout=5)
 
 
-def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,source_ids=None,budget_state=None):
+def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,source_ids=None,budget_state=None,preserve_context=False):
     fetcher=fetcher or _read_source
     rules=snapshot['rules']
     state=budget_state if budget_state is not None else {}
@@ -369,6 +372,14 @@ def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,so
             pass
     # Excerpts are explicitly bounded; missing passages remain a visible gap.
     state.update(total=total,elapsed=state.get('elapsed',0)+time.monotonic()-started)
+    if preserve_context:
+        for source in selected:
+            full=source.get('text','')
+            source['document_hash']=hashlib.sha256(full.encode()).hexdigest() if source['text_observed'] else None
+            source['text_truncated']=bool(source.get('text_truncated') or source.get('upstream_text_truncated'))
+            source.setdefault('text_segments',[full])
+            source['fingerprint']=fingerprint(source)
+        return snapshot
     # Small documents do not consume an equal slice of every source's capacity.
     # Reuse that space for longer news articles instead of discarding already-read
     # detail while the writing input still has room. The full input gate below
@@ -639,7 +650,7 @@ def validate_draft(raw,snapshot,outline,*,anchors_required=True):
             errors.append(issue('new_quantity_scope','正文改变了原文数值的约数或上下限口径',str(index)))
         errs=check_text(p['text'],location=str(index),entities=outline['entities']+raw['entities'],
                         product_codes=snapshot['product_codes'],product_names=snapshot.get('product_names',[]),
-                        cutoff=snapshot['news_cutoff'])
+                        cutoff=snapshot['news_cutoff'],rules=snapshot.get('rules'))
         errors.extend(errs)
         refs=list(dict.fromkeys(claims[c]['source_id'] for c in ids))
         citation=[]
@@ -662,7 +673,7 @@ def validate_draft(raw,snapshot,outline,*,anchors_required=True):
     if changed_quantity_scopes(raw['title'],' '.join(title_evidence)):
         errors.append(issue('title_quantity_scope','标题改变了原文数值的约数或上下限口径'))
     errors.extend(check_text(raw['title'],location='title',entities=outline['entities']+raw['entities'],
-        product_codes=snapshot['product_codes'],product_names=snapshot.get('product_names',[]),cutoff=snapshot['news_cutoff']))
+        product_codes=snapshot['product_codes'],product_names=snapshot.get('product_names',[]),cutoff=snapshot['news_cutoff'],rules=snapshot.get('rules')))
     content=dict(raw,paragraphs=rendered,risk_notice=risk_notice(snapshot),news_cutoff=snapshot['news_cutoff'],
                  body_characters=sum(len(p['text']) for p in raw['paragraphs']))
     content['text']=render_draft(content,compact_sources=v64)
@@ -721,6 +732,8 @@ def run_record(row):
         error=saved.get('failure_message'),
         product_code=saved['snapshot']['product_code'],news_cutoff=saved['snapshot']['news_cutoff'],
         started_at=result['created_at'],progress=[],usage=json.loads(result.pop('usage_json') or 'null'))
+    if saved.get('workflow')=='direct-newsroom-v2':
+        result.update(action='writing-generate',workflow=saved['workflow'])
     return result
 
 
@@ -729,6 +742,9 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
     if not row or row['status']!='running':
         raise ValueError('任务不存在或已经结束')
     data=json.loads(row['input_json']); snapshot=data['snapshot']; stage=row['stage']; response=None
+    if data.get('workflow')=='direct-newsroom-v2':
+        from .writing_newsroom import execute
+        return execute(conn,row,data,control,runner=runner,progress=progress,fetcher=fetcher)
     from .writing_newsroom import enabled, execute
     if stage=='draft' and enabled(snapshot):
         return execute(conn,row,data,control,runner=runner,progress=progress)
@@ -842,6 +858,7 @@ def public_version(record):
     result['product_code']=record['snapshot']['product_code']
     result['news_cutoff']=record['snapshot']['news_cutoff']
     result['skill_version']=record['snapshot']['skill_version']
+    result['workflow']=record['snapshot'].get('workflow','legacy')
     result['source_evidence']=[{k:s.get(k) for k in ('id','material_id','title','name','url','published_at','data_as_of','evidence_id','text_observed','date_observed','news_freshness','identity','error','text_truncated','fingerprint')} for s in record['snapshot']['sources']]
     research=record['snapshot'].get('supplemental_research',{})
     result['supplemental_research']={k:deepcopy(research[k]) for k in ('enabled','status','summary','source_ids','verified_sources','approval') if k in research}
@@ -856,7 +873,8 @@ def workflow(conn,edition_id):
     current_skill=skill_fingerprint()
     for item in versions:
         item['stale_selection']=item['decision_revision']!=(decision or {}).get('decision_revision')
-        item['stale_skill_version']=item['skill_version']!=current_skill
+        from .writing_direct import skill_fingerprint as direct_fingerprint
+        item['stale_skill_version']=item['skill_version']!=(direct_fingerprint(item['product_code']) if item['workflow']=='direct-newsroom-v2' else current_skill)
     runs=[run_record(row) for row in conn.execute('SELECT * FROM fn_writing_runs WHERE edition_id=? ORDER BY rowid',(edition_id,))]
     recovered={v['content']['recovery']['source_run_id']:v['version_id'] for v in versions
         if v['stage']=='outline' and v['content'].get('recovery')}
@@ -871,7 +889,7 @@ def export_draft(conn,identifier):
     if record['stage']!='draft' or record['checks']['errors']:
         raise ValueError('当前稿件尚有检查问题，请修改框架或补齐依据后重新生成')
     _decision(conn,record['edition_id'],record['decision_revision'])
-    current_version=skill_fingerprint()
+    current_version=current_skill_for(record)
     if record['snapshot']['skill_version']!=current_version:
         raise ValueError('写作规则已更新，请按新规则重新检查生成')
     if review_stored_draft(conn,record)[1]['errors']:
@@ -883,6 +901,13 @@ def export_draft(conn,identifier):
 
 def review_stored_draft(conn,parent):
     """Apply current deterministic gates without rewriting a saved version."""
+    if parent['snapshot'].get('workflow')=='direct-newsroom-v2':
+        if parent['content'].get('pipeline',{}).get('status')!='complete':
+            raise ValueError('编辑尚未完成，已保存的起草稿仍可查看')
+        from .writing_direct import validate_edited
+        content,checks=validate_edited(parent['content']['raw_article'],parent['snapshot'])
+        content['pipeline']=deepcopy(parent['content']['pipeline'])
+        return content,checks
     confirmed=parent
     while confirmed['stage']=='draft':confirmed=version(conn,confirmed['parent_id'])
     if confirmed['stage']!='confirmed_outline':raise ValueError('稿件没有可追溯的确认框架')
@@ -910,7 +935,7 @@ def recheck_draft(conn,data):
     if parent['stage']!='draft' or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):
         raise ValueError('重新检查需要稿件版本和有效请求编号')
     _decision(conn,parent['edition_id'],parent['decision_revision'])
-    current=skill_fingerprint()
+    current=current_skill_for(parent)
     if parent['snapshot']['skill_version']!=current:
         raise ValueError('写作技能或规则已更新，请回到框架确认后生成；程序复查不能代替新语义检查')
     previous=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()
@@ -923,3 +948,10 @@ def recheck_draft(conn,data):
     with conn:
         return public_version(_save_version(conn,parent['snapshot'],'draft',content,checks,
             parent_id=parent['version_id'],request_id=rid,input_hash=signature))
+
+
+def current_skill_for(record):
+    if record['snapshot'].get('workflow')=='direct-newsroom-v2':
+        from .writing_direct import skill_fingerprint as direct_fingerprint
+        return direct_fingerprint(record['snapshot']['product_code'])
+    return skill_fingerprint()
