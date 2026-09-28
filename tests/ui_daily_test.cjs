@@ -587,7 +587,7 @@ test('failed refresh keeps the previous usable report visible', async () => {
   const app=await harness({reader:true,workflow:true});
   const previous={status:'partial',host:'codex',report_id:'old',output:{items:[{item_id:'item_1',title:'原有研究线索',summary:'先前可用结果',sources:[],rank:1}],gaps:[],coverage:[]}};
   const markup=app.evaluate('reportHTML('+JSON.stringify({status:'failed',previous_report:previous})+',"product")');
-  assert.match(markup,/本次宿主任务未完成/);
+  assert.match(markup,/上次产品检索未完成/);
   assert.match(markup,/原有研究线索/);
   assert.match(markup,/以下保留上次可用结果/);
 });
