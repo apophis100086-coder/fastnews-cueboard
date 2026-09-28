@@ -22,7 +22,7 @@ class DirectWritingTests(unittest.TestCase):
         sid=payload['news_sources'][0]['source_id'];statement=self.fixture.statement
         raw=dict(status='ready',title='设备订单增长',paragraphs=[dict(text=statement,source_ids=[sid])],issues=[])
         if payload['stage']=='edit':
-            raw.update(evidence=[dict(paragraph_index=1,source_id=sid,statement=statement,quote=statement,kind='reported',data_period='',supported=True,reason='')],
+            raw.update(appendix=[],evidence=[dict(paragraph_index=1,source_id=sid,statement=statement,quote=statement,kind='reported',data_period='',supported=True,reason='')],
                 entities=[],review={k:True for k in NEWS_EDIT['properties']['review']['properties']},
                 editorial_review={k:[] if k=='issues' else True if k=='material_sufficient' else '合成检查' for k in NEWS_EDIT['properties']['editorial_review']['properties']},changes=['删除重复解释'])
         return HostResult(raw,dict(input_tokens=20,output_tokens=10,model_requested=kwargs['model'],reasoning_effort_requested=kwargs['reasoning_effort']),{})

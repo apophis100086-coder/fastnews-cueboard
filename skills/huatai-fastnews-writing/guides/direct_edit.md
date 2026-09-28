@@ -9,3 +9,6 @@
 返回实际修订后的 title、paragraphs 和简短 changes。逐段 source_ids 与独立 evidence 对应；每条 evidence 含 paragraph_index、source_id、statement、原文连续 quote、kind、data_period、supported、reason。不同位置的引文分开列，不拼接成原句。每段如综合多个来源，分别列出。证据记录只用于后台，不进入稿件。
 
 review 的 faithful_to_outline 是历史兼容字段，本流程表示忠于人工已选方向、主事件和写作要求，并不要求存在框架。no_new_facts 表示未超出本次核对材料。先修复问题，再填写最终检查结果；无法修复的具体事实缺口保留。是否采用和改稿时间由真实编辑反馈决定。
+# 产品备注与风险提示
+
+在 appendix 中另给产品备注与风险提示，不计入正文。每项填写 kind（product_note / risk）、subject_code、text、source_id 和连续原文 quote。只根据本题已核对的有效产品原文提炼，费率有当前依据才写；资料不足留空并在 issues 写明缺口。红利系列分别标明成员代码，不将七只基金的风险或数据混为同一产品。不要从范文照搬持有人、排名、历史数字或风险等级。完整引文用于内部核对，不放进正文；备注中的来源同样由程序生成。

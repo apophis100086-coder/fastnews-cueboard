@@ -148,6 +148,10 @@ products:
     - 收入
     - 放量
   dividend_family:
+  - id: fund_identity
+    name: 七成员产品与市场范围
+    query: 华泰柏瑞 红利 510880 512890 561580 513530 520890 561630 561450 产品资料 指数
+    match_terms: [红利, 低波, 质量, 指数]
   - id: ah_dividend
     name: A股与港股分红
     query: A股 港股 分红 派息 股东回报 现金流

@@ -256,7 +256,12 @@ def material_scope(snapshot):
 
 def validate_edited(raw,snapshot):
     from .writing_newsroom import validate_edited as validate
-    content,checks=validate(raw,snapshot,material_scope(snapshot))
+    from .writing import _validate_shape
+    from .writing_contracts import DIRECT_EDIT
+    _validate_shape(raw,DIRECT_EDIT)
+    base={k:v for k,v in raw.items() if k!='appendix'}
+    content,checks=validate(base,snapshot,material_scope(snapshot))
+    content['raw_article']=deepcopy(raw)
     content['format_version']=FORMAT
     editorial=checks['editorial'];editorial['version']=FORMAT
     editorial['notes'].extend(e['message'] for e in editorial['errors'])
@@ -269,4 +274,7 @@ def validate_edited(raw,snapshot):
         if missing:
             error=issue('family_members','正文未完整覆盖红利系列成员：'+'、'.join(missing))
             checks['errors'].append(error);checks['policy']['errors'].append(error);checks['status']='needs_changes'
+    from .writing_delivery import attach_appendix,render
+    attach_appendix(content,raw['appendix'],snapshot,checks)
+    content['text']=render(content)
     return content,checks

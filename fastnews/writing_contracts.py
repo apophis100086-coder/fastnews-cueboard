@@ -46,3 +46,9 @@ NEWS_EDIT['properties'].update(
     entities=arr(ENTITY),review=deepcopy(DRAFT['properties']['review']),
     editorial_review=deepcopy(DRAFT_V64['properties']['editorial_review']),changes=arr(S))
 NEWS_EDIT['required']=list(NEWS_EDIT['properties'])
+
+# Product remarks are separate from the news body and have their own evidence.
+DIRECT_EDIT=deepcopy(NEWS_EDIT)
+DIRECT_EDIT['properties']['appendix']=arr(obj(kind=enum('product_note','risk'),text=S,
+    subject_code=S,source_id=S,quote=S))
+DIRECT_EDIT['required']=list(DIRECT_EDIT['properties'])

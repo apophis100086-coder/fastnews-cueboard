@@ -284,7 +284,8 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         if available<=0:
             from .task_control import TaskStopped
             raise TaskStopped('timed_out')
-        edited=invoke('edit',dict(base,stage='edit',composing_draft=first.payload),data['editing_instructions'],NEWS_EDIT,available)
+        from .writing_contracts import DIRECT_EDIT
+        edited=invoke('edit',dict(base,stage='edit',composing_draft=first.payload),data['editing_instructions'],DIRECT_EDIT if direct else NEWS_EDIT,available)
         if direct:
             from .writing_direct import validate_edited as validate_direct
             content,checks=validate_direct(edited.payload,checked_snapshot)

@@ -701,6 +701,9 @@ def risk_notice(snapshot):
 
 
 def render_draft(content,*,compact_sources=False):
+    if content.get('format_version')=='direct-newsroom-v2':
+        from .writing_delivery import render
+        return render(content)
     lines=[content['title']]
     for p in content['paragraphs']:
         refs=[]; seen=set()
@@ -887,6 +890,13 @@ def workflow(conn,edition_id):
 
 def export_draft(conn,identifier):
     record=version(conn,identifier)
+    if record['snapshot'].get('workflow')=='direct-newsroom-v2' and record['stage']=='draft':
+        from .writing_delivery import render,word
+        import base64
+        return dict(artifact_type='human_selected_news_draft',version_id=identifier,
+            markdown=render(record['content']),risk_notice=record['content']['risk_notice'],
+            checks=record['checks'],word_base64=base64.b64encode(word(record['content'])).decode('ascii'),
+            trace=public_version(record))
     if record['stage']!='draft' or record['checks']['errors']:
         raise ValueError('当前稿件尚有检查问题，请修改框架或补齐依据后重新生成')
     _decision(conn,record['edition_id'],record['decision_revision'])
