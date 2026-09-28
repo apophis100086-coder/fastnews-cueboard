@@ -10,7 +10,7 @@ claims 记录拟写独立陈述，绑定 material_id、source_id。quote 必须�
 
 计划时间已过不能据此写成完成。涉及需求驱动、政策影响等归因，若拟用于正文也须列入 claims。作者解释建立在已列事实之上，不能新增隐含事实。数字的“约、以上、超过、不低于”等保留。
 
-每段 material_ids、claim_ids 对应拟写事实；dispositions 覆盖全部材料，说明采用位置或不用原因。entities 覆盖涉及的具体公司，A/H归CN，纯港股HK，其他OTHER，无法确定UNKNOWN，列可定位依据。研究阶段召回被禁公司不等于可写入公开稿，不能改成行业事实规避限制。
+每段 material_ids、claim_ids 对应拟写事实；dispositions 逐项覆盖输入 materials 以及本轮 supplemental_sources 新增材料，说明采用位置或不用原因。product_context.published_history 和 style_examples 属于历史或文风参照，不是本期材料，不填入 dispositions、段落 material_ids 或事实 claims；有关参考方式的说明放在 suggestions。entities 覆盖涉及的具体公司，A/H归CN，纯港股HK，其他OTHER，无法确定UNKNOWN，列可定位依据。研究阶段召回被禁公司不等于可写入公开稿，不能改成行业事实规避限制。
 
 points、analysis、product_connection 只放拟写内容；不要把“来源：机构、原文标题、日期、网址”作为一个point。程序根据每段 claim_ids 自动生成独立的资料／数据来源区，那里保留真实机构与含公司名的原文标题。拟写内容和标题仍遵守公司名称限制。quote 只引用当前实际送入且完整可定位的短片段，遇到摘录省略标记不能自行补全被截断的原句。
 

@@ -62,4 +62,6 @@
 
 ## 两步写作结果的兼容
 
+2026-09-28修复了历史范文说明误触发“材料安排不匹配”、导致整个框架丢失的问题。历史参考说明独立展示，不能作为本期事实；已存的此类失败可不调用模型恢复成新版本，真实依据缺口仍阻止直接成稿。原因与验证见 [框架校验修复](OUTLINE_CONTEXT_FIX_20260928.md)。
+
 新版 content.format_version 为 newsroom-v1。content.pipeline 记录 complete 或 editing_incomplete、起草版本ID、修改记录和材料覆盖；content.raw_article 保留编辑原始返回，content.evidence 保存独立核验记录。现有接口和段落来源展示保持兼容，旧版契约继续可读和复核，不改写历史正文。模型输入与两步输出保存在本地运行记录，不进入Git。编辑未完成的起草版本不能通过程序复查冒充已完成编辑。

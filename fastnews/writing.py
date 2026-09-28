@@ -465,7 +465,18 @@ def validate_outline(raw,snapshot):
     for cid in required_claims:
         errors.extend(claims[cid]['checks'])
     dispositions=[d['material_id'] for d in raw['dispositions']]
-    if len(dispositions)!=len(set(dispositions)) or set(dispositions)!=set(materials):
+    # Publication memory is supplied alongside selected evidence, but it is not
+    # a current fact. Some hosts include an explicit "not used" history row in
+    # their ledger. Keep that explanation separately instead of losing an
+    # otherwise complete outline. Unknown IDs and evidence references stay strict.
+    context_refs={r['id']:r for r in snapshot.get('product_context',{}).get('published_history',[])}
+    context_refs.update({r['id']:r for r in snapshot.get('style_examples',[])})
+    selected_dispositions=[deepcopy(d) for d in raw['dispositions'] if d['material_id'] in materials]
+    context_dispositions=[dict(deepcopy(d),title=context_refs[d['material_id']].get('title',''))
+        for d in raw['dispositions'] if d['material_id'] not in materials and d['material_id'] in context_refs]
+    if len(dispositions)!=len(set(dispositions)) or set(dispositions)-set(materials)-set(context_refs):
+        raise ValueError('框架材料安排包含重复或未知编号，不能与本期选材对应')
+    if {d['material_id'] for d in selected_dispositions}!=set(materials):
         raise ValueError('框架必须说明每条已选材料的安排或未用原因')
     for mid,m in materials.items():
         if m['must_include'] and mid not in used:
@@ -484,6 +495,8 @@ def validate_outline(raw,snapshot):
     if len(raw['supplement_queries'])>3 or any(len(q)>500 for q in raw['supplement_queries']):
         raise ValueError('补搜问题最多3条、每条500字')
     content=deepcopy(raw); content['claims']=list(claims.values())
+    content['dispositions']=selected_dispositions
+    content['context_dispositions']=context_dispositions
     content['paragraph_sources']={}
     for p in raw['paragraphs']:
         unique={}
@@ -792,6 +805,11 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
         usage=dict(response.usage,total_elapsed_seconds=round(time.monotonic()-control.started,2))
         with conn:
             saved=_save_version(conn,snapshot,stage,content,checks,parent_id=data['parent_id'],run_id=identifier)
+            if stage=='outline':
+                # Preserve the actual returned ledger as well as the normalized
+                # display; context notes are never silently discarded.
+                data.update(snapshot=snapshot,model_response=response.payload,host_trace=response.trace)
+                conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(dumps(data),identifier))
             conn.execute("UPDATE fn_writing_runs SET status='completed',version_id=?,usage_json=?,finished_at=? WHERE run_id=?",(saved['version_id'],dumps(usage),utc_now(),identifier))
         return public_version(saved)
     except BaseException as exc:
@@ -840,6 +858,10 @@ def workflow(conn,edition_id):
         item['stale_selection']=item['decision_revision']!=(decision or {}).get('decision_revision')
         item['stale_skill_version']=item['skill_version']!=current_skill
     runs=[run_record(row) for row in conn.execute('SELECT * FROM fn_writing_runs WHERE edition_id=? ORDER BY rowid',(edition_id,))]
+    recovered={v['content']['recovery']['source_run_id']:v['version_id'] for v in versions
+        if v['stage']=='outline' and v['content'].get('recovery')}
+    for run in runs:
+        if run['run_id'] in recovered:run['recovered_version_id']=recovered[run['run_id']]
     from .host_task_budget import status
     return {'versions':versions,'runs':runs,'rules_version':policy()['version'],'task_budget':status(conn)}
 

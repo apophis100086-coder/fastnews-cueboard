@@ -888,3 +888,31 @@ test('morning timeline shows dated evidence and gaps without executing source co
  assert.doesNotMatch(html,/<script>|<img|href="javascript:/);
  assert.ok(app.calls.every(c=>c.method==='GET'));
 });
+
+
+test('recovered outline shows real gaps and reference notes without replacing human text',async()=>{
+ const e=writingEdition(),o=e.writing.versions[0];
+ o.stale_skill_version=true;o.content.recovery={source_run_id:'failed-one'};
+ o.content.context_dispositions=[{material_id:'history-one',title:'<img src=x>历史稿',role:'写法参照',reason:'不作为本期事实'}];
+ o.checks={status:'needs_materials',errors:[{message:'主新闻原文待核实'}]};
+ e.writing.runs=[{run_id:'failed-one',stage:'outline',status:'failed',error:'旧校验误拦截',recovered_version_id:o.version_id}];
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('writing-final').value='保留我的人工修改';app.el('writing-final').oninput();
+ await app.evaluate('renderWriting()');
+ const output=app.el('writing-outline-result').innerHTML;
+ assert.match(output,/已从此前保存的模型返回中恢复框架/);
+ assert.match(output,/历史稿参考说明/);assert.match(output,/&lt;img/);assert.doesNotMatch(output,/<img/);
+ assert.match(output,/主新闻原文待核实/);assert.doesNotMatch(output,/请按当前 V6.4 与补搜设置重新生成/);
+ assert.equal(app.el('writing-error').hidden,true);assert.equal(app.el('writing-generate').disabled,true);
+ assert.match(app.el('writing-usage').textContent,/原失败结果已恢复/);
+ assert.equal(app.el('writing-final').value,'保留我的人工修改');
+ assert.equal(app.calls.filter(c=>c.url==='/api/writing-outline'||c.url==='/api/writing-draft').length,0);
+});
+
+test('a recovery pointer without a saved version does not hide the failure',async()=>{
+ const e=writingEdition();e.writing.runs=[{stage:'outline',status:'failed',error:'失败仍需处理',recovered_version_id:'missing-version'}];
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ assert.equal(app.el('writing-error').hidden,false);assert.match(app.el('writing-error').textContent,/失败仍需处理/);
+});
