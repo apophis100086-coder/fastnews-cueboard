@@ -178,7 +178,10 @@ def validate_edited(raw, snapshot, outline):
         claim=dict(id='edit_'+str(index),material_id=source['material_id'],statement=ev['statement'],
             kind=ev['kind'],source_id=sid,quote=located_quote(ev['quote'],source),published_at=source.get('published_at') or '',
             publication_quote='',data_period=ev['data_period'],supported=ev['supported'],reason=ev['reason'])
-        checks=qualify_claim(claim,sources,snapshot['news_cutoff'],snapshot['product_code'])
+        identity=snapshot['product_code']
+        if snapshot.get('workflow')=='direct-newsroom-v2' and source.get('subject_code') in snapshot.get('product_definition',{}).get('member_codes',[]):
+            identity=source['subject_code']
+        checks=qualify_claim(claim,sources,snapshot['news_cutoff'],identity)
         if claim['quote']!=ev['quote']:claim['quote_layout_normalized']=True
         extra.extend(checks);claim.update(checks=checks,usable=not checks)
         claims.append(claim);mapped.setdefault(paragraph,[]).append(claim)

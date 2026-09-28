@@ -11,6 +11,21 @@ from .public_text import PageText
 from .metadata import time_bounds
 
 
+def local_publication_dates(values,host):
+    """Explicit China publication tags often omit their local UTC offset."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    known=host.endswith('.gov.cn') or host in {'www.sse.com.cn','etf.sse.com.cn','finance.eastmoney.com','wap.eastmoney.com','fund.jrj.com.cn','www.huatai-pb.com'}
+    if not known:return values
+    result=[]
+    for value in values:
+        if isinstance(value,str) and re.fullmatch(r'20\d\d-\d\d-\d\d[ T]\d\d:\d\d(?::\d\d)?',value.strip()):
+            try:value=datetime.fromisoformat(value.strip()).replace(tzinfo=ZoneInfo('Asia/Shanghai')).isoformat()
+            except ValueError:pass
+        result.append(value)
+    return result
+
+
 class PublicationMetadata(HTMLParser):
     def __init__(self):
         super().__init__(); self.dates=[];self.titles=[];self.publishers=[];self.in_title=False;self.title_parts=[]
@@ -79,6 +94,7 @@ def read_page(url):
     parser=PageText()
     parser.feed(response.text)
     metadata=PublicationMetadata();metadata.feed(response.text)
+    metadata.dates=local_publication_dates(metadata.dates,urlsplit(response.url).hostname or '')
     # The publisher encodes the article's day in this documented URL layout.
     # This remains date precision; it cannot satisfy an intraday cutoff.
     published=metadata.published_at

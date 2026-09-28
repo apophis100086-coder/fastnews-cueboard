@@ -242,7 +242,7 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
         definition=config['products'][code]
         if definition.get('kind')=='family':
             from .product_cards import registry
-            cards=registry()
+            cards=registry(cutoff)
             product.update(kind='family',member_codes=definition['member_codes'],
                 members=[dict(code=c,name=cards[c]['name']) for c in definition['member_codes']],
                 data_boundary='成员分别核对；系列没有单一代码、净值、规模或合计资金指标')

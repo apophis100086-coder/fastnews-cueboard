@@ -53,3 +53,29 @@ html{scroll-padding-top:126px}.workspace-screen{gap:20px}.panel{background:var(-
 .writing-task{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.6;color:#40645d}
 .writing-panel [hidden],.manual-note [hidden]{display:none!important}
 @media(max-width:760px){.writing-panel{padding:18px}.writing-confirm{padding:16px}.writing-prose.news-draft{padding:18px}.writing-panel .section-head{align-items:flex-start;flex-wrap:wrap}}
+/* Mentor trial workspace: compact navigation, visible primary actions. */
+body{background:#f5f7f9;background-image:none}.reader-links button.current{background:#edf4fa}.brand-name{font-size:20px}
+.reader-links button[aria-selected="true"]{background:#15568b;color:white}.reader-links button[aria-selected="true"] .step-number{color:#cbe5f9}
+.basket{background:white;border-top:1px solid var(--line)}#chosen-main{background:transparent;padding:8px 0;font-size:13px}.writing-panel .section-head h2{font-size:20px}
+.app-header{padding:20px 32px;min-height:0}.app-header h1{font-size:22px}.app-header p{display:none}
+.eyebrow,.brand-name span,.step-connector,.paper-index{display:none!important}
+.reader-nav{padding:12px 0;margin-bottom:22px}.reader-links{gap:8px}.reader-links button{padding:12px 18px}
+.workspace-title,.intro-board{padding:4px 0 18px;margin:0;border:0;min-height:0}
+.workspace-title h2,.intro-copy h2{font-size:26px;line-height:1.35;font-weight:650;letter-spacing:0}
+.intro-copy p{font-size:14px}.overview-stats{display:none}.briefing-layout{grid-template-columns:minmax(0,1fr) 230px}
+.section-head h2{font-size:20px}.panel{padding:22px;border-radius:10px;box-shadow:none}.muted{font-size:13px;line-height:1.65}
+button{min-height:36px;padding:8px 14px;border-radius:6px;box-shadow:none!important}button.primary{box-shadow:none!important}
+.toolbar{gap:14px}.toolbar label{font-size:13px}.advanced-search,.exploration-controls{margin:14px 0;padding:12px 0;border-top:1px solid var(--line)}
+.direct-layout{display:grid;grid-template-columns:minmax(290px,.85fr) minmax(0,1.65fr);gap:20px;align-items:start}
+.draft-column{display:flex;flex-direction:column;gap:18px;min-width:0}.direct-layout #pool-panel{position:sticky;top:12px;max-height:calc(100vh - 30px);overflow-y:auto}
+.pool-card{padding:16px 0;border-bottom:1px solid var(--line);background:transparent}.pool-card.selected{background:#f3f8fc;border-radius:6px;padding:16px 10px}
+.pool-choice{display:flex;align-items:flex-start;gap:10px;line-height:1.65;font-size:15px}.pool-choice input{margin-top:5px;flex:none;width:17px;height:17px}
+.pool-meta{font-size:12px;color:#687d8a;margin:6px 0 6px 27px}.pool-why{font-size:13px;line-height:1.6;margin:6px 0;color:#4e6270}
+.pool-card details{font-size:13px;margin-top:10px}.pool-card details p{white-space:pre-wrap;max-height:280px;overflow:auto}
+.event-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.check-label{font-size:13px}.compact{font-size:12px;min-height:30px;padding:4px 8px}
+.writing-prose.news-draft{border:0;border-top:1px solid var(--line);border-radius:0;padding:24px 0;font-size:16px;line-height:1.9;background:#fff;white-space:normal}
+.news-draft h3{font-size:22px;line-height:1.5;color:#193a50;margin:0 0 20px}.news-draft p{white-space:pre-wrap;margin:0 0 18px}.news-draft .draft-source{font-size:12px;color:#607989;margin-top:-10px;line-height:1.6}
+.draft-empty{padding:44px 18px;text-align:center;background:#f7f9fb;border:1px dashed #cedbe3;border-radius:8px;color:#637888}.draft-empty h3{font-size:18px;color:#36576b}.draft-empty p{font-size:14px}
+.writing-panel details{margin:12px 0;padding:12px 0;border-top:1px solid var(--line)}.writing-panel details p{font-size:13px;overflow-wrap:anywhere}.writing-gaps{padding:12px 16px;font-size:14px}
+textarea{line-height:1.7;font-size:14px}#writing-local-text{width:100%;box-sizing:border-box;font-size:15px}summary{cursor:pointer;font-size:14px;color:#36576b}
+@media(max-width:900px){.direct-layout{grid-template-columns:1fr}.direct-layout #pool-panel{position:static;max-height:none}.briefing-layout{grid-template-columns:1fr}.briefing-aside{display:none}.app-header{padding:16px}.reader-links .step-text small{display:none}.reader-links button{padding:10px}.workspace-title h2,.intro-copy h2{font-size:23px}.panel{padding:18px}}

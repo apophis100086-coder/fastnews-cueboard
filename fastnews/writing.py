@@ -912,6 +912,8 @@ def export_draft(conn,identifier):
 
 def review_stored_draft(conn,parent):
     """Apply current deterministic gates without rewriting a saved version."""
+    if parent['content'].get('human_edited'):
+        raise ValueError('人工修改应重新阅读核对，旧模型检查不能证明新增文字')
     if parent['snapshot'].get('workflow')=='direct-newsroom-v2':
         if parent['content'].get('pipeline',{}).get('status')!='complete':
             raise ValueError('编辑尚未完成，已保存的起草稿仍可查看')

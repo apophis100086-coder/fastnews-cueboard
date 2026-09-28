@@ -7,6 +7,12 @@ from fastnews.writing_checks import changed_quantity_scopes
 
 
 class WritingReaderTests(unittest.TestCase):
+    def test_explicit_chinese_publication_tag_gets_local_timezone_only_on_known_hosts(self):
+        from fastnews.writing_fetch import local_publication_dates
+        raw=['2026-09-24 15:14']
+        self.assertEqual(local_publication_dates(raw,'www.mofcom.gov.cn'),['2026-09-24T15:14:00+08:00'])
+        self.assertEqual(local_publication_dates(raw,'example.org'),raw)
+        self.assertEqual(local_publication_dates(['2026-09-24'],'www.mofcom.gov.cn'),['2026-09-24'])
     def test_conflicting_publication_dates_do_not_use_last_tag(self):
         parser=PublicationMetadata()
         parser.feed('<meta property="article:published_time" content="2026-09-15">'

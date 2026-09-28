@@ -11,14 +11,14 @@
   <span class="step-connector" aria-hidden="true">→</span>
   <button id="tab-product" role="tab" aria-label="02 产品检索" aria-controls="product-workspace" aria-selected="false" data-workspace="product"><span class="step-number">02</span><span class="step-text">产品检索<small>找到写作线索</small></span></button>
   <span class="step-connector" aria-hidden="true">→</span>
-  <button id="tab-materials" role="tab" aria-label="03 选材与快讯" aria-controls="materials-workspace" aria-selected="false" data-workspace="materials"><span class="step-number">03</span><span class="step-text">选材与快讯<small>框架确认后生成初稿 <b id="nav-pool-count"></b></small></span></button>
+  <button id="tab-materials" role="tab" aria-label="03 选材与快讯" aria-controls="materials-workspace" aria-selected="false" data-workspace="materials"><span class="step-number">03</span><span class="step-text">选材与快讯<small>选好材料，一键成稿 <b id="nav-pool-count"></b></small></span></button>
  </div>
  <div class="reader-profile"><button id="source-workspace-link" data-workspace="sources">信息源</button><label><span class="sr-only">来源方案</span><select id="reader-profile" aria-label="来源方案"></select></label><button id="manage-sources" aria-label="来源设置">设置</button></div>
 </nav>
 <button id="reading-stop" hidden>停止本轮检索</button><div id="message" role="status" aria-live="polite"></div><section id="job" class="job-result hidden" aria-live="polite"></section>
 
 <section id="morning-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-morning"><section class="panel daily-panel" id="morning-panel" aria-label="按日期查看新闻">
- <div class="intro-board"><div class="intro-copy"><p class="eyebrow">MORNING BRIEFING / 晨报速览</p><h2>今日信息，<em>一目了然。</em></h2><p>先了解市场，再围绕产品寻找值得写的线索。</p></div><div class="overview-stats" aria-label="工作台概览"><div><strong id="overview-articles">—</strong><span>所选日期已存条目</span></div><div><strong id="overview-ready">—</strong><span>自动入口最近可读</span></div><div><strong id="overview-pool">—</strong><span>当前期次候选</span></div></div></div>
+ <div class="intro-board"><div class="intro-copy"><p class="eyebrow">MORNING BRIEFING / 晨报速览</p><h2>晨报速览</h2><p>先了解市场，再围绕产品寻找值得写的线索。</p></div><div class="overview-stats" aria-label="工作台概览"><div><strong id="overview-articles">—</strong><span>所选日期已存条目</span></div><div><strong id="overview-ready">—</strong><span>自动入口最近可读</span></div><div><strong id="overview-pool">—</strong><span>当前期次候选</span></div></div></div>
  <div class="daily-controls"><label>新闻日期（北京时间）<input type="date" id="news-day"></label><button id="today">今天</button><button id="yesterday">昨天</button><button id="scan" class="primary">获取当天信息</button><button id="refresh">重读已存信息</button></div>
  <p class="muted">先获取当天列表，再生成分类总报。列表采集不使用模型额度。</p>
  <div class="daily-heading"><h3 id="daily-title">正在读取已存信息…</h3><span id="daily-count" class="pill"></span></div>
@@ -30,39 +30,39 @@
  <details class="briefings"><summary>晨报来源与已采集条目</summary><p id="daily-notice" class="muted"></p><div id="briefing-sources" class="source-grid"></div><details><summary>阅读已采集的晨报条目</summary><div id="daily-briefings"></div></details></details>
 </section>
 </section>
-<section id="product-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-product" hidden><section id="editor-panel" class="editor-panel"><div class="workspace-title product-title"><div><p class="eyebrow">PRODUCT RESEARCH / 产品检索</p><h2>围绕产品，<em>找到可写的线索。</em></h2></div><button data-workspace="materials">查看候选池 <span id="product-pool-count"></span> →</button></div><p class="muted">选择产品与资讯截点，加入感兴趣的线索；写哪些、怎么写，由你决定。</p>
+<section id="product-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-product" hidden><section id="editor-panel" class="editor-panel"><div class="workspace-title product-title"><div><p class="eyebrow">PRODUCT RESEARCH / 产品检索</p><h2>产品检索</h2></div><button data-workspace="materials">查看候选池 <span id="product-pool-count"></span> →</button></div><p class="muted">选择产品与资讯截点，加入感兴趣的线索；写哪些、怎么写，由你决定。</p>
 <section class="toolbar panel" aria-label="本期设置">
  <label>观察产品<select id="product"></select></label><label>本期日期<input type="date" id="day"></label><div class="cutoff-display"><span>资讯截至（北京时间）</span><output id="cutoff-readable">正在读取…</output></div>
  <div class="cutoff-actions"><button id="cutoff-now">截至现在</button><button id="cutoff-yesterday">截至昨天</button><button id="cutoff-news-day">采用晨报日期</button></div>
  <details class="full period-tools"><summary>切换历史期次 / 单独建立期次</summary><div class="period-controls"> <button id="create">建立本期</button><label class="wide">已保存的期次<select id="editions"><option value="">请选择期次</option></select></label></div></details>
  <details class="full"><summary>自定义截点与产品资料（可选）</summary><label class="custom-cutoff">自定义新闻截点<input id="cutoff" aria-label="新闻使用截点，含时区"></label><p class="muted">缺交易日历时，请按实际数据填写，例如 HK=2026-09-14@用户核对。留空表示未知，行情数值将保留待核实。产品结构和历史稿件应先导入，再建立本期冻结快照。</p><textarea id="markets" rows="2" placeholder="每行一项 MARKET=YYYY-MM-DD@来源"></textarea><button id="open-import-top">导入产品资料 / 历史稿件</button></details>
 </section>
-<section class="panel ai-product-panel"><div class="section-head"><div><p class="eyebrow">DISCOVER & SELECT</p><h2>检索与筛选</h2></div><div class="right"><span class="pill">主要方向 ≤3 · 其余有效线索可展开</span><button id="research" class="primary">检索该产品线索</button></div></div><div id="product-plan" class="search-plan"></div><label>本轮补充关键词（可选，逗号分隔）<input id="search-keywords" maxlength="410" placeholder="例如 AI应用、云业务、平台监管；公开检索词，请勿填写私有资料"></label><p id="product-progress" class="task-progress" role="status" aria-live="polite"></p><div class="exploration-controls"><label>这次更想了解什么（可选，将用于联网检索，请勿填写私有资料）<input id="explore-question" maxlength="500" placeholder="例如：更多产业投资背景，或者这条消息的后续进展"></label><div class="right"><button id="explore" class="primary">继续探查</button><button id="explore-stop" hidden>停止本轮探查</button><span class="muted">全网增量 · 沿用本期截点 · 8分钟内结束</span></div><p id="explore-progress" class="task-progress" role="status" aria-live="polite"></p></div><div id="product-report" class="reading-report"><p class="empty">选择产品和新闻截点后，点击“检索该产品线索”。</p></div></section>
+<section class="panel ai-product-panel"><div class="section-head"><div><p class="eyebrow">DISCOVER & SELECT</p><h2>检索与筛选</h2></div><div class="right"><span class="pill">主要方向 ≤3 · 其余有效线索可展开</span><button id="research" class="primary">检索该产品线索</button></div></div><details class="advanced-search"><summary>检索范围与补充关键词</summary><div id="product-plan" class="search-plan"></div><label>本轮补充关键词（可选，逗号分隔）<input id="search-keywords" maxlength="410" placeholder="例如 AI应用、云业务、平台监管；公开检索词，请勿填写私有资料"></label></details><p id="product-progress" class="task-progress" role="status" aria-live="polite"></p><details class="exploration-controls"><summary>继续补搜</summary><label>这次更想了解什么（可选，将用于联网检索，请勿填写私有资料）<input id="explore-question" maxlength="500" placeholder="例如：更多产业投资背景，或者这条消息的后续进展"></label><div class="right"><button id="explore" class="primary">继续探查</button><button id="explore-stop" hidden>停止本轮探查</button><span class="muted">全网增量 · 沿用本期截点 · 8分钟内结束</span></div><p id="explore-progress" class="task-progress" role="status" aria-live="polite"></p></details><div id="product-report" class="reading-report"><p class="empty">选择产品和新闻截点后，点击“检索该产品线索”。</p></div></section>
 <details class="panel evidence-tools"><summary>已采集资料与原文核对（可选）</summary><p class="muted">需要逐条核对证据时使用：在左侧筛选本地资料，在右侧核对出处、导入原文、摘录事实；此处不是全网检索结果。日常可直接加入候选池并导出背景，不必完成这一步。</p><div class="workspace">
  <section class="panel candidates"><div class="section-head"><div><p class="eyebrow">01 / COMPARE</p><h2>已采集资料</h2></div></div><p id="edition-note" class="muted">选择产品和截点后，可直接检索。所有线索均由您手工选择。</p><div id="research-summary" aria-live="polite"></div><div class="filters"><select id="relevance" aria-label="产品相关性"><option value="core">产品观察线索</option><option value="background">宏观 / 行业背景</option><option value="all">全部事件池（含旧闻与未命中）</option><option value="selected">人工已选</option></select><select id="group" aria-label="时间分区"><option value="all">全部时间分区</option><option value="within_cutoff">截点内</option><option value="pending_time">时间待核实</option><option value="out_of_cutoff">截点外</option><option value="historical_evidence_incomplete">历史版本不完整</option></select><button id="open-import">补充线索</button></div><div id="events"></div></section>
  <section class="panel detail"><div class="section-head"><div><p class="eyebrow">02 / EVIDENCE</p><h2>事实与来源</h2></div><span class="pill">默认不展示总分</span></div><div id="detail"><p class="empty">点击左侧线索，查看来源、时间与待补材料。</p></div></section>
 </div>
 </details>
 </section></section>
-<section id="materials-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-materials" hidden><div class="workspace-title"><div><p class="eyebrow">WRITING BACKGROUND / 选材与快讯</p><h2>你的取舍，<em>成为快讯主线。</em></h2><p id="materials-context" class="muted">先检索产品，再整理本次背景。</p></div><button data-workspace="product">返回产品检索</button></div><div class="materials-layout"><section class="panel" id="pool-panel"><div class="section-head"><div><p class="eyebrow">YOUR SHORTLIST</p><h2>人工候选池 <small id="pool-count"></small></h2></div></div><p class="muted">加入后留作比较；勾选后才纳入本次背景。支持移除、重新加入和选择多条，不会默认选题。</p><div id="pool-list"></div></section>
-<section class="panel basket" id="background-panel"><div class="section-head"><div><p class="eyebrow">READY FOR WRITING</p><h2>本次快讯背景 <small id="dirty"></small></h2></div><div class="right"><button id="save">保存选择</button><button id="export">导出背景 MD</button></div></div><div id="chosen-main">主事件：未选</div><div id="chosen-clues"></div><details><summary>已选结构化事实</summary><div id="chosen-facts"></div></details><div class="section-head"><h3>我的补充内容</h3><button id="add-note">＋ 添加人工补充</button></div><p id="background-note-count" class="muted"></p><div id="manual-notes"></div><label>主线说明（可选）<textarea id="mainline" rows="2" placeholder="写下您希望强调的角度；模型按此组织框架，最终由您确认"></textarea></label><div id="downloads"></div><details id="handoff-preview-panel"><summary>查看本次导出背景</summary><pre id="handoff-preview" class="handoff-preview"></pre></details><p class="muted">保存后导出所选线索、人工补充、产品与截点、来源和核实状态。未知日期保留未知，截点外材料不进入可用内容。可直接把 Markdown 交给写作窗口继续处理。</p></section></div>
-<section class="panel writing-panel" id="writing-panel">
- <div class="section-head"><div><p class="eyebrow">OUTLINE → FIRST DRAFT</p><h2>先理框架，再写正文</h2></div><button id="writing-outline" class="primary">生成写作框架</button></div>
- <p id="writing-state" class="muted"></p><p class="muted">本次选中的材料和写作要求将发送给已授权的模型。按 V6.4 组织约1100字快讯，后台先起草、再编辑，逐段附资料／数据来源。</p>
- <label><input type="checkbox" id="writing-auto-research" checked> 生成框架时，补查与主线相关的最新公开消息</label>
- <p id="writing-research-note" class="muted"></p><p id="writing-budget" class="muted"></p>
- <p id="writing-error" class="writing-gaps" role="alert" hidden></p>
- <div class="writing-task"><span id="writing-progress" role="status"></span><button id="writing-stop" hidden>停止本轮</button></div>
- <div id="writing-draft-result"></div>
- <details id="writing-framework-panel" open><summary>框架、反馈与最终确认</summary>
- <div id="writing-outline-result"></div>
- <label>对框架的修改意见<textarea id="writing-feedback" rows="2" maxlength="2000" placeholder="例如：先讲产业需求，把政策放在背景，缩短产品介绍。"></textarea></label>
- <div class="writing-actions"><button id="writing-revise">按意见修改框架</button></div>
- <details class="writing-supplement"><summary>需要补充材料？按缺口补搜</summary><div id="writing-query-suggestions" class="writing-actions"></div><label>本轮公开检索问题<input id="writing-question" maxlength="500" placeholder="公开产品、行业或事件；不要填写私人备注、未公开数据。"></label><button id="writing-supplement">按缺口补搜</button><p class="muted">结果回到产品线索，采用并保存后才进入写作材料。</p></details>
- <div class="writing-confirm"><h3>最终框架，由你确认</h3><p id="writing-editor-version" class="muted"></p><label>粘贴满意的框架，也可以在这里修改<textarea id="writing-final" rows="10" maxlength="10000" placeholder="这里不会自动填入模型最新回复，避免覆盖你的修改。可点击上方“放入最终框架编辑区”。"></textarea></label><button id="writing-generate" class="primary">确认此框架并生成初稿</button></div>
- </details>
- <details><summary>写作版本与用量</summary><div id="writing-history"></div><pre id="writing-history-content" class="writing-prose"></pre><div id="writing-usage"></div></details>
-</section></section>
+<section id="materials-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-materials" hidden>
+<div class="workspace-title"><div><h2>选材与快讯</h2><p id="materials-context" class="muted">先检索产品，再勾选本次材料。</p></div><button data-workspace="product">返回产品检索</button></div>
+<div class="direct-layout">
+<section class="panel" id="pool-panel"><div class="section-head"><h2>候选材料 <small id="pool-count"></small></h2></div><p class="muted">勾选纳入本次写作，可指定主新闻和必写项。</p><div id="pool-list"></div></section>
+<div class="draft-column">
+<section class="panel basket" id="background-panel"><div class="section-head"><h2>写作要求 <small id="dirty"></small></h2><button id="writing-generate" class="primary">生成快讯初稿</button></div>
+<div id="chosen-main"></div><div id="chosen-clues" hidden></div>
+<label>想突出什么（可选）<textarea id="mainline" rows="3" placeholder="例如：先写产业需求的新变化，再联系本产品；不填则在已选材料内判断主次。"></textarea></label>
+<details><summary>补充材料或写作要求</summary><button id="add-note">添加补充</button><p id="background-note-count" class="muted"></p><div id="manual-notes"></div></details>
+<details><summary>已选事实与背景导出</summary><button id="save">保存选择</button><div id="chosen-facts"></div><button id="export">导出背景 MD</button><div id="downloads"></div><details id="handoff-preview-panel"><summary>查看导出背景</summary><pre id="handoff-preview" class="handoff-preview"></pre></details></details>
+</section>
+<section class="panel writing-panel" id="writing-panel"><div class="section-head"><h2>快讯初稿</h2></div>
+<p id="writing-state" class="muted"></p><p id="writing-research-note" class="muted"></p>
+<p id="writing-error" class="writing-gaps" role="alert" hidden></p>
+<div class="writing-task"><span id="writing-progress" role="status" aria-live="polite"></span><button id="writing-stop" hidden>停止生成</button></div>
+<div id="writing-draft-result"></div>
+<details><summary>让 AI 按意见修改</summary><label>修改意见<textarea id="writing-feedback" rows="3" maxlength="4000" placeholder="例如：把主要变化提前，合并重复分析，产品段再简练一些。"></textarea></label><button id="writing-revise">按意见生成新版本</button></details>
+<details><summary>历史版本与运行记录</summary><div id="writing-history"></div><pre id="writing-history-content" class="writing-prose"></pre><div id="writing-usage"></div></details>
+</section></div></div></section>
 <section id="sources-workspace" class="workspace-screen" aria-label="来源与连接" hidden><div class="workspace-title"><div><p class="eyebrow">SOURCE LIBRARY / 信息源</p><h2>可用信息，<em>各有入口。</em></h2><p class="muted">自动来源获取列表，手动来源保留原站。找到重要信息后，可加入自己的写作背景。</p></div></div><section class="panel" id="sector-panel" aria-label="细分领域来源">
  <div class="section-head"><div><p class="eyebrow">BROWSE BY TOPIC</p><h2>按领域查找信息源</h2><p class="muted" id="sector-date"></p></div><div class="right"><label>采集日期<input type="date" id="source-day"></label><button id="scan-sector">更新全部自动来源</button></div></div>
  <div class="category-filter" id="sector-filters"></div><div class="source-group-heading"><h3>自动采集 <span id="automatic-source-count"></span></h3><p>优先读取可用的公开列表，保留每条信息的出处。</p></div><div id="sector-sources" class="source-grid"></div><div class="source-group-heading manual-heading"><h3>产品补搜 / 人工资料 <span id="manual-source-count"></span></h3><p>可检索的公开来源会在产品运行时补搜；访问受限或范围未确认的材料保留人工入口。</p></div><div id="manual-sources" class="source-grid manual-source-grid"></div>

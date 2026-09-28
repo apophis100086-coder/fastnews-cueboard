@@ -49,6 +49,8 @@ NEWS_EDIT['required']=list(NEWS_EDIT['properties'])
 
 # Product remarks are separate from the news body and have their own evidence.
 DIRECT_EDIT=deepcopy(NEWS_EDIT)
+DIRECT_EDIT['properties']['evidence']['items']['properties']['paragraph_index']={
+    'type':'integer','minimum':1,'description':'正文段落从1开始编号，第一段为1；标题和附录不计入。'}
 DIRECT_EDIT['properties']['appendix']=arr(obj(kind=enum('product_note','risk'),text=S,
     subject_code=S,source_id=S,quote=S))
 DIRECT_EDIT['required']=list(DIRECT_EDIT['properties'])

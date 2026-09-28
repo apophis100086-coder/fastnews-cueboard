@@ -41,6 +41,12 @@ class ProductCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, 'cannot override'):
             load_config(self.config_dir)
 
+    def test_member_rename_obeys_edition_cutoff(self):
+        from fastnews.product_cards import registry
+        self.assertIn('高股息',registry('2026-09-13T23:59:59+08:00')['520890']['name'])
+        self.assertIn('红利低波动',registry('2026-09-14T00:00:00+08:00')['520890']['name'])
+        self.assertEqual(registry()['520890']['aliases'][0],'港股通红利低波ETF华泰柏瑞')
+
     def test_family_has_seven_separate_members_and_five_active_choices(self):
         config=load_config()
         self.assertEqual(sum(p.get('selectable',True) for p in config['products'].values()),5)
@@ -62,6 +68,23 @@ class ProductCatalogTests(unittest.TestCase):
         self.mutate('products.additional.yaml', lambda d: d['products'].append(deepcopy(d['products'][0])))
         with self.assertRaisesRegex(ConfigError, 'duplicate product code'):
             load_config(self.config_dir)
+
+    def test_family_rereads_product_excerpts_and_binds_only_observed_publication(self):
+        from fastnews.writing_direct import add_product_sources,bind_dates
+        from fastnews.product_cards import registry
+        family=deepcopy(load_config()['products']['dividend_family'])
+        source=dict(id='old_excerpt',evidence_id='saved',url=registry()['513530']['source_url'],text='已存产品摘录',text_observed=True)
+        snapshot=dict(product_definition=family,product_code='dividend_family',product_names=[],product_codes=[],sources=[source],materials=[],news_cutoff='2026-09-13T16:00:00+00:00')
+        add_product_sources(snapshot);count=len(snapshot['sources']);add_product_sources(snapshot)
+        self.assertEqual(len(snapshot['sources']),count)
+        self.assertEqual(source['text'],'已存产品摘录')
+        self.assertTrue(any(s['url']==source['url'] and not s['text_observed'] for s in snapshot['sources']))
+        self.assertEqual(family['effective_updates'][0]['effective_at'],'2026-09-14')
+        renamed=next(s for s in snapshot['sources'] if 'epaper.cs.com.cn' in s['url'])
+        renamed.update(text='未含日期的正文',text_observed=True)
+        bind_dates(snapshot);self.assertFalse(renamed['date_observed'])
+        renamed['text']='公告版面 2026年09月12日 星期六\n更名公告正文'
+        bind_dates(snapshot);self.assertTrue(renamed['date_observed'])
 
     def test_overlay_validates_codes_and_references(self):
         for code in (588090, '５８８０９０', '58809', 'ABCDEF'):

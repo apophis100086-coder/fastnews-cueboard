@@ -79,7 +79,7 @@ def accept_run(conn,config,data,control,run_id=None):
     content=dict(workflow=FORMAT,snapshot=snapshot,host=settings['host'],allow_verify=settings.get('web_search',True),
         supplement_latest=settings.get('web_search',True),feedback=feedback,
         parent_id=parent['version_id'] if parent else None,parent=None,
-        previous_draft=({k:deepcopy(parent['content'].get(k)) for k in ('title','paragraphs')} if parent else None),
+        previous_draft=({k:deepcopy(parent['content'].get(k)) for k in ('title','paragraphs','manual_text')} if parent else None),
         instructions=instructions('compose',code),editing_instructions=instructions('edit',code),
         research_instructions=instructions('research',code),
         host_runtime=config.get('_host_runtime') or dict(model=rules['model'],reasoning_effort=rules['reasoning_effort']))
@@ -98,22 +98,36 @@ def accept_run(conn,config,data,control,run_id=None):
 def add_product_sources(snapshot):
     from .product_cards import registry
     from .writing import fingerprint
-    cards=registry();definition=snapshot['product_definition']
+    cards=registry(snapshot['news_cutoff']);definition=snapshot['product_definition']
     members=definition.get('member_codes',[snapshot['product_code']])
     definition['members']=[dict(code=c,name=cards[c]['aliases'][0],legal_name=cards[c]['name']) for c in members if c in cards]
+    cutoff_day=parse_instant(snapshot['news_cutoff']).astimezone(ZoneInfo('Asia/Shanghai')).date().isoformat()
+    definition['effective_updates']=[dict(subject_code=c,effective_at=cards[c]['name_effective_at'],
+        previous_name=cards[c]['previous_name'],current_name=cards[c]['name'],
+        previous_index_name=cards[c].get('previous_index_name'),current_index_name=cards[c].get('current_index_name'),
+        evidence_required=True) for c in members if c in cards and cards[c].get('name_effective_at')
+        and cards[c]['name_effective_at']<=cutoff_day]
     snapshot['product_names']+= [n for c in members if c in cards for n in [cards[c]['name'],*cards[c]['aliases']]]
     snapshot['product_codes']=list(dict.fromkeys(snapshot['product_codes']+members))
     urls={s.get('url') for s in snapshot['sources']}
     for code in members:
         if code not in cards:continue
         card=cards[code]
-        refs=[dict(url=card['source_url'],title=card['name']+' 产品公开资料',published_at=card['published_at']),*card.get('additional_sources',[])]
+        reference_name=card.get('previous_name',card['name']) if card.get('name_effective_at','')>card['published_at'] else card['name']
+        refs=[dict(url=card['source_url'],title=reference_name+' 产品公开资料',published_at=card['published_at'],publisher=card.get('source_publisher','华泰柏瑞基金'),publication_quote=card.get('publication_quote')),*card.get('additional_sources',[])]
         for ref in refs:
-            if ref['url'] in urls or (ref['published_at'] and not within_cutoff(ref['published_at'],snapshot['news_cutoff'])):continue
+            sid='product_src_'+fingerprint(ref['url'])[:16]
+            if any(s['id']==sid for s in snapshot['sources']):continue
+            # Imported product evidence is often a short selected excerpt. Keep
+            # it intact and read the complete public document in a separate source.
+            imported_excerpt=any(s.get('evidence_id') and s.get('url')==ref['url'] for s in snapshot['sources'])
+            if (ref['url'] in urls and not imported_excerpt) or (ref['published_at'] and not within_cutoff(ref['published_at'],snapshot['news_cutoff'])):continue
             mid='product_'+code
             if not any(m['id']==mid for m in snapshot['materials']):
                 snapshot['materials'].append(dict(id=mid,title=card['name'],summary='公开产品检索入口，需读原文后引用',relation='产品定位与风险',origin='product_reference',must_include=False))
-            snapshot['sources'].append(dict(id='product_src_'+fingerprint(ref['url'])[:16],material_id=mid,name='华泰柏瑞基金',title=ref['title'],url=ref['url'],published_at=ref['published_at'],subject_code=code,text='',research_hint='',text_observed=False,date_observed=False,identity='official_reference_entry',source_id=None,error=None))
+            snapshot['sources'].append(dict(id=sid,material_id=mid,name=ref.get('publisher','华泰柏瑞基金'),title=ref['title'],url=ref['url'],published_at=ref['published_at'],subject_code=code,text='',research_hint='',text_observed=False,date_observed=False,identity='official_reference_entry',source_id=None,error=None))
+            if ref.get('publication_quote'):
+                snapshot['sources'][-1]['publication_hint']=dict(date=ref['published_at'],quote=ref['publication_quote'])
             urls.add(ref['url'])
 
 
@@ -258,16 +272,34 @@ def validate_edited(raw,snapshot):
     from .writing_newsroom import validate_edited as validate
     from .writing import _validate_shape
     from .writing_contracts import DIRECT_EDIT
-    _validate_shape(raw,DIRECT_EDIT)
+    # Older hosts may have returned consistently zero-based paragraph indexes.
+    # Repair only unambiguous source mappings; never guess from mixed indexes.
+    original=deepcopy(raw);raw=deepcopy(raw);normalized=False
+    evidence=raw.get('evidence',[]);paragraphs=raw.get('paragraphs',[])
+    if any(e.get('paragraph_index')==0 for e in evidence) and all(
+        type(e.get('paragraph_index')) is int and 0<=e['paragraph_index']<len(paragraphs)
+        and e.get('source_id') in paragraphs[e['paragraph_index']].get('source_ids',[]) for e in evidence):
+        for e in evidence:e['paragraph_index']+=1
+        normalized=True
+    validation_schema=deepcopy(DIRECT_EDIT)
+    validation_schema['properties']['evidence']['items']['properties']['paragraph_index'].pop('minimum',None)
+    _validate_shape(raw,validation_schema)
     base={k:v for k,v in raw.items() if k!='appendix'}
     content,checks=validate(base,snapshot,material_scope(snapshot))
-    content['raw_article']=deepcopy(raw)
+    content['raw_article']=original
+    if normalized:content['evidence_indexing_normalization']='zero_based_to_one_based_verified_source_mapping'
     content['format_version']=FORMAT
     editorial=checks['editorial'];editorial['version']=FORMAT
     editorial['notes'].extend(e['message'] for e in editorial['errors'])
     nonblocking=editorial['errors'];checks['errors']=[e for e in checks['errors'] if e not in nonblocking]
     checks['status']='needs_changes' if checks['errors'] else 'ready'
     definition=snapshot.get('product_definition',{})
+    body='\n'.join([content['title'],*[p['text'] for p in content['paragraphs']]])
+    for update in definition.get('effective_updates',[]):
+        obsolete=[n for n in (update.get('previous_name'),update.get('previous_index_name')) if n and n in body]
+        if obsolete:
+            error=issue('product_obsolete_identity','正文沿用已变更的产品或指数名称：'+'、'.join(obsolete))
+            checks['errors'].append(error);checks['policy']['errors'].append(error);checks['status']='needs_changes'
     if definition.get('kind')=='family':
         body='\n'.join(p['text'] for p in content['paragraphs'])
         missing=[c for c in definition['member_codes'] if c not in body]

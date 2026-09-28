@@ -55,6 +55,17 @@ class DirectWritingTests(unittest.TestCase):
         with self.assertRaises(ValueError):w.accept_run(self.conn,self.cfg,'generate',dict(data,feedback='不同意见'),control)
         with self.assertRaises(ValueError):w.accept_run(self.conn,self.cfg,'generate',dict(self.fixture.data(),decision_revision=99),control)
 
+    def test_manual_edit_is_a_separate_unverified_version_with_same_export(self):
+        from fastnews.writing_delivery import save_manual
+        import uuid
+        original=self.run_direct()
+        edited=save_manual(self.conn,dict(version_id=original['version_id'],text='人工标题\n\n修改后的正文。',request_id=uuid.uuid4().hex))
+        self.assertEqual(edited['parent_id'],original['version_id'])
+        self.assertEqual(edited['checks']['status'],'manual_review_pending')
+        self.assertEqual(w.version(self.conn,original['version_id'])['content']['title'],'设备订单增长')
+        self.assertEqual(w.export_draft(self.conn,edited['version_id'])['markdown'],'人工标题\n\n修改后的正文。')
+        with self.assertRaisesRegex(ValueError,'人工修改'):w.review_stored_draft(self.conn,w.version(self.conn,edited['version_id']))
+
     def test_feedback_frozen_and_edit_failure_keeps_composing_draft(self):
         original=self.run_direct()
         self.calls=[]
@@ -94,6 +105,52 @@ class DirectWritingTests(unittest.TestCase):
             result=self.run_direct(runner)
         self.assertEqual(result['content']['pipeline']['status'],'complete')
         self.assertLessEqual(self.calls[1][1]['timeout'],180)
+
+    def test_expired_global_deadline_retains_completed_composing_output(self):
+        clock=[100.0]
+        def runner(*args,**kwargs):
+            result=self.runner(*args,**kwargs);clock[0]+=901;return result
+        with patch('time.monotonic',side_effect=lambda:clock[0]):
+            with self.assertRaises(TaskStopped):self.run_direct(runner)
+        row=self.conn.execute('SELECT status,version_id FROM fn_writing_runs WHERE run_id=?',(self.run['run_id'],)).fetchone()
+        self.assertEqual(row['status'],'timed_out');self.assertEqual(len(self.calls),1)
+        self.assertEqual(w.version(self.conn,row['version_id'])['content']['pipeline']['status'],'editing_incomplete')
+
+    def test_zero_based_host_evidence_is_normalized_only_with_matching_sources(self):
+        def runner(*args,**kwargs):
+            response=self.runner(*args,**kwargs)
+            if 'evidence' in response.payload:response.payload['evidence'][0]['paragraph_index']=0
+            return response
+        result=self.run_direct(runner)
+        self.assertFalse(result['checks']['errors'])
+        self.assertEqual(result['content']['raw_article']['evidence'][0]['paragraph_index'],0)
+        self.assertIn('zero_based',result['content']['evidence_indexing_normalization'])
+        raw=deepcopy(result['content']['raw_article']);raw['evidence'][0]['source_id']='unrelated'
+        snapshot=w.version(self.conn,result['version_id'])['snapshot']
+        content,checks=direct.validate_edited(raw,snapshot)
+        self.assertNotIn('evidence_indexing_normalization',content)
+        self.assertTrue(checks['errors'])
+
+    def test_member_identity_must_belong_to_its_observed_source(self):
+        result=self.run_direct();raw=deepcopy(result['content']['raw_article'])
+        snapshot=w.version(self.conn,result['version_id'])['snapshot']
+        snapshot['product_code']='dividend_family';snapshot['product_definition']={'kind':'family','member_codes':['123456']}
+        source=snapshot['sources'][0];source.update(subject_code='123456',text=source['text']+'\n基金代码123456')
+        raw['paragraphs'][0]['text']='123456。'+raw['paragraphs'][0]['text']
+        raw['evidence'][0]['statement']='123456。'+raw['evidence'][0]['statement']
+        _,checks=direct.validate_edited(raw,snapshot)
+        self.assertNotIn('unsupported_number',{e['code'] for e in checks['errors']})
+        source['subject_code']='654321'
+        _,checks=direct.validate_edited(raw,snapshot)
+        self.assertIn('unsupported_number',{e['code'] for e in checks['errors']})
+
+    def test_known_effective_rename_is_not_overruled_by_an_old_document(self):
+        result=self.run_direct();raw=deepcopy(result['content']['raw_article'])
+        snapshot=w.version(self.conn,result['version_id'])['snapshot']
+        snapshot['product_definition']['effective_updates']=[dict(previous_name='合成旧名称',previous_index_name='合成旧指数')]
+        raw['paragraphs'][0]['text']+='产品跟踪合成旧指数。'
+        _,checks=direct.validate_edited(raw,snapshot)
+        self.assertIn('product_obsolete_identity',{e['code'] for e in checks['errors']})
 
 
 if __name__=='__main__':unittest.main()

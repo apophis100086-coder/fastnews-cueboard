@@ -96,7 +96,7 @@ class LocalApplication:
                     'capabilities': capabilities(conn), 'editions': editorial.list_editions(conn),
                     'default_day': clock.date().isoformat(),
                     'server_now':clock.isoformat(),
-                    'default_cutoff': (clock.date() - timedelta(days=1)).isoformat() + 'T23:59:59+08:00',
+                    'default_cutoff': clock.isoformat(),
                     'latest_scan': dict(latest) if latest else None, 'active_job': self.active_job}
 
     def detail(self, edition_id, profile_id='default'):
@@ -391,6 +391,9 @@ class LocalApplication:
                 if action=='writing-export':
                     from .writing import export_draft
                     return export_draft(conn,data['version_id'])
+                if action=='writing-save-edit':
+                    from .writing_delivery import save_manual
+                    return save_manual(conn,data)
                 if action=='writing-recheck':
                     from .writing import recheck_draft
                     return recheck_draft(conn,data)

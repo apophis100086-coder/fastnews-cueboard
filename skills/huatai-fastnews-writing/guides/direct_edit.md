@@ -6,7 +6,11 @@
 
 删除低价值内容后，优先用已有原文中有信息量的细节补充，不恢复套话凑字。改稿不能引入范文旧数据或未提供的新事实，不改变数字的对象、币种、约数、上下限、统计期或计划条件。
 
-返回实际修订后的 title、paragraphs 和简短 changes。逐段 source_ids 与独立 evidence 对应；每条 evidence 含 paragraph_index、source_id、statement、原文连续 quote、kind、data_period、supported、reason。不同位置的引文分开列，不拼接成原句。每段如综合多个来源，分别列出。证据记录只用于后台，不进入稿件。
+交稿前单独检查正文中的边界解释，采用 anti-defensive-writing 的编辑方法：判断每句是在推进新闻，还是仅在防备想象中的误读。若事实已经写明“受访企业”“部分订单”“计划”“截至某日”，不再追加一整句说明它不代表什么。必要限制落实为准确对象和范围，保留一次；确会改变读者理解的条件才留在相应事实处。把核验说明留在 evidence/reason，把投资风险放到风险提示，不能以这些话补足篇幅。每个段尾都重新审读：没有新增事实或必要理解就实际删掉，不能换成另一句同义提醒。检查完成后返回已删改的全文。
+
+返回实际修订后的 title、paragraphs 和简短 changes。逐段 source_ids 与独立 evidence 对应；每条 evidence 含 paragraph_index、source_id、statement、原文连续 quote、kind、data_period、supported、reason。paragraph_index 从1开始，第一段为1；标题、来源行与附录不占段落编号。不同位置的引文分开列，不拼接成原句。每段如综合多个来源，分别列出。证据记录只用于后台，不进入稿件。
+
+data_period 只填事实实际对应的统计区间或数据截至日；产品定位、新闻活动等没有统计期时留空。发布日期由来源另行显示，不再把“报道发表于某日”“产品概要送出日期”等填成数据统计期。
 
 review 的 faithful_to_outline 是历史兼容字段，本流程表示忠于人工已选方向、主事件和写作要求，并不要求存在框架。no_new_facts 表示未超出本次核对材料。先修复问题，再填写最终检查结果；无法修复的具体事实缺口保留。是否采用和改稿时间由真实编辑反馈决定。
 # 产品备注与风险提示
