@@ -92,7 +92,7 @@ class LocalApplication:
                     'source_categories':CATEGORIES,'host_status':host_status(),
                     'search_plans': {code: build_search_plan(reader_config, code) for code in self.config['products']},
                     'morning_briefings':briefings,
-                    'products': list(self.config['products'].values()), 'sources': source_summary,
+                    'products': [p for p in self.config['products'].values() if p.get('selectable',True)], 'sources': source_summary,
                     'capabilities': capabilities(conn), 'editions': editorial.list_editions(conn),
                     'default_day': clock.date().isoformat(),
                     'server_now':clock.isoformat(),

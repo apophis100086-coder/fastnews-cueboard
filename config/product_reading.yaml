@@ -10,24 +10,167 @@ finalize_seconds: 30
 history_reports: 24
 products:
   '588090':
-    - {id: broad_innovation, name: 经营研发与商业化及指数结构, query: 科创板 研发 业绩 商业化 高端装备 新能源 生物医药 科创50 指数调整, match_terms: [研发, 商业化, 科创50, 新能源, 高端装备]}
+  - id: broad_innovation
+    name: 经营研发与商业化及指数结构
+    query: 科创板 研发 业绩 商业化 高端装备 新能源 生物医药 科创50 指数调整
+    match_terms:
+    - 研发
+    - 商业化
+    - 科创50
+    - 新能源
+    - 高端装备
   '588710':
-    - {id: orders_validation, name: 设备订单与客户验证, query: 半导体设备 订单 客户验证 刻蚀 薄膜沉积 材料 工艺, match_terms: [订单, 验证, 刻蚀, 薄膜, 工艺]}
+  - id: orders_validation
+    name: 设备订单与客户验证
+    query: 半导体设备 订单 客户验证 刻蚀 薄膜沉积 材料 工艺
+    match_terms:
+    - 订单
+    - 验证
+    - 刻蚀
+    - 薄膜
+    - 工艺
   '513130':
-    - {id: platform, name: 平台经营与现金流, query: 港股 平台 业绩 电商 广告 收入, match_terms: [平台, 电商, 广告, 收入]}
-    - {id: ai_cloud, name: AI与云业务商业化, query: AI 云计算 商业化 收入 资本开支, match_terms: [AI, 云, cloud, 资本开支]}
-    - {id: applications, name: 终端与应用进展, query: 消费电子 智能汽车 自动驾驶 应用 用户, match_terms: [终端, 消费电子, 汽车, 自动驾驶]}
-    - {id: regulation, name: 平台和数据监管, query: 平台经济 数据 人工智能 监管 政策, match_terms: [监管, 政策, 数据]}
-    - {id: tech_flows, name: 科技资产资金与交易环境, query: 恒生科技 南向资金 利率 指数调整, match_terms: [南向, 利率, 恒生科技, 指数调整]}
+  - id: platform
+    name: 平台经营与现金流
+    query: 港股 平台 业绩 电商 广告 收入
+    match_terms:
+    - 平台
+    - 电商
+    - 广告
+    - 收入
+  - id: ai_cloud
+    name: AI与云业务商业化
+    query: AI 云计算 商业化 收入 资本开支
+    match_terms:
+    - AI
+    - 云
+    - cloud
+    - 资本开支
+  - id: applications
+    name: 终端与应用进展
+    query: 消费电子 智能汽车 自动驾驶 应用 用户
+    match_terms:
+    - 终端
+    - 消费电子
+    - 汽车
+    - 自动驾驶
+  - id: regulation
+    name: 平台和数据监管
+    query: 平台经济 数据 人工智能 监管 政策
+    match_terms:
+    - 监管
+    - 政策
+    - 数据
+  - id: tech_flows
+    name: 科技资产资金与交易环境
+    query: 恒生科技 南向资金 利率 指数调整
+    match_terms:
+    - 南向
+    - 利率
+    - 恒生科技
+    - 指数调整
   '513530':
-    - {id: dividends, name: 分红与现金流, query: 港股 分红 派息 现金流 回购, match_terms: [分红, 派息, 现金流, 回购]}
-    - {id: rates, name: 利率及配置需求, query: 港股 红利 利率 国债收益率 配置, match_terms: [利率, 收益率, 配置]}
-    - {id: sector_operations, name: 相关行业经营, query: 银行 运营商 能源 公用事业 经营 业绩, match_terms: [银行, 运营商, 能源, 公用事业]}
-    - {id: southbound, name: 南向资金与去向证据, query: 港股通 南向 净买入 成交 交易日, match_terms: [南向, 港股通, 净买入]}
-    - {id: market_rules, name: 市场机制和指数变化, query: 香港交易所 港股通 红利 指数调整 交易机制, match_terms: [交易所, 指数调整, 交易机制]}
+  - id: dividends
+    name: 分红与现金流
+    query: 港股 分红 派息 现金流 回购
+    match_terms:
+    - 分红
+    - 派息
+    - 现金流
+    - 回购
+  - id: rates
+    name: 利率及配置需求
+    query: 港股 红利 利率 国债收益率 配置
+    match_terms:
+    - 利率
+    - 收益率
+    - 配置
+  - id: sector_operations
+    name: 相关行业经营
+    query: 银行 运营商 能源 公用事业 经营 业绩
+    match_terms:
+    - 银行
+    - 运营商
+    - 能源
+    - 公用事业
+  - id: southbound
+    name: 南向资金与去向证据
+    query: 港股通 南向 净买入 成交 交易日
+    match_terms:
+    - 南向
+    - 港股通
+    - 净买入
+  - id: market_rules
+    name: 市场机制和指数变化
+    query: 香港交易所 港股通 红利 指数调整 交易机制
+    match_terms:
+    - 交易所
+    - 指数调整
+    - 交易机制
   '517120':
-    - {id: clinical, name: 临床结果和研究阶段, query: 创新药 临床 三期 研究终点 结果, match_terms: [临床, 三期, 终点, phase 3]}
-    - {id: approval, name: 药品审批及批准范围, query: NMPA FDA 新药 批准 适应症, match_terms: [NMPA, FDA, 批准, 适应症]}
-    - {id: licensing, name: 授权交易及实际款项, query: 创新药 license-out 首付款 里程碑 授权, match_terms: [license, 首付款, 里程碑, 授权]}
-    - {id: payment, name: 支付准入和医保, query: 创新药 医保 支付准入 商保, match_terms: [医保, 支付, 商保]}
-    - {id: commercialization, name: 商业化收入和需求, query: 创新药 商业化 销售 收入 放量, match_terms: [商业化, 销售, 收入, 放量]}
+  - id: clinical
+    name: 临床结果和研究阶段
+    query: 创新药 临床 三期 研究终点 结果
+    match_terms:
+    - 临床
+    - 三期
+    - 终点
+    - phase 3
+  - id: approval
+    name: 药品审批及批准范围
+    query: NMPA FDA 新药 批准 适应症
+    match_terms:
+    - NMPA
+    - FDA
+    - 批准
+    - 适应症
+  - id: licensing
+    name: 授权交易及实际款项
+    query: 创新药 license-out 首付款 里程碑 授权
+    match_terms:
+    - license
+    - 首付款
+    - 里程碑
+    - 授权
+  - id: payment
+    name: 支付准入和医保
+    query: 创新药 医保 支付准入 商保
+    match_terms:
+    - 医保
+    - 支付
+    - 商保
+  - id: commercialization
+    name: 商业化收入和需求
+    query: 创新药 商业化 销售 收入 放量
+    match_terms:
+    - 商业化
+    - 销售
+    - 收入
+    - 放量
+  dividend_family:
+  - id: ah_dividend
+    name: A股与港股分红
+    query: A股 港股 分红 派息 股东回报 现金流
+    match_terms:
+    - 分红
+    - 派息
+    - 现金流
+  - id: rates_allocation
+    name: 利率及资金配置
+    query: 利率 国债收益率 险资 中长期资金 红利配置
+    match_terms:
+    - 利率
+    - 国债
+    - 险资
+  - id: soe
+    name: 央企回报
+    query: 央企 分红 市值管理 现金流
+    match_terms:
+    - 央企
+    - 分红
+  - id: factor
+    name: 低波与质量差异
+    query: 红利低波 红利质量 盈利 现金流 指数
+    match_terms:
+    - 低波
+    - 质量

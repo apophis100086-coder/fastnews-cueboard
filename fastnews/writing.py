@@ -168,7 +168,7 @@ def _snapshot(conn, config, edition_id, revision):
                 research_hint='' if observed else ev.get('excerpt',''),text_observed=observed,date_observed=observed,
                 identity=ev.get('source_type') or 'selected_fact_evidence',source_id=ev.get('source_id'),error=None))
     if not materials:
-        raise ValueError('请先选择事实材料；只有写作要求不能生成框架')
+        raise ValueError('请先勾选至少一条新闻材料')
     from .product_context import public_context
     context = public_context(conn, edition)
     for ref in context.get('writing_references',context['references']):
@@ -176,7 +176,7 @@ def _snapshot(conn, config, edition_id, revision):
         materials.append(dict(id=mid,title=ref['title'],summary='有日期的产品背景依据，不能当作当天新消息或当前持仓。',
             relation=ref['snapshot_type'],origin='product_reference',must_include=False))
         sources.append(dict(id='src_'+str(len(sources)+1),material_id=mid,
-            name=ref['source_name'] or ref['title'],title=ref['title'],url=ref['source_url'],published_at=ref['published_at'],
+            name=ref['source_name'] or ref['title'],title=ref['title'],url=ref['source_url'],published_at=ref['published_at'],subject_code=ref.get('subject_code'),
             text=ref['excerpt'],research_hint='',text_observed=True,date_observed=True,
             identity=ref['source_type'],source_id=None,document_id=ref['document_id'],
             evidence_id=ref['evidence_id'],data_as_of=ref['data_as_of'],error=None))
@@ -358,6 +358,7 @@ def verify_sources(snapshot,control,progress=None,fetcher=None,*,seconds=None,so
             source['error']=result['error']; continue
         source.update(text=result['text'],text_observed=True,identity='program_fragment',
                       retrieved_at=result.get('retrieved_at'),error=None)
+        source['text_segments']=[result['text']]
         if result.get('title'):
             source['title']=result['title']
         if result.get('publisher'):

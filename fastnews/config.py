@@ -344,6 +344,27 @@ def load_config(config_dir: Path | str | None = None) -> dict:
         if set(additions) & set(result['products']):
             raise ConfigError('products.additional.yaml: cannot override original product codes')
         result['products'].update(additions)
+    if (root / 'product_catalog.yaml').exists():
+        overlay = _read(root, 'product_catalog.yaml')
+        _mapping(overlay, 'product_catalog', {'version','inactive','families'}, {'version','inactive','families'})
+        _strings(overlay['inactive'], 'product_catalog.inactive')
+        if set(overlay['inactive']) - set(result['products']):
+            raise ConfigError('product_catalog: inactive product is not registered')
+        for code, item in result['products'].items():
+            item.update(kind='fund', selectable=code not in overlay['inactive'])
+        for key, family in overlay['families'].items():
+            if key in result['products'] or not key.replace('_','').isascii() or not key.replace('_','').isalnum() or key.isdigit():
+                raise ConfigError('product_catalog: invalid family identifier')
+            _mapping(family, key, {'name','kind','member_codes','topic_weights','preferred_sources','search_expansion'},
+                     {'name','kind','member_codes','topic_weights','preferred_sources','search_expansion'})
+            _strings(family['member_codes'], key+'.member_codes')
+            if family['kind']!='family' or not family['member_codes'] or any(len(c)!=6 or not c.isascii() or not c.isdigit() for c in family['member_codes']):
+                raise ConfigError('product_catalog: family needs fund member codes')
+            # Validate all routing fields using the existing fund contract.
+            route={k:v for k,v in family.items() if k not in {'kind','member_codes'}}
+            _products({'version':1,'products':[dict(route,code='999999')]},sources,topics,expected=None)
+            result['products'][key]=dict(family,code=key,selectable=True)
+        result['catalog_version']=overlay['version']
     if (root / 'research_discovery.yaml').exists():
         doc = _read(root, 'research_discovery.yaml')
         fields = {'version','note','lookback_hours','morning_sources','supplemental_sources','products'}

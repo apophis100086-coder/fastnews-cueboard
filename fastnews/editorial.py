@@ -154,7 +154,9 @@ def create_edition(conn, config, *, product_code, edition_date, news_cutoff,
     profile = next(p for p in settings['profiles']['profiles'] if p['code'] == product_code)
     history = [json.loads(r[0]) for r in conn.execute('SELECT data_json FROM fn_history WHERE product_code=? ORDER BY history_doc_id', (product_code,))]
     history = [h for h in history if _eligible_time(h['publication_time'], news_cutoff) == 'eligible']
-    snapshots = [json.loads(r[0]) for r in conn.execute('SELECT data_json FROM fn_product_snapshots WHERE product_code=? ORDER BY snapshot_id', (product_code,))]
+    member_codes=config['products'][product_code].get('member_codes',[product_code])
+    placeholders=','.join('?' for _ in member_codes)
+    snapshots = [json.loads(r[0]) for r in conn.execute('SELECT data_json FROM fn_product_snapshots WHERE product_code IN ('+placeholders+') ORDER BY snapshot_id', member_codes)]
     cutoff_day = cutoff.astimezone(ZoneInfo(config['runtime']['runtime']['timezone'])).date()
     snapshots = [s for s in snapshots if _eligible_time(s['published_at'], news_cutoff) == 'eligible'
                  and date.fromisoformat(s['data_as_of']) <= cutoff_day
@@ -168,6 +170,8 @@ def create_edition(conn, config, *, product_code, edition_date, news_cutoff,
             'product_snapshot_ids': [s['snapshot_id'] for s in snapshots], 'profile': profile,
             'scoring': settings['scoring'], 'output_policy': settings['output_policy'],
             'is_fixture': _fixture(conn), 'created_by': created_by}
+    if config['products'][product_code].get('kind')=='family':
+        view.update(kind='family',member_codes=member_codes)
     eid = edition_id or _id('edition_', view)
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', eid):
         raise EditorialError('edition_id must be a safe identifier')

@@ -40,6 +40,25 @@ class ProductCatalogTests(unittest.TestCase):
         self.mutate('products.additional.yaml', lambda d: d['products'][0].update(code='588710'))
         with self.assertRaisesRegex(ConfigError, 'cannot override'):
             load_config(self.config_dir)
+
+    def test_family_has_seven_separate_members_and_five_active_choices(self):
+        config=load_config()
+        self.assertEqual(sum(p.get('selectable',True) for p in config['products'].values()),5)
+        family=config['products']['dividend_family']
+        self.assertEqual(family['kind'],'family')
+        self.assertEqual(len(family['member_codes']),7)
+        self.assertIn('513530',family['member_codes'])
+        self.assertFalse(config['products']['513530']['selectable'])
+        with closing(db.connect(self.root/'family.db',mode='fixture')) as conn:
+            db.sync_registry(conn,config)
+            edition=editorial.create_edition(conn,config,product_code='dividend_family',edition_date='2026-09-25',news_cutoff='2026-09-25T23:59:59+08:00',market_cutoffs={})
+            self.assertEqual(edition['member_codes'],family['member_codes'])
+            self.assertTrue(all(conn.execute('SELECT 1 FROM fn_products WHERE code=?',(c,)).fetchone() for c in family['member_codes']))
+            from fastnews.writing_direct import add_product_sources
+            snapshot=dict(product_definition=deepcopy(family),product_code='dividend_family',product_names=[],product_codes=[],sources=[],materials=[],news_cutoff=edition['news_cutoff'])
+            add_product_sources(snapshot)
+            self.assertEqual(set(s['subject_code'] for s in snapshot['sources']),set(family['member_codes']))
+            self.assertTrue(all(not s['text_observed'] for s in snapshot['sources']))
         self.mutate('products.additional.yaml', lambda d: d['products'].append(deepcopy(d['products'][0])))
         with self.assertRaisesRegex(ConfigError, 'duplicate product code'):
             load_config(self.config_dir)
@@ -92,8 +111,8 @@ class ProductCatalogTests(unittest.TestCase):
         for filename in ('research_discovery.yaml', 'product_search.yaml'):
             self.mutate(filename, lambda d: d['products'].update({'999999': deepcopy(d['products']['588090'])}))
         config = load_config(self.config_dir)
-        self.assertEqual(len(config['products']), 6)
-        self.assertEqual(len(editorial.load_editorial_config(self.config_dir)['profiles']['profiles']), 6)
+        self.assertEqual(len(config['products']), 7)
+        self.assertEqual(len(editorial.load_editorial_config(self.config_dir)['profiles']['profiles']), 7)
         with patch.object(search_plan, 'PATH', self.config_dir / 'product_search.yaml'):
             self.assertEqual(search_plan.build_search_plan(config, '999999')['product_code'], '999999')
 
@@ -132,7 +151,7 @@ class ProductCatalogTests(unittest.TestCase):
         old_rows = list(conn.execute('SELECT * FROM fn_products ORDER BY code'))
         for _ in range(2):
             db.sync_registry(conn, config)
-        self.assertEqual(conn.execute('SELECT count(*) FROM fn_products').fetchone()[0], 5)
+        self.assertEqual(conn.execute('SELECT count(*) FROM fn_products').fetchone()[0], 12)
         self.assertEqual([tuple(r) for r in old_rows], [tuple(r) for r in conn.execute("SELECT * FROM fn_products WHERE code!='588090' ORDER BY code")])
         self.assertEqual(editorial.get_edition(conn, old['edition_id']), old)
         self.assertEqual(editorial.latest_decision(conn, old['edition_id']), old_choice)

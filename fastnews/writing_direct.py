@@ -53,6 +53,7 @@ def accept_run(conn,config,data,control,run_id=None):
     rules=policy();code=snapshot['product_code']
     snapshot.update(workflow=FORMAT,rules=rules,skill_version=skill_fingerprint(code))
     snapshot['product_definition']=deepcopy(config['products'][code])
+    add_product_sources(snapshot)
     feedback=data.get('feedback','')
     if not isinstance(feedback,str) or len(feedback)>4000:raise ValueError('修改意见最多4000字')
     w.ed._reject_secrets(Path('writing-feedback.txt'),feedback)
@@ -92,6 +93,28 @@ def accept_run(conn,config,data,control,run_id=None):
           (rid,data['request_id'],w.request_signature('generate',data),data['edition_id'],data['decision_revision'],
            data.get('reader_profile','default'),w.dumps(content),control.started_at,control.deadline_at))
     return w.run_record(conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(rid,)).fetchone())
+
+
+def add_product_sources(snapshot):
+    from .product_cards import registry
+    from .writing import fingerprint
+    cards=registry();definition=snapshot['product_definition']
+    members=definition.get('member_codes',[snapshot['product_code']])
+    definition['members']=[dict(code=c,name=cards[c]['aliases'][0],legal_name=cards[c]['name']) for c in members if c in cards]
+    snapshot['product_names']+= [n for c in members if c in cards for n in [cards[c]['name'],*cards[c]['aliases']]]
+    snapshot['product_codes']=list(dict.fromkeys(snapshot['product_codes']+members))
+    urls={s.get('url') for s in snapshot['sources']}
+    for code in members:
+        if code not in cards:continue
+        card=cards[code]
+        refs=[dict(url=card['source_url'],title=card['name']+' 产品公开资料',published_at=card['published_at']),*card.get('additional_sources',[])]
+        for ref in refs:
+            if ref['url'] in urls or (ref['published_at'] and not within_cutoff(ref['published_at'],snapshot['news_cutoff'])):continue
+            mid='product_'+code
+            if not any(m['id']==mid for m in snapshot['materials']):
+                snapshot['materials'].append(dict(id=mid,title=card['name'],summary='公开产品检索入口，需读原文后引用',relation='产品定位与风险',origin='product_reference',must_include=False))
+            snapshot['sources'].append(dict(id='product_src_'+fingerprint(ref['url'])[:16],material_id=mid,name='华泰柏瑞基金',title=ref['title'],url=ref['url'],published_at=ref['published_at'],subject_code=code,text='',research_hint='',text_observed=False,date_observed=False,identity='official_reference_entry',source_id=None,error=None))
+            urls.add(ref['url'])
 
 
 def research_input(snapshot):
@@ -177,7 +200,7 @@ def prepare(snapshot,data,control,invoke,persist,progress,fetcher):
         snapshot['supplemental_research']=dict(enabled=False,status='disabled',summary='本次方案关闭联网，使用已核对材料',source_ids=[])
     bind_dates(snapshot)
     research=snapshot['supplemental_research']
-    research['verified_sources']=sum(s.get('text_observed') and s.get('date_observed') and within_cutoff(s.get('published_at'),snapshot['news_cutoff'])
+    research['verified_sources']=sum(bool(s.get('text_observed') and s.get('date_observed') and within_cutoff(s.get('published_at'),snapshot['news_cutoff']))
         for s in snapshot['sources'] if s['id'] in research.get('source_ids',[]))
     if research['status']=='pending_verification':research['status']='completed' if research['verified_sources']==len(research['source_ids']) else 'partial'
     research['verification_budget']=budget
@@ -217,6 +240,7 @@ def build_input(snapshot,feedback='',previous=None):
         if entry['must_include']:continue
         target=news if entry in news else product
         if len(target)==1:continue
+        if target is product and entry.get('subject_code') and sum(s.get('subject_code')==entry['subject_code'] for s in product)==1:continue
         target.remove(entry);omitted.append(dict(source_id=entry['source_id'],material_id=entry['material_id'],title=entry['title'],reason='input_capacity_whole_source_omitted'))
     if len(dumps(result))>capacity:raise ValueError('主新闻与完整范文超过本次容量；未静默截断，原文和选材已保留')
     allowed={s['source_id'] for s in news+product}

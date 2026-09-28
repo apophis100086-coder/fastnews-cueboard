@@ -49,7 +49,8 @@ def public_context(conn, edition):
     snapshots = sorted(ed._snapshots(conn, edition),
                        key=lambda s: (s['data_as_of'], s['published_at'], s['snapshot_id']), reverse=True)
     for item in snapshots:
-        if item['product_code'] != edition['product_code']:
+        members=edition.get('member_codes',[edition['product_code']])
+        if item['product_code'] not in members:
             continue
         for ev in item['evidence']:
             if ev.get('privacy_class') != 'public' or not ev.get('source_url'):
@@ -58,22 +59,23 @@ def public_context(conn, edition):
                 continue
             # Syntax validation only; any later retrieval uses the safe reader.
             url = normalize_url(ev['source_url'])
-            ref=dict(id=item['snapshot_id'], title=item['title'],
+            ref=dict(id=item['snapshot_id'], title=item['title'],subject_code=item['product_code'],
                 snapshot_type=item['snapshot_type'], data_as_of=item['data_as_of'],
                 published_at=item['published_at'], effective_at=item.get('effective_at'),
                 source_url=url, excerpt=ev['excerpt'], evidence_id=ev['evidence_id'],
                 source_type=ev['source_type'], source_name=ev.get('declared_source'),
                 document_id=item['document_id'], structure_status=item['structure_status'],
                 purpose='dated_product_background_not_current_news')
-            if item['snapshot_type'] not in seen and len(references)<3:
+            key=(item['product_code'],item['snapshot_type'])
+            if key not in seen and len(references)<3*len(members):
                 references.append(ref)
-                seen.add(item['snapshot_type'])
+                seen.add(key)
             if item['snapshot_type'] in {'product_identity','business_segment'} and not re.search(r'定期报告|季度报告|第.?季|中期报告|年度报告|年报|季报|20\d{2}\s*[Qq][1-4]',item['title']):
-                writing_candidates.setdefault(item['snapshot_type'],ref)
+                writing_candidates.setdefault(key,ref)
             break
     if not references:
         gaps.append('本期没有可传给宿主的公开产品依据；关键词不是持仓证明')
-    if not seen.intersection({'index_constituents', 'fund_holdings', 'target_fund_holdings'}):
+    if not {k[1] for k in seen}.intersection({'index_constituents', 'fund_holdings', 'target_fund_holdings'}):
         gaps.append('缺少本期可用的有日期成份或持仓资料，不能给出当前权重或宣称新闻主体属于持仓')
     rows = []
     for hid in edition.get('history_doc_ids', []):

@@ -34,7 +34,7 @@ class ConfigTests(unittest.TestCase):
     def test_defaults_preserve_scope_and_unconnected_state(self):
         config = load_config()
         summary = config_summary(config)
-        self.assertEqual(summary["counts"], {"sources": 26, "morning_sources": 21, "topics": 9, "products": 5})
+        self.assertEqual(summary["counts"], {"sources": 26, "morning_sources": 21, "topics": 9, "products": 6})
         self.assertEqual(summary["providers"], {"search": "none", "llm": "none", "wind": "none"})
         self.assertEqual(summary["capabilities"]["needs_probe"], 26)
         self.assertEqual(summary["live_adapters_implemented_in_m1"], 0)

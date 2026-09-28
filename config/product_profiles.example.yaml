@@ -1,10 +1,10 @@
-version: 2.1-star50
+version: 2.2-dividend-family
 status: routing_and_observation_only_not_verified_holdings
 routing_source: config/products.example.yaml + config/products.additional.yaml
 pilot_codes:
 - '513130'
-- '513530'
 - '588710'
+- dividend_family
 profiles:
 - code: '588090'
   name: 科创50ETF华泰柏瑞
@@ -92,6 +92,24 @@ profiles:
   - 首付款与潜在里程碑分开
   - 研究阳性不等于批准上市
   - 医保谈判资格不等于纳入或销售兑现
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: dividend_family
+  name: 红利全家桶
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - A股与港股持续分红和自由现金流
+  - 利率、国债收益率及红利配置需求
+  - 央企股东回报和中长期资金配置
+  - 低波动与质量因子的筛选差异
+  - 七只成员各自的指数、资金数据及风险
+  relation_boundaries:
+  - 系列不是一只基金，没有统一基金代码或合计资金规模
+  - 南向资金仅涉及港股范围，没有去向证据不能推断买入红利
+  - 不同成员的股息率、规模、统计期和份额分别归属
+  - 分红政策、已宣告分红与已实施派息区分
   structure_snapshot: null
   identity_evidence_refs: []
   style_samples: []

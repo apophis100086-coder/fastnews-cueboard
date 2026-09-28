@@ -239,6 +239,13 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
             relation_boundaries=edition['profile']['relation_boundaries'],
             holdings_status='关键词和观察变量，不代表当前持仓')
         product['context'] = dict(public_context(conn, edition))
+        definition=config['products'][code]
+        if definition.get('kind')=='family':
+            from .product_cards import registry
+            cards=registry()
+            product.update(kind='family',member_codes=definition['member_codes'],
+                members=[dict(code=c,name=cards[c]['name']) for c in definition['member_codes']],
+                data_boundary='成员分别核对；系列没有单一代码、净值、规模或合计资金指标')
         # These are a second copy prepared exclusively for drafting. Research
         # already has the dated references; writing loads its own full context.
         product['context'].pop('writing_references',None)
