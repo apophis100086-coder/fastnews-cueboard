@@ -230,10 +230,20 @@ class LocalApplication:
             with self.guard:
                 self.jobs[job_id].update(status='completed', result=result)
         except Exception as exc:
+            from .task_control import TaskStopped
+            from .host_provider import HostUnavailable
+            error=str(exc) if isinstance(exc,(ValueError,TaskStopped,HostUnavailable)) else type(exc).__name__
+            if action.startswith('writing-'):
+                # The writing service retains a stage-specific, scrubbed error
+                # together with the draft. Keep it visible during polling too.
+                try:
+                    from .writing import run_record
+                    with closing(self.connection()) as failed_conn:
+                        failed=failed_conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(job_id,)).fetchone()
+                        if failed:error=run_record(failed).get('error') or error
+                except Exception:pass
             with self.guard:
-                from .task_control import TaskStopped
-                from .host_provider import HostUnavailable
-                self.jobs[job_id].update(status=getattr(exc,'code','failed'), error=str(exc) if isinstance(exc,(ValueError,TaskStopped,HostUnavailable)) else type(exc).__name__)
+                self.jobs[job_id].update(status=getattr(exc,'code','failed'), error=error)
         finally:
             with self.guard:
                 if self.active_job==job_id:

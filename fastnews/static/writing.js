@@ -22,6 +22,11 @@ function updateWritingButtons(){
  $('writing-research-note').textContent=detail?.edition?`资讯截至 ${displayTime(detail.edition.news_cutoff)}。${state?.reader_profile?.settings?.web_search===false?'当前方案关闭联网。':'将补查近7日相关消息，并核对产品资料。'} 最长15分钟，可随时停止。`:'';
 }
 function writingChecksHTML(checks){return (checks?.errors||[]).map(e=>'<li>'+h(e.message)+(e.location?' · '+h(e.location):'')+'</li>').join('');}
+function writingSourceStatus(source){
+ const read=source.text_observed?(source.text_truncated?'已读部分原文（内容截断）':'已读原文'):'原文未读';
+ return read+(source.date_observed?' · 日期已核对':' · 日期待核对');
+}
+function writingOmission(reason){return ({source_restricted:'来源访问受限',original_not_read:'未取得原文',publication_not_verified:'公开日期待核对',outside_cutoff:'超过本期截点',input_capacity_whole_source_omitted:'输入容量不足，整篇未纳入'})[reason]||reason;}
 function writingDraftHTML(content){
  const text=content.text||content.manual_text||'';
  return '<article class="writing-prose news-draft">'+text.split(/\n\s*\n/).map((p,i)=>i===0?'<h3>'+h(p)+'</h3>':'<p class="'+(/^（.*来源/.test(p)?'draft-source':'')+'">'+h(p)+'</p>').join('')+'</article>';
@@ -29,14 +34,14 @@ function writingDraftHTML(content){
 function renderWriting(){
  restoreWritingEditor();const versions=writingVersions(),draft=latestDraft();
  if(draft){
-  const c=draft.content,checks=draft.checks||{},complete=c.pipeline?.status==='complete';
-  const status=c.human_edited?'人工修改已保存，新增文字待核对':!complete?'起草稿已保留，编辑未完成':(checks.errors?.length||c.appendix_missing?.length)?'初稿已保存，有待核对项':'编辑稿已保存，等待你审阅';
+  const c=draft.content,checks=draft.checks||{},complete=c.pipeline?.status==='complete',legacy=draft.workflow&&draft.workflow!=='direct-newsroom-v2';
+  const status=c.human_edited?'人工修改已保存，新增文字待核对':legacy?'历史稿件，按原流程和口径保存':!complete?'起草稿已保留，编辑未完成':(checks.errors?.length||c.appendix_missing?.length)?'初稿已保存，有待核对项':'编辑稿已保存，等待你审阅';
   $('writing-draft-result').innerHTML='<div class="section-head"><h3>本期初稿</h3><span class="pill">'+h(status)+'</span></div>'+
-   '<div class="writing-actions"><button class="primary" data-copy-draft="'+h(draft.version_id)+'">复制完整稿件</button><button data-word-draft="'+h(draft.version_id)+'">下载 Word</button></div>'+writingDraftHTML(c)+
+   '<div class="writing-actions"><button class="primary" data-copy-draft="'+h(draft.version_id)+'">复制完整稿件</button>'+(!legacy?'<button data-word-draft="'+h(draft.version_id)+'">下载 Word</button>':'')+'</div>'+writingDraftHTML(c)+
    (c.appendix_missing?.length?'<p class="muted">产品备注待补：'+h(c.appendix_missing.join('；'))+'</p>':'')+
    '<details><summary>在页面中修改稿件</summary><p class="muted">编辑内容自动保存在本机。点击保存后成为独立版本，保留原稿。</p><textarea id="writing-local-text" rows="18" maxlength="50000"></textarea><button data-save-manual="'+h(draft.version_id)+'">保存人工修改</button></details>'+
-   '<details><summary>查看依据与检查（'+(checks.errors?.length||0)+'项待核对）</summary><ul>'+writingChecksHTML(checks)+'</ul><p class="muted">程序检查与稿件采用分别记录。实际采用和修改时间由编辑确认。</p>'+(draft.source_evidence||[]).map(s=>'<p>'+h(s.name)+' · '+(httpLink(s.url,s.title||'原文')||h(s.title))+' · '+h(displayTime(s.published_at))+'<br><small>'+h(s.text_observed?'已读原文':'原文未读')+(s.error?' · '+h(s.error):'')+'</small></p>').join('')+'<button data-trace-draft="'+h(draft.version_id)+'">下载追溯记录</button></details>'+
-   '<details><summary>本轮补搜与实际编辑</summary><p>'+h(draft.supplemental_research?.summary||'沿用已核对材料')+'</p><ul>'+(c.editing_changes||c.pipeline?.changes||[]).map(x=>'<li>'+h(x)+'</li>').join('')+'</ul><p class="muted">'+h((c.pipeline?.input_coverage?.omitted||[]).map(x=>(x.title||x.source_id)+'：'+x.reason).join('；'))+'</p></details>';
+   '<details><summary>查看依据与检查（'+(checks.errors?.length||0)+'项待核对）</summary><ul>'+writingChecksHTML(checks)+'</ul><p class="muted">程序检查与稿件采用分别记录。实际采用和修改时间由编辑确认。</p>'+(draft.source_evidence||[]).map(s=>'<p>'+h(s.name)+' · '+(httpLink(s.url,s.title||'原文')||h(s.title))+' · '+h(displayTime(s.published_at))+'<br><small>'+h(writingSourceStatus(s))+(s.error?' · '+h(s.error):'')+'</small></p>').join('')+'<button data-trace-draft="'+h(draft.version_id)+'">下载追溯记录</button></details>'+
+   '<details><summary>本轮补搜与实际编辑</summary><p>'+h(draft.supplemental_research?.summary||'沿用已核对材料')+'</p><ul>'+(c.editing_changes||c.pipeline?.changes||[]).map(x=>'<li>'+h(x)+'</li>').join('')+'</ul><p class="muted">'+h((c.pipeline?.input_coverage?.omitted||[]).map(x=>(x.title||x.source_id)+'：'+writingOmission(x.reason)).join('；'))+'</p></details>';
   const editor=$('writing-local-text');editor.value=localStorage.getItem(key('draft-edit:'+draft.version_id))??c.manual_text??c.text??'';
   const storage=key('draft-edit:'+draft.version_id);editor.oninput=()=>localStorage.setItem(storage,editor.value);
  }else $('writing-draft-result').innerHTML='<div class="draft-empty"><h3>选好材料，开始写作</h3><p>后台将依次补充资料、起草、编辑。完成后可在这里审阅、修改和下载。</p></div>';

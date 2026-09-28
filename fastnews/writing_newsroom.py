@@ -308,14 +308,24 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
     except BaseException as exc:
         code=getattr(exc,'code',None) or 'failed'
         status=code if code in {'cancelled','timed_out','interrupted'} else 'failed'
+        last_step=pipeline['steps'][-1] if pipeline['steps'] else {}
+        phase={'research':'补充资料','compose':'起草','edit':'编辑'}.get(last_step.get('stage'),'补充资料')
+        reason=str(exc)[:700] if isinstance(exc,ValueError) or getattr(exc,'code',None) else '请查看本次运行记录。'
+        if code=='timed_out':
+            if control.deadline-time.monotonic()<=snapshot['rules']['finalize_seconds']:
+                reason='本次生成已达到总时限，预留时间用于保存。'
+            elif last_step.get('status')=='timed_out' and last_step.get('timeout'):
+                reason=f"{phase}步骤达到{round(last_step['timeout'])}秒时限。"
+        elif code=='cancelled':reason='已按要求停止。'
         pipeline.update(status='editing_incomplete' if first_id else 'compose_incomplete',failure_code=code)
-        data['failure_message']=('编辑未完成，起草稿已保留。' if first_id else '起草未完成。')+(
-            str(exc)[:700] if isinstance(exc,ValueError) or getattr(exc,'code',None) else '请查看本次运行记录。')
+        data['failure_message']=('编辑未完成，起草稿已保留。' if first_id else phase+'未完成，选材与已取得资料已保留。')+reason+(
+            '可查看保留稿件后填写修改意见或重新生成。' if first_id else '请查看本轮具体缺口后重新生成。')
         # Apply the same secret scrubbing as the legacy failure path.
         from pathlib import Path
         try:w.ed._reject_secrets(Path('writing-error.txt'),data['failure_message'])
         except ValueError:data['failure_message']='写作未完成，错误详情包含敏感字段，已隐藏。'
         persist()
+        usage=combined_usage(steps,control);usage['pipeline']=format_version
         with conn:conn.execute('UPDATE fn_writing_runs SET status=?,error_code=?,usage_json=?,finished_at=? WHERE run_id=?',
-            (status,code,w.dumps(combined_usage(steps,control)),utc_now(),identifier))
+            (status,code,w.dumps(usage),utc_now(),identifier))
         raise

@@ -136,9 +136,14 @@ def check_text(text, *, location='', entities=(), product_codes=(), product_name
         # this mode. A forbidden fact elsewhere in the same line is still checked.
         body='。'.join(clause for clause in re.split(r'[。；;，,\n]',body)
             if not re.search(r'不使用|不写|不得|禁止|避免|不涉及|删除|剔除|不采用|不沿用|不能(?:写|推出|推断|断言)|无需',clause))
-    # Official fund names can contain an index name. Remove only known names.
+    # Funds and permitted indices are financial instruments, even if the host
+    # labels their listing market as HK/CN. Remove only catalogued identities;
+    # arbitrary company names containing "ETF" or "指数" remain checked.
     from .product_cards import product_aliases, index_names
-    for name in sorted(set(product_names)|set(product_aliases()),key=len,reverse=True):
+    instruments=set(product_names)|set(product_aliases())
+    if (rules or {}).get('allow_index_identity'):
+        instruments.update(index_names())
+    for name in sorted(instruments,key=len,reverse=True):
         letters=re.sub(r'\s+','',unicodedata.normalize('NFKC',name))
         body=re.sub(r'\s*'.join(re.escape(c) for c in letters),'本产品',body)
     matched=set()

@@ -12,7 +12,7 @@ import yaml
 
 from .metadata import normalize_url,parse_instant
 from .writing_contracts import obj,arr,S
-from .writing_checks import within_cutoff,date_present,issue
+from .writing_checks import within_cutoff,date_present,issue,normalized
 
 ROOT=Path(__file__).resolve().parents[1]
 SKILL=ROOT/'skills/huatai-fastnews-writing'
@@ -182,8 +182,11 @@ def bind_dates(snapshot):
     for source in snapshot['sources']:
         hint=source.get('publication_hint',{})
         date,quote=hint.get('date'),hint.get('quote','')
-        if not source.get('date_observed') and source.get('text_observed') and quote and quote in source.get('text','') and date_present(date,quote):
-            source.update(published_at=date,date_observed=True,date_basis='observed_publication_passage')
+        if not source.get('date_observed') and source.get('text_observed') and quote and normalized(quote) in normalized(source.get('text','')) and date_present(date,quote):
+            # This fallback independently establishes a calendar date, not the
+            # host's proposed time or timezone. Day precision also prevents a
+            # guessed early time from passing an intraday cutoff.
+            source.update(published_at=date[:10],date_observed=True,date_basis='observed_publication_passage',date_precision='day')
 
 
 def prepare(snapshot,data,control,invoke,persist,progress,fetcher):

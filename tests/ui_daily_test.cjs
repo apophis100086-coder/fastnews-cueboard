@@ -760,6 +760,18 @@ test('draft preview escapes output and keeps incomplete drafts copyable with a s
  assert.match(output,/复制完整稿件/);assert.match(output,/下载 Word/);assert.doesNotMatch(output,/可直接采用/);
  app.el('writing-local-text').value='我的人工修订';app.el('writing-local-text').oninput();await app.evaluate('renderWriting()');assert.equal(app.el('writing-local-text').value,'我的人工修订');
 });
+test('legacy drafts retain their original workflow label and do not offer unsupported Word export',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',workflow:'legacy',version_id:'v-old',created_at:'2026-09-25',checks:{errors:[]},content:{text:'旧稿标题\n\n旧版正文'}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/历史稿件，按原流程和口径保存/);assert.match(output,/旧版正文/);assert.doesNotMatch(output,/编辑未完成|data-word-draft/);
+});
+test('source details disclose partial reading, unchecked dates and omitted inputs',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',version_id:'v-partial',created_at:'2026-09-25',checks:{errors:[]},source_evidence:[{name:'公开机构',title:'资料',text_observed:true,text_truncated:true,date_observed:false,published_at:'2026-09-24'}],content:{text:'标题\n\n正文',pipeline:{status:'complete',input_coverage:{omitted:[{title:'长报告',reason:'input_capacity_whole_source_omitted'}]}}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/已读部分原文（内容截断）/);assert.match(output,/日期待核对/);assert.match(output,/长报告：输入容量不足，整篇未纳入/);
+});
 test('writing feedback is isolated by edition and old framework storage remains intact',async()=>{
  const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition(c.url.includes('ed-two')?'ed-two':'ed-one'):undefined});
  await app.evaluate("loadEdition('ed-one');localStorage.setItem(key('writing-editor'),'old outline')");

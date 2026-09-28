@@ -86,6 +86,14 @@ class DirectWritingTests(unittest.TestCase):
         self.assertFalse(check_text(text,rules=direct.policy()))
         self.assertTrue(check_text('北方华创上涨',rules=direct.policy()))
 
+    def test_fund_and_index_market_labels_do_not_hide_real_company_errors(self):
+        from fastnews.writing_checks import check_text
+        text='基金投资南方东英恒生科技指数ETF，跟踪恒生科技指数。腾讯控股发布公告。合成指数科技公司发布公告。'
+        entities=[dict(name=name,market='HK') for name in ('南方东英恒生科技指数ETF','恒生科技指数','腾讯控股','合成指数科技公司')]
+        errors=check_text(text,entities=entities,rules=direct.policy())
+        self.assertEqual({e['excerpt'] for e in errors},{'腾讯控股','合成指数科技公司'})
+        self.assertIn('index_identity',{e['code'] for e in check_text(text,entities=entities)})
+
     def test_discoveries_are_unverified_and_duplicate_sources_do_not_destroy_task(self):
         snapshot=w._snapshot(self.conn,self.cfg,self.fixture.eid,1);snapshot['rules']=direct.policy()
         src=dict(material_id=self.fixture.mid,title='补充原文',publisher='合成发布机构',url='https://example.org/second',
@@ -96,6 +104,41 @@ class DirectWritingTests(unittest.TestCase):
         self.assertEqual(snapshot['supplemental_research']['skipped'][0]['reason'],'existing_source_reused')
         future=deepcopy(snapshot);future['sources'][0]['published_at']='2026-09-20'
         with self.assertRaisesRegex(ValueError,'主新闻'):direct.build_input(future)
+
+    def test_publication_passages_tolerate_pdf_spacing_but_do_not_invent_times(self):
+        from fastnews.writing_checks import within_cutoff
+        source=dict(text_observed=True,date_observed=False,text='合成基金管理人\n2026 年 8 月 11 日',
+            publication_hint=dict(date='2026-08-11T09:00:00+08:00',quote='合成基金管理人 2026年8月11日'))
+        wrong=deepcopy(source);wrong['publication_hint']['date']='2026-08-10'
+        absent=deepcopy(source);absent['text']='没有出现日期'
+        snapshot=dict(sources=[source,wrong,absent]);direct.bind_dates(snapshot)
+        self.assertEqual(source['published_at'],'2026-08-11')
+        self.assertTrue(source['date_observed'])
+        self.assertFalse(within_cutoff(source['published_at'],'2026-08-11T12:00:00+08:00'))
+        self.assertTrue(within_cutoff(source['published_at'],'2026-08-11T23:59:59+08:00'))
+        self.assertFalse(wrong['date_observed']);self.assertFalse(absent['date_observed'])
+
+    def test_server_preserves_specific_edit_timeout_and_direct_workflow_usage(self):
+        from fastnews.server import LocalApplication
+        app=LocalApplication(self.fixture.path,self.fixture.config,offline=True)
+        control=TaskControl(900)
+        record=w.accept_run(self.conn,self.cfg,'generate',self.fixture.data(),control)
+        identifier=record['run_id'];app.jobs[identifier]=record;app.controls[identifier]=control;app.active_job=identifier
+        original=w.execute_run
+        def fail_edit(*args,**kwargs):
+            if self.calls:raise TaskStopped('timed_out')
+            return self.runner(*args,**kwargs)
+        def execute(conn,run_id,task_control,**kwargs):
+            return original(conn,run_id,task_control,runner=fail_edit,**kwargs)
+        with patch('fastnews.writing.execute_run',side_effect=execute):
+            app._run_job(identifier,'writing-generate',{'_config':self.cfg})
+        self.assertEqual(app.jobs[identifier]['status'],'timed_out')
+        self.assertIn('编辑步骤达到180秒时限',app.jobs[identifier]['error'])
+        self.assertIn('起草稿已保留',app.jobs[identifier]['error'])
+        self.assertIsNone(app.active_job)
+        stored=w.run_record(self.conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(identifier,)).fetchone())
+        self.assertEqual(stored['usage']['pipeline'],direct.FORMAT)
+        self.assertEqual(stored['error'],app.jobs[identifier]['error'])
 
     def test_shared_deadline_is_not_reset(self):
         clock=[100.0]
