@@ -679,7 +679,11 @@ def validate_draft(raw,snapshot,outline,*,anchors_required=True):
                  body_characters=sum(len(p['text']) for p in raw['paragraphs']))
     content['text']=render_draft(content,compact_sources=v64)
     from .writing_quality import quality_checks
-    editorial=quality_checks(raw,content['body_characters'],v64)
+    quality_characters=content['body_characters']
+    if snapshot.get('workflow')=='direct-newsroom-v3':
+        from .writing_templates import BODY_KINDS
+        quality_characters+=sum(len(b['text']) for b in snapshot.get('company_template',{}).get('blocks',[]) if b['kind'] in BODY_KINDS)
+    editorial=quality_checks(raw,quality_characters,v64)
     errors.extend(editorial['errors'])
     policy_codes={'a_share_company','hk_company','unknown_company','a_share_code','hk_code',
         'index_identity','product_flow','short_performance','certainty','flow_period'}
@@ -879,6 +883,10 @@ def workflow(conn,edition_id):
         item['stale_selection']=item['decision_revision']!=(decision or {}).get('decision_revision')
         from .writing_direct import skill_fingerprint as direct_fingerprint
         item['stale_skill_version']=item['skill_version']!=(direct_fingerprint(item['product_code']) if item['workflow'] in {'direct-newsroom-v2','direct-newsroom-v3'} else current_skill)
+        if item['workflow']=='direct-newsroom-v3':
+            from .writing_templates import select_template
+            current_template=select_template(item['product_code'],item['news_cutoff'])
+            item['stale_template_version']=item['content'].get('company_template',{}).get('sha256')!=current_template.get('sha256')
     runs=[run_record(row) for row in conn.execute('SELECT * FROM fn_writing_runs WHERE edition_id=? ORDER BY rowid',(edition_id,))]
     recovered={v['content']['recovery']['source_run_id']:v['version_id'] for v in versions
         if v['stage']=='outline' and v['content'].get('recovery')}
@@ -950,7 +958,8 @@ def recheck_draft(conn,data):
     _decision(conn,parent['edition_id'],parent['decision_revision'])
     current=current_skill_for(parent)
     if parent['snapshot']['skill_version']!=current:
-        raise ValueError('写作技能或规则已更新，请回到框架确认后生成；程序复查不能代替新语义检查')
+        action='重新生成快讯初稿' if parent['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'} else '回到框架确认后生成'
+        raise ValueError('写作技能或规则已更新，请'+action+'；程序复查不能代替新语义检查')
     previous=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()
     signature=fingerprint(['recheck',parent['version_id']])
     if previous:

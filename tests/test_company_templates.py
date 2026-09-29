@@ -27,10 +27,12 @@ class CompanyTemplatesTests(unittest.TestCase):
         self.save()
         self.assertEqual(select_template('family','2026-08-31T23:59:59+08:00',library=self.path)['status'],'missing')
         self.assertEqual(select_template('family','2026-09-02T23:59:59+08:00',library=self.path)['status'],'ready')
-        self.template['blocks'][0]['variables']={'holders':dict(value=1,as_of='2026-10-01',source='observed')}
+        optional=dict(kind='manager_intro',text='户数{{holders}}',sources=self.template['blocks'][0]['sources'],required=False,
+            variables={'holders':dict(value=1,as_of='2026-10-01',source='observed')})
+        self.template['blocks'].append(optional)
         self.save()
         self.assertEqual(select_template('family','2026-09-02T23:59:59+08:00',library=self.path)['status'],'ready')
-        self.assertEqual(len(select_template('family','2026-09-02T23:59:59+08:00',library=self.path)['blocks']),1)
+        self.assertEqual(len(select_template('family','2026-09-02T23:59:59+08:00',library=self.path)['blocks']),2)
         x=json.loads(self.path.read_text());x['items'][0]['blocks'][1]['text']='changed'
         self.path.write_text(json.dumps(x));self.assertEqual(select_template('family','2026-09-02T23:59:59+08:00',library=self.path)['status'],'invalid')
 
@@ -61,6 +63,16 @@ class CompanyTemplatesTests(unittest.TestCase):
         content={'paragraphs':[]};attach(content,snapshot)
         self.assertEqual(content['company_template']['status'],'pending')
         self.assertTrue(content['company_template']['issues'])
+
+    def test_required_dynamic_field_and_expired_risk_cannot_pass_silently(self):
+        self.template['blocks'][0]['variables']={'holders':dict(value=2,as_of='2026-10-01',source='observed')}
+        self.save()
+        self.assertEqual(select_template('family','2026-09-02T23:59:59+08:00',library=self.path)['status'],'pending')
+        self.template['blocks'][0].pop('variables')
+        self.template['blocks'][1]['valid_until']='2026-09-01';self.save()
+        result=select_template('family','2026-09-02T23:59:59+08:00',library=self.path)
+        self.assertEqual(result['status'],'pending')
+        self.assertTrue(any('risk' in x for x in result['issues']))
 
 
 if __name__=='__main__':unittest.main()

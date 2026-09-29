@@ -311,7 +311,7 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
             pipeline['edited_version_id']=edited_id;persist();control.check()
             if edited.payload['status']!='ready' or not edited.payload['paragraphs']:
                 raise ValueError('编辑材料不足：'+'；'.join(edited.payload['issues'] or ['没有完整正文']))
-            audit_input={k:v for k,v in base.items() if k in {'news_cutoff','editorial_brief','news_sources','product_sources'}}
+            audit_input={k:v for k,v in base.items() if k in {'news_cutoff','editorial_brief','news_sources','product_sources','company_copy'}}
             audit=invoke('audit',dict(audit_input,stage='audit',edited_article=edited.payload),
                 data['audit_instructions'],ARTICLE_AUDIT,snapshot['rules']['audit_seconds'])
             w._validate_shape(audit.payload,ARTICLE_AUDIT)

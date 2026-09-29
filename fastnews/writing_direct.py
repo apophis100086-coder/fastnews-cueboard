@@ -297,17 +297,19 @@ def validate_edited(raw,snapshot):
     validation_schema=deepcopy(NEWS_EDIT if v3 else DIRECT_EDIT)
     validation_schema['properties']['evidence']['items']['properties']['paragraph_index'].pop('minimum',None)
     _validate_shape(raw,validation_schema)
+    citation_changes=reconcile_audit_sources(raw,snapshot) if v3 else []
     base={k:v for k,v in raw.items() if k!='appendix'}
-    check_snapshot=deepcopy(snapshot)
-    if v3:
-        from .writing_templates import BODY_KINDS
-        reserved=sum(len(b['text']) for b in snapshot.get('company_template',{}).get('blocks',[]) if b['kind'] in BODY_KINDS)
-        check_snapshot['rules']['body_characters']=[max(200,n-reserved) for n in snapshot['rules']['body_characters']]
-    content,checks=validate(base,check_snapshot,material_scope(snapshot))
+    # Ready-stage writer notes describe work handed to the independent auditor.
+    # Keep them visible, but final factual gates use the audit and source checks.
+    writing_notes=list(base['issues']) if v3 else []
+    if v3 and base['status']=='ready':base['issues']=[]
+    content,checks=validate(base,snapshot,material_scope(snapshot))
     content['raw_article']=original
+    if citation_changes:content['citation_reconciliation']=citation_changes
     if normalized:content['evidence_indexing_normalization']='zero_based_to_one_based_verified_source_mapping'
     content['format_version']=snapshot.get('workflow',FORMAT)
     editorial=checks['editorial'];editorial['version']=FORMAT
+    editorial['notes'].extend(writing_notes)
     editorial['notes'].extend(e['message'] for e in editorial['errors'])
     nonblocking=editorial['errors'];checks['errors']=[e for e in checks['errors'] if e not in nonblocking]
     checks['status']='needs_changes' if checks['errors'] else 'ready'
@@ -332,3 +334,22 @@ def validate_edited(raw,snapshot):
     else:attach_appendix(content,raw['appendix'],snapshot,checks)
     content['text']=render(content)
     return content,checks
+
+
+def reconcile_audit_sources(raw,snapshot):
+    """Add independently supported citations only; never change the prose."""
+    from .writing_newsroom import located_quote
+    from .writing_checks import qualify_claim
+    sources={s['id']:s for s in snapshot['sources']};changes=[]
+    for e in raw['evidence']:
+        index=e['paragraph_index'];source=sources.get(e['source_id'])
+        if not source or not 1<=index<=len(raw['paragraphs']):continue
+        paragraph=raw['paragraphs'][index-1]
+        if source['id'] in paragraph['source_ids']:continue
+        claim=dict(e,id='audit_citation',material_id=source['material_id'],
+            quote=located_quote(e['quote'],source),published_at=source.get('published_at') or '',publication_quote='')
+        identity=source.get('subject_code') or snapshot['product_code']
+        if qualify_claim(claim,sources,snapshot['news_cutoff'],identity):continue
+        paragraph['source_ids'].append(source['id'])
+        changes.append(dict(paragraph_index=index,source_id=source['id'],reason='audit_quote_date_and_numbers_verified'))
+    return changes

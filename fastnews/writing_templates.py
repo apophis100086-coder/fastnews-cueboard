@@ -36,9 +36,17 @@ def select_template(code,cutoff,*,library=LIBRARY):
         values=block.get('variables',{})
         if any(not v.get('source') or not v.get('as_of') or not within_cutoff(v['as_of'],cutoff)
                or (v.get('valid_until') and cutoff[:10]>v['valid_until']) for v in values.values()):
-            if block.get('required',False):issues.append(block['kind']+' 动态字段依据待补齐')
+            if block.get('required',True):issues.append(block['kind']+' 动态字段依据待补齐')
             continue
+        if block.get('valid_until') and cutoff[:10]>block['valid_until']:
+            if block.get('required',True):issues.append(block['kind']+' 模板已超过适用日期')
+            continue
+        for key,value in values.items():
+            block['text']=block['text'].replace('{{'+key+'}}',str(value['value']))
         blocks.append(block)
+    for kind in template.get('required_kinds',['product_intro','risk']):
+        if not any(b['kind']==kind for b in blocks):issues.append(kind+' 必需模板缺失')
+    if sum(b['kind']=='risk' for b in blocks)>1:issues.append('风险提示模板重复，需维护为一份')
     template.update(blocks=blocks,issues=issues,status='pending' if issues else 'ready')
     return template
 

@@ -39,6 +39,7 @@ function renderWriting(){
   $('writing-draft-result').innerHTML='<div class="section-head"><h3>本期初稿</h3><span class="pill">'+h(status)+'</span></div>'+
    '<div class="writing-actions"><button class="primary" data-copy-draft="'+h(draft.version_id)+'">复制完整稿件</button>'+(!legacy?'<button data-word-draft="'+h(draft.version_id)+'">下载 Word</button>':'')+'</div>'+writingDraftHTML(c)+
    (c.company_template?.issues?.length?'<p class="muted">公司模板待补：'+h(c.company_template.issues.join('；'))+'</p>':'')+
+   (draft.stale_template_version?'<p class="muted">公司模板已更新，本稿保留生成时的模板版本；重新生成时使用本期有效版本。</p>':'')+
    (c.appendix_missing?.length?'<p class="muted">产品备注待补：'+h(c.appendix_missing.join('；'))+'</p>':'')+
    '<details><summary>在页面中修改稿件</summary><p class="muted">编辑内容自动保存在本机。点击保存后成为独立版本，保留原稿。</p><textarea id="writing-local-text" rows="18" maxlength="50000"></textarea><button data-save-manual="'+h(draft.version_id)+'">保存人工修改</button></details>'+
    '<details><summary>查看依据与检查（'+(checks.errors?.length||0)+'项待核对）</summary><ul>'+writingChecksHTML(checks)+'</ul><p class="muted">程序检查与稿件采用分别记录。实际采用和修改时间由编辑确认。</p>'+(draft.source_evidence||[]).map(s=>'<p>'+h(s.name)+' · '+(httpLink(s.url,s.title||'原文')||h(s.title))+' · '+h(displayTime(s.published_at))+'<br><small>'+h(writingSourceStatus(s))+(s.error?' · '+h(s.error):'')+'</small></p>').join('')+'<button data-trace-draft="'+h(draft.version_id)+'">下载追溯记录</button></details>'+

@@ -69,6 +69,29 @@ class DirectWritingTests(unittest.TestCase):
         self.assertIn('独立核验',w.run_record(row)['error'])
         self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],2)
 
+    def test_audit_sees_fixed_body_and_length_includes_product_introduction(self):
+        template=dict(status='ready',issues=[],blocks=[dict(kind='product_intro',text='产'*1000,sources=[]),
+            dict(kind='risk',text='合成风险',sources=[])])
+        with patch('fastnews.writing_templates.select_template',return_value=template):result=self.run_direct()
+        audit=self.calls[2][0]
+        self.assertEqual(audit['company_copy']['fixed_body_blocks'][0]['text'],'产'*1000)
+        self.assertNotIn('style_examples',audit)
+        self.assertFalse(any(e['code']=='editorial_length' for e in result['checks']['editorial']['errors']))
+
+    def test_citation_reconciliation_requires_verified_quote_and_preserves_prose(self):
+        snapshot=w._snapshot(self.conn,self.cfg,self.fixture.eid,1)
+        s=snapshot['sources'][0]
+        raw=dict(paragraphs=[dict(text=self.fixture.statement,source_ids=[])],evidence=[dict(
+            paragraph_index=1,source_id=s['id'],statement=self.fixture.statement,quote=self.fixture.statement,
+            kind='reported',data_period='',supported=True,reason='')])
+        self.assertEqual(len(direct.reconcile_audit_sources(raw,snapshot)),1)
+        self.assertEqual(raw['paragraphs'][0]['text'],self.fixture.statement)
+        raw['paragraphs'][0]['source_ids']=[];raw['evidence'][0]['quote']='没有读到的引文'
+        self.assertFalse(direct.reconcile_audit_sources(raw,snapshot))
+        self.assertEqual(raw['paragraphs'][0]['source_ids'],[])
+        raw['evidence'][0]['quote']=self.fixture.statement;s['published_at']='2026-10-01'
+        self.assertFalse(direct.reconcile_audit_sources(raw,snapshot))
+
     def test_manual_edit_is_a_separate_unverified_version_with_same_export(self):
         from fastnews.writing_delivery import save_manual
         import uuid
