@@ -40,15 +40,19 @@ def require_verified_model(model,effort):
 
 
 def login():
-    command=runtime.discover_command()
-    if not command:raise ValueError('尚未找到 WorkBuddy，请先安装官方 Windows 客户端')
     if os.name!='nt':raise ValueError('此试用包的首次连接引导仅支持 Windows')
-    # User clicked the login button: this is an intentionally visible official UI.
+    entry=runtime.login_entry()
+    if not entry['command']:raise ValueError('未找到可用的 WorkBuddy 登录入口，请打开官方客户端确认安装。')
+    # The user explicitly requested opening the installed interactive app.
+    # A headless-only bundled CLI cannot serve /login; never claim it did.
+    if entry['kind']=='desktop':
+        subprocess.Popen(entry['command'])
+        return {'login_entry':'desktop','message':'已请求打开 WorkBuddy 客户端。本机安装包不含独立命令行登录组件；请在客户端确认登录，再回到看板检查连接。客户端已登录不代表后台已接通。'}
     folder=runtime.ROOT/'data/workbuddy/login';folder.mkdir(parents=True,exist_ok=True)
     from .host_provider import clean_environment
-    subprocess.Popen(command+['--setting-sources','','--settings','{"disableAllHooks":true}','/login'],cwd=folder,env=clean_environment(),
+    subprocess.Popen(entry['command']+['--setting-sources','','--settings','{"disableAllHooks":true}','/login'],cwd=folder,env=clean_environment(),
         creationflags=subprocess.CREATE_NEW_CONSOLE)
-    return {'message':'已打开官方登录窗口。完成登录后回到看板点击“检查连接”。'}
+    return {'login_entry':'cli','message':'已请求启动官方交互登录。完成登录后回到看板点击“检查连接”，以实际检查结果为准。'}
 
 
 def probe(data,control,progress=None,runner=None):

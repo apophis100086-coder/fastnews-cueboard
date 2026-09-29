@@ -31,7 +31,7 @@ class WorkBuddyRuntimeTests(unittest.TestCase):
         self.assertEqual(got.trace['actions'][0]['status'],'failed')
 
     def test_zero_exit_auth_error_and_model_unavailable_are_failures(self):
-        self.assertIn('尚未登录',r.diagnose_failure(0,'','Authentication required. Please use /login'))
+        self.assertIn('未取得有效登录状态',r.diagnose_failure(0,'','Authentication required. Please use /login'))
         self.assertIn('所选模型',r.diagnose_failure(0,'model not found',''))
         with self.assertRaises(h.HostUnavailable):r.parse_output('{"type":"result","is_error":true,"result":"failed"}')
         with self.assertRaises(h.HostUnavailable):r.parse_output('{"type":"result","subtype":"error_max_turns","result":"{}"}')
@@ -75,5 +75,31 @@ class WorkBuddyRuntimeTests(unittest.TestCase):
             with self.assertRaises(ValueError):c.require_verified_model('fixture','low')
         self.assertEqual(c.model_options({'host':'workbuddy'}),{})
         self.assertEqual(c.model_options({'host':'workbuddy','workbuddy_model':'fixture'}),{'model':'fixture'})
+
+    def test_headless_bundle_opens_desktop_instead_of_missing_tui(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);cli=root/'resources/app.asar.unpacked/cli/bin/codebuddy'
+            cli.parent.mkdir(parents=True);cli.write_text('fixture');(root/'WorkBuddy.exe').write_text('fixture')
+            with patch.object(r,'installation_roots',return_value=[root]),patch.object(r,'discover_command',return_value=['node',str(cli)]):
+                entry=r.login_entry()
+                self.assertEqual(entry['kind'],'desktop')
+                with patch.object(c,'os',Mock(name='nt')),patch.object(c.subprocess,'Popen') as launch:
+                    c.os.name='nt';result=c.login()
+                self.assertEqual(launch.call_args.args[0],[str((root/'WorkBuddy.exe').resolve())])
+                self.assertNotIn('/login',launch.call_args.args[0]);self.assertIn('不含独立命令行登录组件',result['message'])
+
+    def test_interactive_login_requires_real_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);cli=root/'cli/bin/codebuddy';cli.parent.mkdir(parents=True);cli.write_text('fixture')
+            with patch.object(r,'installation_roots',return_value=[root]),patch.object(r,'discover_command',return_value=['node',str(cli)]):
+                self.assertEqual(r.login_entry()['kind'],'unavailable')
+                full=root/'cli/dist/codebuddy.js';full.parent.mkdir();full.write_text('fixture')
+                self.assertEqual(r.login_entry(),{'kind':'cli','command':['node',str(cli)]})
+
+    def test_no_login_entry_cannot_claim_window_opened(self):
+        with patch.object(c,'os',Mock()),patch.object(r,'login_entry',return_value={'kind':'unavailable','command':None}),patch.object(c.subprocess,'Popen') as launch:
+            c.os.name='nt'
+            with self.assertRaisesRegex(ValueError,'未找到可用'):c.login()
+            launch.assert_not_called()
 
 if __name__=='__main__':unittest.main()

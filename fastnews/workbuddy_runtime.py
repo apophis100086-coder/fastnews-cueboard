@@ -10,22 +10,39 @@ ROOT=Path(__file__).resolve().parents[1]
 CACHE=ROOT/'data/workbuddy/connection.json'
 
 
-def discover_command():
+def installation_roots():
     local=Path(os.environ.get('LOCALAPPDATA',''))
     roots=[local/'Programs/WorkBuddy',Path(os.environ.get('ProgramFiles','C:/Program Files'))/'WorkBuddy']
     setting=ROOT/'config/workbuddy.local.json'
     if setting.exists():
         value=json.loads(setting.read_text(encoding='utf-8')).get('installation_directory')
         if value:roots.insert(0,Path(value))
+    return roots
+
+
+def discover_command():
     node=ROOT/'runtime/node/node.exe'
     if not node.is_file():
         found=shutil.which('node');node=Path(found) if found else None
     if not node or not node.is_file():return None
-    for root in roots:
+    for root in installation_roots():
         for relative in ('resources/app.asar.unpacked/cli/bin/codebuddy','resources/app.asar.unpacked/cli/dist/codebuddy.js'):
             cli=root/relative
             if cli.is_file():return [str(node.resolve()),str(cli.resolve())]
     return None
+
+
+def login_entry():
+    """Bundled desktop builds can omit the interactive CLI entirely."""
+    command=discover_command()
+    if command:
+        cli=Path(command[-1])
+        interactive=cli.parent.parent/'dist/codebuddy.js' if cli.parent.name=='bin' else cli
+        if interactive.is_file():return {'kind':'cli','command':command}
+    for root in installation_roots():
+        desktop=root/'WorkBuddy.exe'
+        if desktop.is_file():return {'kind':'desktop','command':[str(desktop.resolve())]}
+    return {'kind':'unavailable','command':None}
 
 
 def installation_identity():
@@ -47,7 +64,7 @@ def save_connection(record):
 
 def connection_status():
     saved=load_connection();installed=bool(discover_command())
-    return dict(installed=installed,label='WorkBuddy',login=saved.get('login','unchecked'),
+    return dict(installed=installed,label='WorkBuddy',login_entry=login_entry()['kind'],login=saved.get('login','unchecked'),
         model=saved.get('model','unchecked'),web=saved.get('web','unchecked'),
         checked_at=saved.get('checked_at'),model_actual=saved.get('model_actual'),
         verified_models=saved.get('verified_models',[]),
@@ -68,7 +85,7 @@ def diagnose_failure(code,output,diagnostic):
                 fragments.append(json.dumps(row,ensure_ascii=False))
     text=' '.join(fragments).lower()
     if any(x in text for x in ('authentication required','please use /login','not logged in','unauthorized','请先登录')):
-        return 'WorkBuddy 官方命令行尚未登录。请点击“首次连接”完成官方登录，再检查连接。'
+        return 'WorkBuddy 后台未取得有效登录状态。请在 WorkBuddy 客户端确认登录，再点击“检查连接”；客户端已登录仍出现此提示，表示后台账户连接尚未接通。'
     if any(x in text for x in ('insufficient quota','quota exceeded','insufficient credits','余额不足','额度不足')):
         return 'WorkBuddy 账户额度不足；请在 WorkBuddy 查看账户状态。未切换到其他入口。'
     if any(x in text for x in ('model not found','model unavailable','unsupported model','invalid model')):
