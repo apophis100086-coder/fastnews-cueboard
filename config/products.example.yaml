@@ -1,0 +1,100 @@
+version: 1
+
+products:
+
+  - code: "513130"
+    name: 恒生科技ETF华泰柏瑞
+    topic_weights:
+      AI: 1.00
+      HK_TECH: 1.00
+      SOUTHBOUND: 0.65
+      SEMICONDUCTOR: 0.45
+      MACRO_POLICY: 0.35
+    preferred_sources:
+      - cls_hk_morning
+      - hkex_stock_connect_daily
+      - hkex_news
+      - trendforce
+      - wallstreetcn_breakfast
+      - nda
+    search_expansion:
+      - AI应用
+      - 云计算
+      - 互联网平台
+      - 大模型
+      - AI Agent
+      - 消费电子
+      - 自动驾驶
+      - 南向资金
+      - 港股科技
+
+  - code: "513530"
+    name: 港股通红利ETF华泰柏瑞
+    topic_weights:
+      DIVIDEND: 1.00
+      SOUTHBOUND: 0.85
+      MACRO_POLICY: 0.45
+    preferred_sources:
+      - hkex_stock_connect_daily
+      - ubs_southbound
+      - hkex_news
+      - cls_hk_morning
+      - eastmoney_hsgt
+    search_expansion:
+      - 南向资金
+      - 高股息
+      - 分红
+      - 股息率
+      - 银行
+      - 运营商
+      - 能源
+      - 公用事业
+      - 港股估值
+      - 利率
+
+  - code: "588710"
+    name: 科创半导体设备ETF华泰柏瑞
+    topic_weights:
+      SEMICONDUCTOR: 1.00
+      AI: 0.45
+      MACRO_POLICY: 0.40
+    preferred_sources:
+      - trendforce
+      - miit
+      - csia
+      - semi
+    search_expansion:
+      - 半导体设备
+      - 光刻
+      - 刻蚀
+      - 薄膜沉积
+      - 晶圆厂
+      - 扩产
+      - 国产替代
+      - 客户验证
+      - 先进制程
+
+  - code: "517120"
+    name: 创新药ETF华泰柏瑞
+    topic_weights:
+      INNOVATIVE_DRUG: 1.00
+      MACRO_POLICY: 0.25
+    preferred_sources:
+      - nmpa
+      - cde
+      - medcube
+      - dxy_insight
+      - fda
+      - clinicaltrials
+      - hkex_news
+    search_expansion:
+      - 创新药
+      - 临床数据
+      - NMPA
+      - CDE
+      - FDA
+      - BD
+      - License-out
+      - 医保
+      - ADC
+      - 双抗

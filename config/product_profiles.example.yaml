@@ -1,0 +1,116 @@
+version: 2.2-dividend-family
+status: routing_and_observation_only_not_verified_holdings
+routing_source: config/products.example.yaml + config/products.additional.yaml
+pilot_codes:
+- '513130'
+- '588710'
+- dividend_family
+profiles:
+- code: '588090'
+  name: 科创50ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 上证科创板50成份指数的结构、样本调整与行业分布
+  - 科创板企业业绩、研发投入与商业化进展
+  - 半导体、AI、高端装备等科创产业的经营与需求变化
+  - 科创板制度、并购重组与资本市场政策
+  - 科创成长资产的估值、利率环境与风险偏好
+  - 指数、板块与本基金成交及资金数据的独立口径
+  relation_boundaries:
+  - 科创50是科创板跨行业指数，不等同于半导体设备主题；行业新闻不自动代表整个指数
+  - 科创板上市不等于科创50成份股；公司关联、行业权重和覆盖比例须核对有日期的指数或持仓快照
+  - 关键词只用于召回；AI、半导体、高端装备等表述不证明当前成份股或产品受益幅度
+  - 研发投入、技术突破、客户验证不等于订单、收入或利润兑现
+  - ETF成交额、指数成交额与科创板成交额分开；成交放大不等于资金净流入，份额增加不等于净买入金额
+  - 样本调整的公告日期、生效日期和统计日期分开；未来调整只作为计划
+  - 业绩下滑、估值压力、经营风险和相反证据同样保留
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: '513130'
+  name: 恒生科技ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 平台经营
+  - AI应用使用与收入
+  - 云与算力硬件
+  - 指数结构
+  - 估值与科技资产配置
+  relation_boundaries:
+  - 出现AI词语不自动高相关
+  - 公司次要业务不代表整个指数
+  - 南向总量不等于集中买入科技股
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: '513530'
+  name: 港股通红利ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 持续分红与现金流
+  - 股息率和估值
+  - 利率与配置需求
+  - 南向参与
+  - 重要行业经营
+  relation_boundaries:
+  - 南向整体变化可以成为主事件
+  - 没有去向依据不声称红利抢筹
+  - 不能用买盘证明分红能力改善
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: '588710'
+  name: 科创半导体设备ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 晶圆厂资本开支
+  - 设备订单与客户导入
+  - 材料供需
+  - 存储与封装
+  - 国产替代
+  relation_boundaries:
+  - 未上市厂商不自动成为ETF持仓
+  - 客户验证不等于已量产或订单
+  - 强事件只有一段也可以作为主事件
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: '517120'
+  name: 创新药ETF华泰柏瑞
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - 临床试验与终点
+  - 监管审批
+  - 医保及支付准入
+  - 商业化收入
+  - 授权交易
+  relation_boundaries:
+  - 首付款与潜在里程碑分开
+  - 研究阳性不等于批准上市
+  - 医保谈判资格不等于纳入或销售兑现
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false
+- code: dividend_family
+  name: 红利全家桶
+  profile_status: needs_authorized_snapshot
+  observation_variables:
+  - A股与港股持续分红和自由现金流
+  - 利率、国债收益率及红利配置需求
+  - 央企股东回报和中长期资金配置
+  - 低波动与质量因子的筛选差异
+  - 七只成员各自的指数、资金数据及风险
+  relation_boundaries:
+  - 系列不是一只基金，没有统一基金代码或合计资金规模
+  - 南向资金仅涉及港股范围，没有去向证据不能推断买入红利
+  - 不同成员的股息率、规模、统计期和份额分别归属
+  - 分红政策、已宣告分红与已实施派息区分
+  structure_snapshot: null
+  identity_evidence_refs: []
+  style_samples: []
+  factual_holdings_inferred_from_keywords: false

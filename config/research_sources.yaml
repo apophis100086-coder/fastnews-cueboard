@@ -1,0 +1,15 @@
+version: 1
+note: 追加公开研究入口，仅宿主搜索；没有新增晨扫或程序全文采集能力。原26源保持原样。
+sources:
+  nbs_public:
+    name: 国家统计局公开数据
+    tier: T1_PRIMARY
+    url: https://www.stats.gov.cn/sj/zxfb/
+    categories: [policy, technology]
+    note: 核对工业生产、集成电路产量、电子制造及投资的统计期和发布日期。
+  semi_china_public:
+    name: SEMI中国公开新闻
+    tier: T2_PROFESSIONAL
+    url: https://www.semi.org.cn/site/semi/
+    categories: [technology]
+    note: 独立登记的中国公开新闻入口；不含付费报告，不改变semi.org的既有访问限制。

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Explicit user saved editorial selection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "edition_id",
+    "actor_type",
+    "decision_revision",
+    "selected_event_id",
+    "selected_fact_ids",
+    "mainline_note"
+  ],
+  "properties": {
+    "edition_id": {
+      "type": "string"
+    },
+    "actor_type": {
+      "const": "human"
+    },
+    "decision_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "selected_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "selected_fact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mainline_note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

@@ -1,0 +1,75 @@
+version: 2
+note: 能力覆盖层示例；原sources.yaml未修改。本次没有联网探测，不能设为ready。
+defaults:
+  capability_status: needs_probe
+  access_review: not_checked
+  adapter_name: null
+  validated_discovery_url: null
+  last_probe_at: null
+  last_success_at: null
+sources:
+  cls_morning:
+    capability_status: needs_probe
+  stcn_egs_morning:
+    capability_status: needs_probe
+  yicai_overnight:
+    capability_status: needs_probe
+  wallstreetcn_breakfast:
+    capability_status: needs_probe
+  cls_hk_morning:
+    capability_status: needs_probe
+  zhitong_hk_morning:
+    capability_status: needs_probe
+  hkex_stock_connect_daily:
+    capability_status: needs_probe
+  hkex_news:
+    capability_status: needs_probe
+  ubs_southbound:
+    capability_status: needs_probe
+  eastmoney_hsgt:
+    capability_status: needs_probe
+  trendforce:
+    capability_status: needs_probe
+  miit:
+    capability_status: needs_probe
+  nda:
+    capability_status: needs_probe
+  csia:
+    capability_status: needs_probe
+  semi:
+    capability_status: needs_probe
+  nmpa:
+    capability_status: needs_probe
+  cde:
+    capability_status: needs_probe
+  medcube:
+    capability_status: needs_probe
+  dxy_insight:
+    capability_status: needs_probe
+  fda:
+    capability_status: needs_probe
+  clinicaltrials:
+    capability_status: needs_probe
+  moa:
+    capability_status: needs_probe
+  moa_agri_market:
+    capability_status: needs_probe
+  mysteel:
+    capability_status: needs_probe
+  smm:
+    capability_status: needs_probe
+  gov_policy_library:
+    capability_status: needs_probe
+source_backlog:
+- role: recent_published_newsletters
+  reason: 原26源未独立提供完整已发稿入口
+  initial_path: user_authorized_import
+  enabled: false
+- role: index_and_fund_structure
+  reason: 原清单不是完整产品结构数据库
+  initial_path: authorized_current_product_files
+  enabled: false
+- role: product_specific_disclosures_and_policy_gaps
+  reason: 依每只产品画像列缺口，不猜API或自动扩展整站
+  initial_path: one_off_evidence_or_manual_import
+  enabled: false

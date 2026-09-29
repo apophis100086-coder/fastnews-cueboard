@@ -1,0 +1,61 @@
+version: 2.0-draft
+status: trial_defaults_not_benchmarked
+provenance:
+  inherited: SOURCE_HANDOFF_V1
+  proposed: CODEX_MASTER_HANDOFF.md [P]
+runtime:
+  timezone: Asia/Shanghai
+  db_path: ./data/fastnews.db
+  mode: local
+  serve_publicly: false
+edition:
+  news_cutoff_policy: previous_calendar_day_end
+  market_cutoff_policy: explicit_or_verified_calendar
+  include_post_cutoff: false
+  require_explicit_same_day_switch: true
+morning_scan:
+  llm_enabled: false
+  fetch_full_text: false
+  max_items_per_source: 50
+  legacy_since_hours: 18
+  bootstrap_hours: 72
+  cursor_overlap_hours: 2
+  silent_cursor_advance_on_truncation: false
+  max_retry_attempts: 2
+second_round:
+  max_event_candidates: 12
+  exploration_slots_within_candidates: 2
+  max_fulltext_articles: 20
+  max_articles_per_event: 4
+  prefer_primary_sources: true
+  llm_allowed_when_configured: true
+  max_search_requests: 8
+  max_llm_requests_including_retries: 4
+  max_input_tokens: 24000
+  max_output_tokens: 6000
+  max_cost: null
+  cost_currency: null
+  on_budget_exhausted: return_partial_with_gaps
+providers:
+  search: none
+  llm: none
+  wind: none
+  auto_use_developer_chat_session: false
+presentation:
+  primary_candidate_limit: 3
+  backup_limit: 5
+  fill_missing_candidates: false
+  show_score_by_default: false
+  default_selection: null
+  preserve_human_selection_on_refresh: true
+  show_adverse_evidence: true
+privacy:
+  private_material_external_llm_requires_consent: true
+  log_secrets: false
+  execute_document_instructions: false
+export:
+  require_human_selected_lead: true
+  include_pending_as_usable_facts: false
+  formats:
+  - markdown
+  - json

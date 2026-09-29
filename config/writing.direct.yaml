@@ -1,0 +1,23 @@
+version: huatai-v6.4-editorial-templates-20260929
+pipeline: direct-newsroom-v3
+deadline_seconds: 900
+preparation_seconds: 360
+initial_verify_seconds: 60
+research_seconds: 300
+verification_seconds: 150
+compose_seconds: 210
+edit_seconds: 180
+audit_seconds: 120
+finalize_seconds: 30
+page_seconds: 12
+max_pages: 20
+pages_per_material: 4
+max_source_bytes: 2000000
+max_input_characters: 96000
+body_characters: [1000, 1200]
+model: null
+reasoning_effort: null
+allow_index_identity: true
+allow_precise_product_data: true
+sample_library: data/writing_samples/library.json
+template_library: data/writing_templates/library.json

@@ -1,0 +1,4 @@
+# Preserve the original handoff/config bytes on every operating system.
+* -text
+# Git hooks must be executable with LF line endings.
+.githooks/* text eol=lf

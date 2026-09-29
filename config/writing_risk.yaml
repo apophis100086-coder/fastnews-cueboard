@@ -1,0 +1,22 @@
+version: product-risk-20260917-v1
+general:
+  text: 基金有风险，投资需谨慎。投资前请阅读基金合同、招募说明书和产品资料概要，了解产品风险，并根据自身风险承受能力选择相匹配的产品。基金过往业绩不预示未来表现。
+  source_url: https://fund.jrj.com.cn/2026/09/11140758410647.shtml
+  source_date: '2026-09-11'
+  source_identity: 华泰柏瑞基金供稿，金融界刊载；概括的风险说明，未替代法律文件
+products:
+  '588090':
+    text: 本产品可投资科创板，需关注其交易制度和投资标的带来的价格波动、流动性及退市等风险。
+    source_url: https://fund.jrj.com.cn/2026/09/11140758410647.shtml
+    source_date: '2026-09-11'
+  '513530':
+    text: 本产品可投资境外证券市场，除一般市场波动风险，还需关注汇率与境外市场等风险。
+    source_url: https://fund.jrj.com.cn/2026/09/14123758425859.shtml
+    source_date: '2026-09-14'
+  '588710': null
+  '513130': null
+  '517120':
+    text: 本产品属于股票型指数基金，风险收益与所跟踪指数表征的市场组合相关。产品可投资港股通标的，需关注汇率及不同市场制度、交易规则带来的风险。
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-04-22/517120_20260422_XZ3R.pdf
+    source_date: '2026-04-22'
+missing: 最新产品法律文件对应的风险等级、正式完整备注和适用费率仍需补齐；旧文章中的这些数据不会自动填入。

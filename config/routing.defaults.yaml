@@ -1,0 +1,27 @@
+version: m1-v1-routing-1
+status: trial_defaults_not_benchmarked
+provenance:
+  source_weights_and_freshness: references/inputs/SOURCE_HANDOFF_V1.zip!docs/ARCHITECTURE.md section 4
+  topic_weights: config/products.example.yaml
+  distinct_topic_sum: CODEX_MASTER_HANDOFF.md section 6.4
+  preferred_multiplier_and_exponential_option: M1 configurable proposal; not calibrated
+source_tier_weights:
+  T1_PRIMARY: 1.0
+  T2_PROFESSIONAL: 0.9
+  T3_FINANCIAL_MEDIA: 0.75
+  T4_OTHER: 0.5
+preferred_source_multiplier: 1.0
+freshness_mode: steps
+# First matching inclusive upper bound wins; null is the final open interval.
+freshness_steps:
+  - max_hours: 12
+    multiplier: 1.0
+  - max_hours: 24
+    multiplier: 0.9
+  - max_hours: 48
+    multiplier: 0.7
+  - max_hours: null
+    multiplier: 0.45
+# Optional alternative; the default above follows the original handoff.
+freshness_half_life_hours: 24
+unknown_time_multiplier: null

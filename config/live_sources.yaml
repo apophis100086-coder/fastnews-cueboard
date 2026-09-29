@@ -1,0 +1,281 @@
+version: 1
+note: 公开列表元数据适配；26来源注册表原样保留。能力以probe报告及本次运行结果为准。
+network:
+  dns_mode: public_fallback
+  timeout: 12
+  max_bytes: 2000000
+  max_redirects: 4
+  retries: 1
+  rate_per_minute: 10
+  cache_seconds: 300
+sources:
+  cls_morning:
+    listing_url: https://www.cls.cn/subject/1151
+    parser: cls_subject
+    scope: 早报公开栏目当前列表；仅标题、列表短摘要、报道时间与原文链接
+    date_timezone: Asia/Shanghai
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://www.cls.cn/our?nav=copyright
+    terms_review: personal_local_metadata_index_only_attribution_required_no_republication
+    known_gaps:
+    - first_publication_unverified
+    - first_page_only
+    - no_fulltext
+    discovery_priority: 90
+  cls_hk_morning:
+    listing_url: https://www.cls.cn/subject/8705
+    parser: cls_subject
+    scope: 港股早报公开栏目当前列表；仅标题、列表短摘要、报道时间与原文链接
+    date_timezone: Asia/Shanghai
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://www.cls.cn/our?nav=copyright
+    terms_review: personal_local_metadata_index_only_attribution_required_no_republication
+    known_gaps:
+    - first_publication_unverified
+    - first_page_only
+    - no_fulltext
+    discovery_priority: 90
+  yicai_overnight:
+    listing_url: https://www.yicai.com/
+    parser: none
+    scope: 昨夜今晨；站点明确限制未经授权的数据挖掘及AI应用
+    date_timezone: null
+    metadata_allowed: false
+    fulltext_allowed: false
+    terms_url: https://www.yicai.com/news/103153967.html
+    terms_review: explicit_data_mining_and_ai_use_authorization_required
+    known_gaps:
+    - authorization_required
+    - metadata_automation_disabled
+  zhitong_hk_morning:
+    listing_url: https://www.zhitongcaijing.com/
+    parser: none
+    scope: 港股早知道；站点限制未经授权的第三方工具访问及数据复制
+    date_timezone: null
+    metadata_allowed: false
+    fulltext_allowed: false
+    terms_url: https://www.zhitongcaijing.com/site/about.html?type=terms
+    terms_review: third_party_automated_access_authorization_required
+    known_gaps:
+    - authorization_required
+    - metadata_automation_disabled
+  trendforce:
+    listing_url: https://www.trendforce.cn/presscenter/news
+    parser: trendforce
+    scope: 产业洞察新闻列表第一页
+    date_timezone: Asia/Shanghai
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://www.trendforce.cn/about/terms
+    terms_review: personal_local_metadata_index_only_attribution_required_no_republication
+    known_gaps:
+    - first_publication_unverified
+    - first_page_only
+    - no_fulltext
+    discovery_priority: 20
+  miit:
+    listing_url: https://www.miit.gov.cn/
+    parser: dated_li
+    scope: 首页可见工信部本站新闻政策元数据
+    date_timezone: Asia/Shanghai
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: null
+    terms_review: public_official_listing_no_fulltext_permission_inferred
+    known_gaps:
+    - first_publication_unverified
+    - homepage_only
+    - no_fulltext
+    discovery_priority: 70
+  nda:
+    listing_url: https://www.nda.gov.cn/sjj/swdt/list/index_pc_1.html
+    parser: dated_li
+    scope: 新闻动态栏目五个分组各第一页
+    date_timezone: Asia/Shanghai
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: null
+    terms_review: public_official_listing_no_fulltext_permission_inferred
+    known_gaps:
+    - first_publication_unverified
+    - first_page_only
+    - no_fulltext
+    discovery_priority: 70
+  stcn_egs_morning:
+    listing_url: https://egs.stcn.com/
+    parser: stcn_morning
+    scope: 首页早知道五个可见标题与链接
+    date_timezone: null
+    metadata_allowed: false
+    fulltext_allowed: false
+    terms_url: https://egs.stcn.com/public/copyright.html
+    terms_review: written_authorization_required_manual_only
+    known_gaps:
+    - publication_time_missing
+    - first_publication_unverified
+    - homepage_only
+    - no_fulltext
+  fda:
+    listing_url: https://www.fda.gov/news-events/fda-newsroom/press-announcements
+    parser: fda
+    scope: 公开Press Announcements当前列表
+    date_timezone: null
+    metadata_allowed: true
+    fulltext_allowed: true
+    terms_url: https://www.fda.gov/about-fda/about-website/website-policies
+    terms_review: public_domain_except_noted_content_linking_preferred
+    known_gaps:
+    - report_time_from_source_cms_not_first_publication
+    - first_publication_unverified
+    - first_page_only
+    - not_enabled_for_morning_in_original_registry
+  smm:
+    listing_url: https://www.smm.cn/
+    parser: none
+    scope: 已核查原始公开首页；条款禁止未授权自动抓取
+    date_timezone: null
+    metadata_allowed: false
+    fulltext_allowed: false
+    terms_url: https://www.smm.cn/legal
+    terms_review: explicit_robot_scraping_and_monitoring_prohibition_without_written_permission
+    known_gaps:
+    - authorization_required
+    - metadata_automation_disabled
+  wallstreetcn_breakfast:
+    listing_url: https://wallstreetcn.com/news/global
+    parser: wscn_breakfast
+    scope: 公开资讯列表中的早餐标题与导语；当前页未出现早餐时返回零条，不抓正文
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://wallstreetcn.com/
+    terms_review: public_listing_metadata_only_no_republication
+    discovery_priority: 90
+  cls_southbound:
+    listing_url: https://www.cls.cn/subject/9870
+    parser: cls_subject
+    scope: 南向资金专题当前列表；媒体统计与转引，不能改标港交所直连
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://www.cls.cn/our?nav=copyright
+    terms_review: personal_local_metadata_index_no_fulltext
+    discovery_priority: 10
+  cls_innovative_drug:
+    listing_url: https://www.cls.cn/subject/1207
+    parser: cls_subject
+    scope: 创新药专题当前列表；不把获受理、临床进展写成获批上市
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://www.cls.cn/our?nav=copyright
+    terms_review: personal_local_metadata_index_no_fulltext
+    discovery_priority: 10
+  cls_semiconductor_materials:
+    listing_url: https://www.cls.cn/subject/11056
+    parser: cls_subject
+    scope: 半导体材料专题当前列表；不代表半导体全行业覆盖
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://www.cls.cn/our?nav=copyright
+    terms_review: personal_local_metadata_index_no_fulltext
+    discovery_priority: 15
+  wscn_technology:
+    listing_url: https://wallstreetcn.com/news/tmt
+    parser: wscn_technology
+    scope: 科技资讯当前列表，跳过付费条目；不下载正文
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://wallstreetcn.com/
+    terms_review: public_listing_metadata_only_no_republication
+    discovery_priority: 10
+  wscn_medicine:
+    listing_url: https://wallstreetcn.com/news/medicine
+    parser: wscn_medicine
+    scope: 医药资讯当前列表，跳过付费条目；没有当日条目时不凑数
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://wallstreetcn.com/
+    terms_review: public_listing_metadata_only_no_republication
+    discovery_priority: 15
+  hkex_official_news:
+    listing_url: https://www.hkex.com.hk/Services/RSS-Feeds/News-Releases?sc_lang=zh-HK
+    parser: official_rss
+    scope: 官方RSS订阅：交易所自身新闻，不含上市公司公告或资金明细
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://www.hkex.com.hk/Services/RSS-Feeds?sc_lang=en
+    terms_review: officially_offered_rss_subscription_only
+    discovery_priority: 40
+  eastmoney_hsgt:
+    listing_url: https://datacenter-web.eastmoney.com/api/data/v1/get?sortColumns=TRADE_DATE&sortTypes=-1&pageSize=10&pageNumber=1&reportName=RPT_MUTUAL_DEAL_HISTORY&columns=TRADE_DATE%2CMUTUAL_TYPE%2CNET_DEAL_AMT%2CBUY_AMT%2CSELL_AMT&source=WEB&client=WEB&filter=%28MUTUAL_TYPE%3D%22006%22%29
+    parser: eastmoney_southbound
+    scope: 南向成交历史最近10个交易日，记录成交净买额、买入和卖出；发布日期未知，交易日期单独保存
+    date_timezone: Asia/Shanghai
+    known_gaps:
+    - current_listing_only
+    - no_fulltext
+    - not_verified_fact
+    metadata_allowed: true
+    fulltext_allowed: false
+    terms_url: https://data.eastmoney.com/hsgt/hsgtV2.html
+    terms_review: public_statistics_local_reference_no_republication
+    discovery_priority: 10
+  hkex_stock_connect_daily:
+    listing_url: https://www.hkex.com.hk/Mutual-Market/Stock-Connect/Statistics/Historical-Daily
+    parser: none
+    scope: 原入口保留；自动采集需来源授权
+    date_timezone: null
+    known_gaps:
+    - authorization_required
+    - not_replaced_by_exchange_rss
+    metadata_allowed: false
+    fulltext_allowed: false
+    terms_url: https://www.hkex.com.hk/Global/Exchange/Terms-of-Use?sc_lang=en
+    terms_review: programmatic_access_requires_written_authorization
+  hkex_news:
+    listing_url: https://www1.hkexnews.hk/index_c.htm
+    parser: none
+    scope: 原入口保留；自动采集需来源授权
+    date_timezone: null
+    known_gaps:
+    - authorization_required
+    - not_replaced_by_exchange_rss
+    metadata_allowed: false
+    fulltext_allowed: false
+    terms_url: https://www.hkex.com.hk/Global/Exchange/Terms-of-Use?sc_lang=en
+    terms_review: programmatic_access_requires_written_authorization

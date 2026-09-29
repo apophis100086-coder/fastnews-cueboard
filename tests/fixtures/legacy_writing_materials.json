@@ -1,0 +1,24 @@
+{
+  "selected_research_clues": [
+    {
+      "title": "合成旧线索",
+      "summary": "原摘要保持不变",
+      "why": "旧观察依据",
+      "usage": "研究线索，尚未核实",
+      "date_state": "reported_in_window",
+      "event_id": "legacy_test",
+      "report_id": "old_report",
+      "item_id": "item_1",
+      "sources": [
+        {
+          "source_name": "合成旧来源",
+          "url": "https://example.org/legacy",
+          "published_at": "2026-09-14",
+          "evidence_level": "host_search_hint"
+        }
+      ]
+    }
+  ],
+  "manual_supplements": [],
+  "background_exclusions": []
+}

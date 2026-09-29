@@ -1,0 +1,15 @@
+version: exchange-examples-20260917-v1
+note: 已知A股身份补充表，不是完整证券主数据。表外实体仍由模型逐项核对，未知身份阻断，不以未命中此表视为港股独有。
+groups:
+  - source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2025-08-30/517170_20250830_4VHP.pdf
+    source_date: '2025-08-30'
+    market: CN
+    names: [中国移动, 中芯国际, 中国银行, 中国海油, 中国海洋石油, 中信证券, 中国神华, 中国石油, 中国石油股份, 中国太保, 中国电信, 中国人寿, 恒瑞医药, 药明康德, 美的集团, 紫金矿业, 长江电力, 农业银行, 交通银行, 立讯精密, 东方财富]
+  - source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2023-08-30/501079_20230830_7J6C.pdf
+    source_date: '2023-08-30'
+    market: CN
+    names: [寒武纪, 中微公司, 晶合集成, 沪电股份, 中际旭创, 京东方A, 金山办公, 新易盛, 恒瑞医药, 中国联通]
+  - source_url: https://docs.static.szse.cn/www/market/periodical/month/W020260706503108158062.html
+    source_date: '2026-06-30'
+    market: CN
+    names: [宁德时代, 北方华创]

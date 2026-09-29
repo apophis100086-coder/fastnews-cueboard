@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fastnews candidate V2 (no human decision fields)",
+  "description": "Canonical stored candidate; all source references need server-side existence checks. This is a design contract, not live news.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "edition_id",
+    "run_id",
+    "product_code",
+    "event_id",
+    "is_fixture",
+    "headline",
+    "first_published_at",
+    "evidence_state",
+    "cutoff_state",
+    "fact_refs",
+    "evidence_refs",
+    "product_relation",
+    "score_components",
+    "score_total",
+    "score_version",
+    "readiness",
+    "possible_roles",
+    "suggested_group",
+    "novelty",
+    "gaps",
+    "sentiment",
+    "policy_flags"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "candidate_id": {
+      "type": "string"
+    },
+    "edition_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "product_code": {
+      "type": "string",
+      "pattern": "^[0-9]{6}$"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "is_fixture": {
+      "type": "boolean"
+    },
+    "headline": {
+      "type": "string"
+    },
+    "first_published_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_state": {
+      "enum": [
+        "verified",
+        "reported",
+        "pending",
+        "conflicted",
+        "out_of_cutoff"
+      ]
+    },
+    "cutoff_state": {
+      "enum": [
+        "eligible",
+        "ineligible",
+        "unknown"
+      ]
+    },
+    "fact_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "product_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variable",
+        "explanation",
+        "scope",
+        "profile_refs",
+        "fact_refs"
+      ],
+      "properties": {
+        "variable": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "market",
+            "strategy",
+            "index",
+            "fund",
+            "target_fund",
+            "company_business",
+            "industry",
+            "unknown"
+          ]
+        },
+        "profile_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "score_components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "core_variable",
+        "coverage",
+        "linkage",
+        "magnitude",
+        "timeliness",
+        "incrementality"
+      ],
+      "properties": {
+        "core_variable": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "rationale",
+            "evidence_refs",
+            "profile_refs"
+          ],
+          "properties": {
+            "level": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "profile_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "rationale",
+            "evidence_refs",
+            "profile_refs"
+          ],
+          "properties": {
+            "level": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "profile_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "linkage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "rationale",
+            "evidence_refs",
+            "profile_refs"
+          ],
+          "properties": {
+            "level": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "profile_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "magnitude": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "rationale",
+            "evidence_refs",
+            "profile_refs"
+          ],
+          "properties": {
+            "level": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "profile_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "timeliness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "rationale",
+            "evidence_refs",
+            "profile_refs"
+          ],
+          "properties": {
+            "level": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "profile_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "incrementality": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "rationale",
+            "evidence_refs",
+            "profile_refs"
+          ],
+          "properties": {
+            "level": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "profile_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "score_total": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 100
+    },
+    "score_version": {
+      "type": "string"
+    },
+    "readiness": {
+      "enum": [
+        "ready",
+        "one_gap",
+        "needs_evidence",
+        "supporting_only"
+      ]
+    },
+    "possible_roles": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "lead",
+          "demand",
+          "operations",
+          "policy",
+          "allocation",
+          "product_structure",
+          "background",
+          "contrary"
+        ]
+      }
+    },
+    "suggested_group": {
+      "enum": [
+        "priority",
+        "backup",
+        "needs_evidence",
+        "used_background",
+        "out_of_cutoff"
+      ]
+    },
+    "novelty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "difference",
+        "history_completeness",
+        "previous_doc_refs"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "new",
+            "partial",
+            "repeated",
+            "unknown"
+          ]
+        },
+        "difference": {
+          "type": "string"
+        },
+        "history_completeness": {
+          "enum": [
+            "none",
+            "title_only",
+            "partial_text",
+            "full_text"
+          ]
+        },
+        "previous_doc_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sentiment": {
+      "enum": [
+        "positive",
+        "negative",
+        "mixed",
+        "unclear",
+        "not_applicable"
+      ]
+    },
+    "policy_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,259 @@
+version: 1
+
+defaults:
+  enabled: true
+  obey_robots_txt: true
+  rate_limit_per_minute: 10
+  morning_scan: true
+  fetch_full_text_in_morning: false
+
+sources:
+
+  # =========================
+  # 综合晨扫 / 财经媒体
+  # =========================
+
+  - id: cls_morning
+    name: 财联社｜早间新闻精选
+    home_url: https://www.cls.cn/
+    discovery_mode: site_search_or_listing
+    discovery_hint: 早间新闻精选
+    tier: T3_FINANCIAL_MEDIA
+    tags: [综合, 晨报, 政策, 产业, 海外]
+    morning_scan: true
+    notes: 用于发现线索；重要事实尽量回溯一手来源。
+
+  - id: stcn_egs_morning
+    name: 证券时报·e公司｜早知道
+    home_url: https://egs.stcn.com/
+    discovery_mode: site_search_or_listing
+    discovery_hint: 早知道
+    tier: T3_FINANCIAL_MEDIA
+    tags: [综合, 晨报, 公告, 产业]
+    morning_scan: true
+
+  - id: yicai_overnight
+    name: 第一财经｜昨夜今晨
+    home_url: https://www.yicai.com/
+    discovery_mode: site_search_or_listing
+    discovery_hint: 昨夜今晨 重大事件
+    tier: T3_FINANCIAL_MEDIA
+    tags: [综合, 隔夜, 海外]
+    morning_scan: true
+
+  - id: wallstreetcn_breakfast
+    name: 华尔街见闻｜财经早餐
+    home_url: https://wallstreetcn.com/
+    discovery_mode: site_search_or_listing
+    discovery_hint: 财经早餐
+    tier: T3_FINANCIAL_MEDIA
+    tags: [海外, 美股, 利率, 商品, 科技]
+    morning_scan: true
+
+  # =========================
+  # 港股 / 南向
+  # =========================
+
+  - id: cls_hk_morning
+    name: 财联社｜港股早报
+    home_url: https://www.cls.cn/
+    discovery_mode: site_search_or_listing
+    discovery_hint: 港股早报
+    tier: T3_FINANCIAL_MEDIA
+    tags: [港股, 恒生科技, 南向, 中概]
+    morning_scan: true
+
+  - id: zhitong_hk_morning
+    name: 智通财经｜港股早知道
+    home_url: https://www.zhitongcaijing.com/
+    discovery_mode: site_search_or_listing
+    discovery_hint: 港股早知道
+    tier: T3_FINANCIAL_MEDIA
+    tags: [港股, 公司, 产业, 南向]
+    morning_scan: true
+
+  - id: hkex_stock_connect_daily
+    name: 港交所｜Stock Connect Historical Daily
+    home_url: https://www.hkex.com.hk/Mutual-Market/Stock-Connect/Statistics/Historical-Daily
+    discovery_mode: official_stats
+    tier: T1_PRIMARY
+    tags: [港股, 南向, 沪深港通, 资金]
+    morning_scan: true
+    notes: 南向相关数据最终核验优先。
+
+  - id: hkex_news
+    name: 港交所｜披露易 HKEXnews
+    home_url: https://www1.hkexnews.hk/index_c.htm
+    discovery_mode: official_disclosure
+    tier: T1_PRIMARY
+    tags: [港股, 公司公告, 业绩, 分红, 回购]
+    morning_scan: true
+
+  - id: ubs_southbound
+    name: UBS｜港股通资金流
+    home_url: https://warrants.ubs.com/sc/underlying/southbound-moneyflow-turnover
+    discovery_mode: structured_page
+    tier: T2_PROFESSIONAL
+    tags: [港股, 南向, 资金, 活跃证券]
+    morning_scan: true
+    notes: 用于快速结构化观察；关键数字回港交所核验。
+
+  - id: eastmoney_hsgt
+    name: 东方财富｜沪深港通数据
+    home_url: https://data.eastmoney.com/hsgt/hsgtV2.html
+    discovery_mode: structured_page
+    tier: T3_FINANCIAL_MEDIA
+    tags: [沪深港通, 南向, 历史序列]
+    morning_scan: false
+    notes: 适合趋势辅助；需区分资金流入口径与成交净买额口径。
+
+  # =========================
+  # 科技 / AI / 半导体
+  # =========================
+
+  - id: trendforce
+    name: TrendForce 集邦咨询
+    home_url: https://www.trendforce.cn/
+    discovery_url: https://www.trendforce.cn/presscenter/news
+    discovery_mode: listing
+    tier: T2_PROFESSIONAL
+    tags: [AI, AI服务器, 半导体, HBM, DRAM, NAND, 消费电子, 显示]
+    morning_scan: true
+
+  - id: miit
+    name: 工业和信息化部
+    home_url: https://www.miit.gov.cn/
+    discovery_mode: official_listing
+    tier: T1_PRIMARY
+    tags: [科技, 半导体, 电子信息, 制造业, 政策]
+    morning_scan: true
+
+  - id: nda
+    name: 国家数据局
+    home_url: https://www.nda.gov.cn/
+    discovery_mode: official_listing
+    tier: T1_PRIMARY
+    tags: [数据要素, 算力, 数字经济, AI, 政策]
+    morning_scan: true
+
+  - id: csia
+    name: 中国半导体行业协会
+    home_url: https://web.csia.net.cn/
+    discovery_mode: listing
+    tier: T2_PROFESSIONAL
+    tags: [半导体, 行业, 政策, 产业]
+    morning_scan: true
+
+  - id: semi
+    name: SEMI
+    home_url: https://www.semi.org/
+    discovery_mode: listing
+    tier: T2_PROFESSIONAL
+    tags: [半导体, 设备, 晶圆厂, 资本开支]
+    morning_scan: false
+
+  # =========================
+  # 创新药
+  # =========================
+
+  - id: nmpa
+    name: 国家药品监督管理局
+    home_url: https://www.nmpa.gov.cn/
+    discovery_mode: official_listing
+    tier: T1_PRIMARY
+    tags: [创新药, 审批, 药品, 政策]
+    morning_scan: true
+
+  - id: cde
+    name: 国家药监局药审中心 CDE
+    home_url: https://www.cde.org.cn/
+    discovery_mode: official_listing
+    tier: T1_PRIMARY
+    tags: [创新药, 临床, 申报, 审评]
+    morning_scan: true
+
+  - id: medcube
+    name: 医药魔方
+    home_url: https://www.medcube.cn/
+    discovery_mode: listing_or_search
+    tier: T2_PROFESSIONAL
+    tags: [创新药, BD, License-out, 临床, 审批, 医药交易]
+    morning_scan: true
+    notes: 如页面存在登录/访问限制则跳过自动抓取，不绕过。
+
+  - id: dxy_insight
+    name: 丁香园 Insight
+    home_url: https://db.dxy.cn/
+    discovery_mode: optional_manual_or_search
+    tier: T2_PROFESSIONAL
+    tags: [创新药, 临床, 管线, 交易]
+    morning_scan: false
+    notes: 可能需要登录；V1 可作为二轮检索源，不要求自动化抓取。
+
+  - id: fda
+    name: U.S. FDA
+    home_url: https://www.fda.gov/
+    discovery_mode: official_listing
+    tier: T1_PRIMARY
+    tags: [创新药, FDA, 审批, 安全性]
+    morning_scan: false
+
+  - id: clinicaltrials
+    name: ClinicalTrials.gov
+    home_url: https://clinicaltrials.gov/
+    discovery_mode: official_database
+    tier: T1_PRIMARY
+    tags: [创新药, 临床试验]
+    morning_scan: false
+
+  # =========================
+  # 农业
+  # =========================
+
+  - id: moa
+    name: 农业农村部
+    home_url: https://www.moa.gov.cn/
+    discovery_mode: official_listing
+    tier: T1_PRIMARY
+    tags: [农业, 政策, 生猪, 粮食, 种业]
+    morning_scan: true
+
+  - id: moa_agri_market
+    name: 重点农产品市场信息平台
+    home_url: https://ncpscxx.moa.gov.cn/
+    discovery_mode: official_stats
+    tier: T1_PRIMARY
+    tags: [农业, 农产品价格, 生猪, 粮食, 供需]
+    morning_scan: true
+
+  - id: mysteel
+    name: Mysteel
+    home_url: https://www.mysteel.com/
+    discovery_mode: listing_or_search
+    tier: T2_PROFESSIONAL
+    tags: [钢铁, 煤炭, 铁矿, 农产品, 新能源, 能化]
+    morning_scan: true
+
+  # =========================
+  # 有色 / 周期
+  # =========================
+
+  - id: smm
+    name: 上海有色网 SMM
+    home_url: https://www.smm.cn/
+    discovery_mode: listing_or_search
+    tier: T2_PROFESSIONAL
+    tags: [铜, 铝, 锂, 镍, 有色, 库存, 现货, 新能源]
+    morning_scan: true
+
+  # =========================
+  # 政策总入口
+  # =========================
+
+  - id: gov_policy_library
+    name: 国务院政策文件库
+    home_url: https://sousuo.www.gov.cn/zcwjk/policyDocumentLibrary
+    discovery_mode: official_search
+    tier: T1_PRIMARY
+    tags: [政策, 国务院, 部委, 发改委, 财政, 央行, 证监会, 能源]
+    morning_scan: true

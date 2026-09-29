@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastnews-cueboard"
+version = "0.1.0"
+description = "华泰柏瑞快讯AI线索看板：本地元数据与人工选题辅助"
+requires-python = ">=3.11"
+dependencies = ["PyYAML==6.0.3", "tzdata==2025.3"]
+
+[tool.setuptools.packages.find]
+include = ["fastnews*"]

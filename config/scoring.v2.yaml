@@ -1,0 +1,24 @@
+version: editorial-0.1-trial
+status: uncalibrated
+origin: EDITORIAL_PLAN_V0.1 section 4, refined in SCORING_SPEC
+level_range:
+- 0
+- 4
+allow_null_level: true
+component_max_points:
+  core_variable: 20
+  coverage: 10
+  linkage: 10
+  magnitude: 25
+  timeliness: 20
+  incrementality: 15
+missing_component_policy: null_total_no_renormalization
+formula: sum(level * component_max_points / 4)
+display_rounding: ROUND_HALF_UP_integer
+auto_select_threshold: null
+source_tier_in_editorial_total: false
+evidence_in_editorial_total: false
+news_type_order: null
+routing_weights_are_editorial_weights: false
+history_missing_policy: incrementality_null
+scoring_spec: docs/SCORING_SPEC.md

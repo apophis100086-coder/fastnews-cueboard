@@ -1,0 +1,134 @@
+version: official-product-identity-20260929
+note: 公开法律产品身份和检索入口。来源仍须读原文并核对截点；不可凭配置虚构持仓、费率或最新规模。系列成员数据分别归属。
+products:
+  '588090':
+    name: 华泰柏瑞上证科创板50成份交易型开放式指数证券投资基金
+    aliases:
+    - 科创50ETF华泰柏瑞
+    - 华泰柏瑞上证科创板50成份ETF
+    - 科创50ETF
+    internal_index_names:
+    - 上证科创板50成份指数
+    - 科创50指数
+    - 000688
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/588090_20260318_3YJ3.pdf
+    published_at: '2026-03-18'
+  '588710':
+    name: 华泰柏瑞上证科创板半导体材料设备主题交易型开放式指数证券投资基金
+    aliases:
+    - 科创半导体设备ETF华泰柏瑞
+    - 科创半导体设备ETF
+    - 华泰柏瑞上证科创板半导体材料设备主题ETF
+    internal_index_names:
+    - 上证科创板半导体材料设备主题指数
+    - 科创半导体材料设备指数
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/588710_20260318_HXM9.pdf
+    published_at: '2026-03-18'
+  '513130':
+    name: 华泰柏瑞南方东英恒生科技指数交易型开放式指数证券投资基金（QDII）
+    aliases:
+    - 恒生科技ETF华泰柏瑞
+    - 恒生科技ETF
+    - 华泰柏瑞南方东英恒生科技指数ETF(QDII)
+    - 华泰柏瑞南方东英恒生科技指数ETF（QDII）
+    internal_index_names:
+    - 恒生科技指数
+    - HSTECH
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/513130_20260318_KTAP.pdf
+    published_at: '2026-03-18'
+  '513530':
+    name: 华泰柏瑞中证港股通高股息投资交易型开放式指数证券投资基金（QDII）
+    aliases:
+    - 港股通红利ETF华泰柏瑞
+    - 港股通红利ETF
+    - 华泰柏瑞中证港股通高股息投资ETF（QDII）
+    internal_index_names:
+    - 中证港股通高股息投资指数
+    - '930914'
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/513530_20260318_H8CD.pdf
+    published_at: '2026-03-18'
+  '517120':
+    name: 华泰柏瑞中证沪港深创新药产业交易型开放式指数证券投资基金
+    aliases:
+    - 创新药ETF华泰柏瑞
+    - 创新药ETF
+    - 华泰柏瑞中证沪港深创新药产业ETF
+    internal_index_names:
+    - 中证沪港深创新药产业指数
+    - '931409'
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/517120_20260318_T0WR.pdf
+    published_at: '2026-03-18'
+  '510880':
+    name: 上证红利交易型开放式指数证券投资基金
+    aliases:
+    - 红利ETF华泰柏瑞
+    internal_index_names:
+    - 上证红利指数
+    source_url: https://pdf.dfcfw.com/pdf/H2_AN202606181823672817_1.pdf
+    source_publisher: 华泰柏瑞基金（东方财富刊载原始公告）
+    published_at: '2026-06-19'
+  '512890':
+    name: 华泰柏瑞中证红利低波动交易型开放式指数证券投资基金
+    aliases:
+    - 红利低波ETF华泰柏瑞
+    internal_index_names:
+    - 中证红利低波动指数
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/512890_20260318_FNWM.pdf
+    published_at: '2026-03-18'
+  '561580':
+    name: 华泰柏瑞中证中央企业红利交易型开放式指数证券投资基金
+    aliases:
+    - 央企红利ETF华泰柏瑞
+    internal_index_names:
+    - 中证中央企业红利指数
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/561580_20260318_VSKE.pdf
+    published_at: '2026-03-18'
+  '520890':
+    name: 华泰柏瑞恒生港股通红利低波动交易型开放式指数证券投资基金
+    name_effective_at: '2026-09-14'
+    previous_name: 华泰柏瑞恒生港股通高股息低波动交易型开放式指数证券投资基金
+    previous_index_name: 恒生港股通高股息低波动指数
+    current_index_name: 恒生港股通红利低波动指数
+    aliases:
+    - 港股通红利低波ETF华泰柏瑞
+    - 华泰柏瑞恒生港股通红利低波动ETF
+    - 华泰柏瑞恒生港股通高股息低波动ETF
+    - 华泰柏瑞恒生港股通高股息低波动交易型开放式指数证券投资基金
+    internal_index_names:
+    - 恒生港股通高股息低波动指数
+    - 恒生港股通红利低波动指数
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-18/520890_20260318_W4WK.pdf
+    published_at: '2026-03-18'
+    additional_sources:
+    - title: 关于变更基金名称并修改基金合同和托管协议的公告
+      publisher: 华泰柏瑞基金（中国证券报刊载公告）
+      url: https://epaper.cs.com.cn/zgzqb/html/2026-09/12/nw.D110000zgzqb_20260912_2-B003.htm
+      published_at: '2026-09-12'
+      publication_quote: '2026年09月12日 星期六'
+  '561630':
+    name: 华泰柏瑞中证全指红利质量交易型开放式指数证券投资基金
+    aliases:
+    - 红利质量ETF华泰柏瑞
+    internal_index_names:
+    - 中证全指红利质量指数
+    source_url: https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-06-22/561630_20260622_8PO2.pdf
+    published_at: '2026-06-22'
+    additional_sources:
+    - title: 华泰柏瑞中证全指红利质量ETF上市交易公告
+      url: https://etf.sse.com.cn/disclosure/ssenotice/c/c_20260721_10826347.shtml
+      published_at: '2026-07-21'
+  '561450':
+    name: 华泰柏瑞标普中国A股大盘红利低波50交易型开放式指数证券投资基金
+    aliases:
+    - 红利低波50ETF华泰柏瑞
+    internal_index_names:
+    - 标普中国A股大盘红利低波50指数
+    source_url: https://www.sse.com.cn/disclosure/announcement/general/jjzssgg/c/c_20260804_10827912.shtml
+    published_at: '2026-08-04'
+    publication_quote: '2026-08-04'
+    additional_sources:
+    - title: 华泰柏瑞标普中国A股大盘红利低波50ETF基金产品资料概要更新
+      publisher: 华泰柏瑞基金（新浪财经刊载公告）
+      url: https://money.finance.sina.com.cn/fund/go.php/vAkFundInfo_JJGKXX/q/5447164.phtml
+      published_at: '2026-08-04'
+      publication_quote: '送出日期：2026年8月4日'

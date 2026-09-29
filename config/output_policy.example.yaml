@@ -1,0 +1,30 @@
+version: fastnews-product-fields-20260914
+status: metadata_filter_not_compliance_approval
+effective_from: '2026-09-14'
+basis: SOURCE_HANDOFF_V1 section 10 and user current instruction
+product_metrics:
+  allowed_fact_types:
+  - turnover
+  - average_daily_turnover
+  restricted_exact_fact_types:
+  - aum
+  - shares_outstanding
+  - net_inflow
+  - net_subscription
+  all_other_metrics: require_explicit_policy_or_human_review
+market_flows:
+  southbound_allowed_as_research_fact: true
+  must_keep_metric_scope_currency_and_date: true
+source_relabeling_allowed: false
+date_relabeling_allowed: false
+source_names:
+  Wind: only actual supplied/accessed data; preserve media attribution when indirect
+fact_export:
+  allowed_evidence_states:
+  - verified
+  - reported
+  reported_requires_attribution: true
+  post_cutoff_allowed: false
+  fixture_in_live_export_allowed: false
+internal_company_index_identity_allowed: true
+auto_publication: false
