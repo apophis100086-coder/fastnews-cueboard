@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet('Open','Status','Probe')][string]$Action='Open',
   [string]$ProjectPath=(Join-Path ([Environment]::GetFolderPath('Desktop')) '快讯AI看板 WorkBuddy版')
 )
