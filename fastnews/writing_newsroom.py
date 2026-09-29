@@ -179,7 +179,7 @@ def validate_edited(raw, snapshot, outline):
             kind=ev['kind'],source_id=sid,quote=located_quote(ev['quote'],source),published_at=source.get('published_at') or '',
             publication_quote='',data_period=ev['data_period'],supported=ev['supported'],reason=ev['reason'])
         identity=snapshot['product_code']
-        if snapshot.get('workflow')=='direct-newsroom-v2' and source.get('subject_code') in snapshot.get('product_definition',{}).get('member_codes',[]):
+        if snapshot.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'} and source.get('subject_code') in snapshot.get('product_definition',{}).get('member_codes',[]):
             identity=source['subject_code']
         checks=qualify_claim(claim,sources,snapshot['news_cutoff'],identity)
         if claim['quote']!=ev['quote']:claim['quote_layout_normalized']=True
@@ -221,9 +221,10 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
     """Persist the composing version before starting editing, even on failure."""
     from . import writing as w
     snapshot=data['snapshot']; outline=data['parent']; identifier=row['run_id']
-    direct=data.get('workflow')=='direct-newsroom-v2'
-    format_version='direct-newsroom-v2' if direct else FORMAT
-    steps=[]; first_id=None; response=None
+    direct=data.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'}
+    independent=data.get('workflow')=='direct-newsroom-v3'
+    format_version=data['workflow'] if direct else FORMAT
+    steps=[]; first_id=None; edited_id=None; response=None
     pipeline=dict(format_version=format_version,status='preparing',steps=[])
     def persist():
         data['pipeline']=pipeline
@@ -238,7 +239,7 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         timeout=control.host_timeout(maximum,snapshot['rules']['finalize_seconds'])
         step=dict(stage=stage,status='running',input=payload,instructions=instructions,timeout=timeout)
         pipeline['steps'].append(step);pipeline['status']=stage;persist()
-        if progress:progress(dict(stage='writing_'+stage,message={'research':'正在补充相关新闻与产品资料','compose':'正在起草完整快讯','edit':'正在编辑正文并核对来源'}[stage]))
+        if progress:progress(dict(stage='writing_'+stage,message={'research':'正在补充相关新闻与产品资料','compose':'正在起草完整快讯','edit':'正在调整重点、行文和产品承接','audit':'正在独立核对事实与来源'}[stage]))
         start=time.monotonic()
         try:
             response=runner(data['host'],prompt,schema,web_search=stage=='research',timeout=timeout,control=control,
@@ -266,10 +267,14 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         else:
             base,checked_snapshot=build_input(snapshot,outline)
         pipeline['input_coverage']=base['input_coverage'];persist()
-        first=invoke('compose',dict(base,stage='compose'),data['instructions'],NEWS_ARTICLE,
+        writer_base={k:v for k,v in base.items() if k!='input_coverage'} if independent else base
+        first=invoke('compose',dict(writer_base,stage='compose'),data['instructions'],NEWS_ARTICLE,
             snapshot['rules']['compose_seconds'] if direct else min(snapshot['rules']['compose_seconds'],snapshot['rules']['host_seconds']))
         w._validate_shape(first.payload,NEWS_ARTICLE)
         first_content=render_article(first.payload,checked_snapshot)
+        if independent:
+            from .writing_templates import attach
+            attach(first_content,checked_snapshot)
         first_content['pipeline']=dict(format_version=format_version,status='editing_incomplete',input_coverage=base['input_coverage'])
         first_checks=dict(status='editing_incomplete',errors=[issue('editing_incomplete','已保存起草稿，编辑步骤尚未完成')],
             factual=dict(status='pending',errors=[]),policy=dict(status='pending',errors=[]),
@@ -287,21 +292,45 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         if available<=0:
             from .task_control import TaskStopped
             raise TaskStopped('timed_out')
-        from .writing_contracts import DIRECT_EDIT
-        edited=invoke('edit',dict(base,stage='edit',composing_draft=first.payload),data['editing_instructions'],DIRECT_EDIT if direct else NEWS_EDIT,available)
+        from .writing_contracts import DIRECT_EDIT,EDITORIAL_EDIT,ARTICLE_AUDIT
+        edited=invoke('edit',dict(writer_base,stage='edit',composing_draft=first.payload),data['editing_instructions'],
+            EDITORIAL_EDIT if independent else DIRECT_EDIT if direct else NEWS_EDIT,available)
+        if independent:
+            w._validate_shape(edited.payload,EDITORIAL_EDIT)
+            edited_content=render_article(edited.payload,checked_snapshot)
+            attach(edited_content,checked_snapshot)
+            edited_content.update(editing_changes=edited.payload['changes'],
+                pipeline=dict(format_version=format_version,status='verification_incomplete',working_version_id=first_id,
+                    changes=edited.payload['changes'],input_coverage=base['input_coverage']))
+            edit_checks=deepcopy(first_checks)
+            edit_checks.update(status='verification_incomplete',errors=[issue('verification_incomplete','编辑稿已保存，独立核验尚未完成')])
+            with conn:
+                saved=w._save_version(conn,checked_snapshot,'draft',edited_content,edit_checks,parent_id=first_id,run_id=identifier)
+                edited_id=saved['version_id']
+                conn.execute('UPDATE fn_writing_runs SET version_id=? WHERE run_id=?',(edited_id,identifier))
+            pipeline['edited_version_id']=edited_id;persist();control.check()
+            if edited.payload['status']!='ready' or not edited.payload['paragraphs']:
+                raise ValueError('编辑材料不足：'+'；'.join(edited.payload['issues'] or ['没有完整正文']))
+            audit_input={k:v for k,v in base.items() if k in {'news_cutoff','editorial_brief','news_sources','product_sources'}}
+            audit=invoke('audit',dict(audit_input,stage='audit',edited_article=edited.payload),
+                data['audit_instructions'],ARTICLE_AUDIT,snapshot['rules']['audit_seconds'])
+            w._validate_shape(audit.payload,ARTICLE_AUDIT)
+            final_raw=dict(edited.payload,**audit.payload)
+        else:final_raw=edited.payload
         if direct:
             from .writing_direct import validate_edited as validate_direct
-            content,checks=validate_direct(edited.payload,checked_snapshot)
+            content,checks=validate_direct(final_raw,checked_snapshot)
         else:
             content,checks=validate_edited(edited.payload,checked_snapshot,outline)
         control.check()
         content['pipeline']=dict(format_version=format_version,status='complete',working_version_id=first_id,
             changes=edited.payload['changes'],input_coverage=base['input_coverage'])
+        if independent:content['pipeline']['edited_version_id']=edited_id
         pipeline['status']='complete';persist()
         usage=combined_usage(steps,control)
         usage['pipeline']=format_version
         with conn:
-            saved=w._save_version(conn,checked_snapshot,'draft',content,checks,parent_id=first_id,run_id=identifier)
+            saved=w._save_version(conn,checked_snapshot,'draft',content,checks,parent_id=edited_id or first_id,run_id=identifier)
             conn.execute("UPDATE fn_writing_runs SET status='completed',version_id=?,usage_json=?,finished_at=? WHERE run_id=?",
                 (saved['version_id'],w.dumps(usage),utc_now(),identifier))
         return w.public_version(saved)
@@ -309,7 +338,7 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         code=getattr(exc,'code',None) or 'failed'
         status=code if code in {'cancelled','timed_out','interrupted'} else 'failed'
         last_step=pipeline['steps'][-1] if pipeline['steps'] else {}
-        phase={'research':'补充资料','compose':'起草','edit':'编辑'}.get(last_step.get('stage'),'补充资料')
+        phase={'research':'补充资料','compose':'起草','edit':'编辑','audit':'独立核验'}.get(last_step.get('stage'),'补充资料')
         reason=str(exc)[:700] if isinstance(exc,ValueError) or getattr(exc,'code',None) else '请查看本次运行记录。'
         if code=='timed_out':
             if control.deadline-time.monotonic()<=snapshot['rules']['finalize_seconds']:
@@ -317,8 +346,8 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
             elif last_step.get('status')=='timed_out' and last_step.get('timeout'):
                 reason=f"{phase}步骤达到{round(last_step['timeout'])}秒时限。"
         elif code=='cancelled':reason='已按要求停止。'
-        pipeline.update(status='editing_incomplete' if first_id else 'compose_incomplete',failure_code=code)
-        data['failure_message']=('编辑未完成，起草稿已保留。' if first_id else phase+'未完成，选材与已取得资料已保留。')+reason+(
+        pipeline.update(status='verification_incomplete' if edited_id else 'editing_incomplete' if first_id else 'compose_incomplete',failure_code=code)
+        data['failure_message']=('独立核验未完成，编辑稿和起草稿已保留。' if edited_id else '编辑未完成，起草稿已保留。' if first_id else phase+'未完成，选材与已取得资料已保留。')+reason+(
             '可查看保留稿件后填写修改意见或重新生成。' if first_id else '请查看本轮具体缺口后重新生成。')
         # Apply the same secret scrubbing as the legacy failure path.
         from pathlib import Path

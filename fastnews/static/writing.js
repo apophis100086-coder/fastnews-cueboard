@@ -34,10 +34,11 @@ function writingDraftHTML(content){
 function renderWriting(){
  restoreWritingEditor();const versions=writingVersions(),draft=latestDraft();
  if(draft){
-  const c=draft.content,checks=draft.checks||{},complete=c.pipeline?.status==='complete',legacy=draft.workflow&&draft.workflow!=='direct-newsroom-v2';
-  const status=c.human_edited?'人工修改已保存，新增文字待核对':legacy?'历史稿件，按原流程和口径保存':!complete?'起草稿已保留，编辑未完成':(checks.errors?.length||c.appendix_missing?.length)?'初稿已保存，有待核对项':'编辑稿已保存，等待你审阅';
+  const c=draft.content,checks=draft.checks||{},complete=c.pipeline?.status==='complete',legacy=draft.workflow&&!['direct-newsroom-v2','direct-newsroom-v3'].includes(draft.workflow);
+  const status=c.human_edited?'人工修改已保存，新增文字待核对':legacy?'历史稿件，按原流程和口径保存':c.pipeline?.status==='verification_incomplete'?'编辑稿已保留，核验未完成':!complete?'起草稿已保留，编辑未完成':(checks.errors?.length||c.appendix_missing?.length||c.company_template?.issues?.length)?'初稿已保存，有待核对项':'编辑稿已保存，等待你审阅';
   $('writing-draft-result').innerHTML='<div class="section-head"><h3>本期初稿</h3><span class="pill">'+h(status)+'</span></div>'+
    '<div class="writing-actions"><button class="primary" data-copy-draft="'+h(draft.version_id)+'">复制完整稿件</button>'+(!legacy?'<button data-word-draft="'+h(draft.version_id)+'">下载 Word</button>':'')+'</div>'+writingDraftHTML(c)+
+   (c.company_template?.issues?.length?'<p class="muted">公司模板待补：'+h(c.company_template.issues.join('；'))+'</p>':'')+
    (c.appendix_missing?.length?'<p class="muted">产品备注待补：'+h(c.appendix_missing.join('；'))+'</p>':'')+
    '<details><summary>在页面中修改稿件</summary><p class="muted">编辑内容自动保存在本机。点击保存后成为独立版本，保留原稿。</p><textarea id="writing-local-text" rows="18" maxlength="50000"></textarea><button data-save-manual="'+h(draft.version_id)+'">保存人工修改</button></details>'+
    '<details><summary>查看依据与检查（'+(checks.errors?.length||0)+'项待核对）</summary><ul>'+writingChecksHTML(checks)+'</ul><p class="muted">程序检查与稿件采用分别记录。实际采用和修改时间由编辑确认。</p>'+(draft.source_evidence||[]).map(s=>'<p>'+h(s.name)+' · '+(httpLink(s.url,s.title||'原文')||h(s.title))+' · '+h(displayTime(s.published_at))+'<br><small>'+h(writingSourceStatus(s))+(s.error?' · '+h(s.error):'')+'</small></p>').join('')+'<button data-trace-draft="'+h(draft.version_id)+'">下载追溯记录</button></details>'+
@@ -62,7 +63,7 @@ async function pollWriting(id,initial){
   job=job||await api('job?id='+encodeURIComponent(id));writingJob=job;
   const elapsed=job.started_at?Math.max(0,Math.round((Date.now()-Date.parse(job.started_at))/1000)):0;
   const total=job.deadline_at&&job.started_at?Math.max(1,Math.round((Date.parse(job.deadline_at)-Date.parse(job.started_at))/1000)):900;
-  const s=[...(job.progress||[])].reverse().find(p=>/^writing_(edit|compose|research|verify)/.test(p.stage||''))?.stage||'',stage=s.includes('edit')?'编辑':s.includes('compose')?'起草':'补充资料';
+  const s=[...(job.progress||[])].reverse().find(p=>/^writing_(audit|edit|compose|research|verify)/.test(p.stage||''))?.stage||'',stage=s.includes('audit')?'核验':s.includes('edit')?'编辑':s.includes('compose')?'起草':'补充资料';
   const text=job.status==='running'?`${job.stop_requested?'正在停止':stage} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒 / 最长${Math.ceil(total/60)}分钟`:(job.status==='completed'?'完成，稿件已保存':'本轮已结束，已有内容已保留');
   $('writing-progress').textContent=text;$('job').classList.remove('hidden');$('job').textContent=text;
   if(job.status!=='running'){

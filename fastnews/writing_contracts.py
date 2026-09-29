@@ -54,3 +54,10 @@ DIRECT_EDIT['properties']['evidence']['items']['properties']['paragraph_index']=
 DIRECT_EDIT['properties']['appendix']=arr(obj(kind=enum('product_note','risk'),text=S,
     subject_code=S,source_id=S,quote=S))
 DIRECT_EDIT['required']=list(DIRECT_EDIT['properties'])
+
+# v3 editors only edit prose. The independent audit cannot replace that prose.
+EDITORIAL_EDIT=deepcopy(NEWS_ARTICLE)
+EDITORIAL_EDIT['properties']['changes']=arr(S)
+EDITORIAL_EDIT['required']=list(EDITORIAL_EDIT['properties'])
+ARTICLE_AUDIT=obj(**{key:deepcopy(NEWS_EDIT['properties'][key])
+    for key in ('evidence','entities','review','editorial_review')})

@@ -16,7 +16,7 @@ from .writing_checks import within_cutoff,date_present,issue,normalized
 
 ROOT=Path(__file__).resolve().parents[1]
 SKILL=ROOT/'skills/huatai-fastnews-writing'
-FORMAT='direct-newsroom-v2'
+FORMAT='direct-newsroom-v3'
 PRODUCT_GUIDES={'513130':'hk_tech','588710':'semiconductor','dividend_family':'dividend_family'}
 RESEARCH=obj(summary=S,gaps=arr(S),sources=arr(obj(material_id=S,title=S,publisher=S,url=S,
     published_at=S,publication_quote=S,excerpt=S,relation=S,subject_code=S)))
@@ -24,7 +24,7 @@ RESEARCH=obj(summary=S,gaps=arr(S),sources=arr(obj(material_id=S,title=S,publish
 
 def policy():
     value=yaml.safe_load((ROOT/'config/writing.direct.yaml').read_text(encoding='utf-8'))
-    if value['deadline_seconds']!=900 or sum(value[k] for k in ('preparation_seconds','compose_seconds','edit_seconds','finalize_seconds'))>900:
+    if value['deadline_seconds']!=900 or sum(value[k] for k in ('preparation_seconds','compose_seconds','edit_seconds','audit_seconds','finalize_seconds'))>900:
         raise ValueError('直接写作各阶段必须共用15分钟时限')
     if value['max_pages']>20 or value['pages_per_material']>4 or value['finalize_seconds']<30:
         raise ValueError('直接写作的原文容量或保存时间配置无效')
@@ -32,6 +32,7 @@ def policy():
 
 
 def instructions(stage,code):
+    if stage=='audit':return (SKILL/'guides/direct_audit.md').read_text(encoding='utf-8')
     paths=[SKILL/'SKILL.md',SKILL/'guides/direct_common.md',SKILL/('guides/direct_'+stage+'.md')]
     if code in PRODUCT_GUIDES:paths.append(SKILL/('products/'+PRODUCT_GUIDES[code]+'.md'))
     return '\n\n'.join(p.read_text(encoding='utf-8') for p in paths)
@@ -39,7 +40,7 @@ def instructions(stage,code):
 
 def skill_fingerprint(code):
     from .writing import fingerprint
-    return fingerprint([policy(),*[instructions(s,code) for s in ('research','compose','edit')]])
+    return fingerprint([policy(),*[instructions(s,code) for s in ('research','compose','edit','audit')]])
 
 
 def accept_run(conn,config,data,control,run_id=None):
@@ -54,6 +55,8 @@ def accept_run(conn,config,data,control,run_id=None):
     snapshot.update(workflow=FORMAT,rules=rules,skill_version=skill_fingerprint(code))
     snapshot['product_definition']=deepcopy(config['products'][code])
     add_product_sources(snapshot)
+    from .writing_templates import select_template
+    snapshot['company_template']=select_template(code,snapshot['news_cutoff'],library=ROOT/rules['template_library'])
     feedback=data.get('feedback','')
     if not isinstance(feedback,str) or len(feedback)>4000:raise ValueError('修改意见最多4000字')
     w.ed._reject_secrets(Path('writing-feedback.txt'),feedback)
@@ -81,10 +84,11 @@ def accept_run(conn,config,data,control,run_id=None):
         parent_id=parent['version_id'] if parent else None,parent=None,
         previous_draft=({k:deepcopy(parent['content'].get(k)) for k in ('title','paragraphs','manual_text')} if parent else None),
         instructions=instructions('compose',code),editing_instructions=instructions('edit',code),
+        audit_instructions=instructions('audit',code),
         research_instructions=instructions('research',code),
         host_runtime=config.get('_host_runtime') or dict(model=rules['model'],reasoning_effort=rules['reasoning_effort']))
     content['implementation_hashes']={n:hashlib.sha256((ROOT/'fastnews'/n).read_bytes()).hexdigest()
-        for n in ('writing_direct.py','writing_newsroom.py','writing_checks.py','writing.py','writing_samples.py','host_provider.py')}
+        for n in ('writing_direct.py','writing_newsroom.py','writing_checks.py','writing.py','writing_samples.py','writing_templates.py','host_provider.py')}
     rid=run_id or 'writing_'+uuid.uuid4().hex
     control.check()
     with conn:
@@ -250,6 +254,11 @@ def build_input(snapshot,feedback='',previous=None):
         news_sources=news,product_sources=product,style_examples=deepcopy(snapshot.get('style_examples',[])),
         feedback=feedback,previous_draft=previous,input_coverage=dict(omitted=omitted,style_omitted=[],
             truncated_sources=[s['source_id'] for s in news+product if s['text_truncated']]))
+    if snapshot.get('workflow')==FORMAT:
+        from .writing_templates import writer_brief
+        result['company_copy']=writer_brief(snapshot.get('company_template',{}))
+        result['product']={k:v for k,v in (snapshot.get('product_definition') or {}).items()
+            if k in ('code','name','kind','member_codes','members')}
     capacity=snapshot['rules']['max_input_characters']-12000
     # Preserve main news and full examples; remove whole optional sources first.
     for entry in reversed(list(news+product)):
@@ -274,7 +283,7 @@ def material_scope(snapshot):
 def validate_edited(raw,snapshot):
     from .writing_newsroom import validate_edited as validate
     from .writing import _validate_shape
-    from .writing_contracts import DIRECT_EDIT
+    from .writing_contracts import DIRECT_EDIT, NEWS_EDIT
     # Older hosts may have returned consistently zero-based paragraph indexes.
     # Repair only unambiguous source mappings; never guess from mixed indexes.
     original=deepcopy(raw);raw=deepcopy(raw);normalized=False
@@ -284,14 +293,20 @@ def validate_edited(raw,snapshot):
         and e.get('source_id') in paragraphs[e['paragraph_index']].get('source_ids',[]) for e in evidence):
         for e in evidence:e['paragraph_index']+=1
         normalized=True
-    validation_schema=deepcopy(DIRECT_EDIT)
+    v3=snapshot.get('workflow')==FORMAT
+    validation_schema=deepcopy(NEWS_EDIT if v3 else DIRECT_EDIT)
     validation_schema['properties']['evidence']['items']['properties']['paragraph_index'].pop('minimum',None)
     _validate_shape(raw,validation_schema)
     base={k:v for k,v in raw.items() if k!='appendix'}
-    content,checks=validate(base,snapshot,material_scope(snapshot))
+    check_snapshot=deepcopy(snapshot)
+    if v3:
+        from .writing_templates import BODY_KINDS
+        reserved=sum(len(b['text']) for b in snapshot.get('company_template',{}).get('blocks',[]) if b['kind'] in BODY_KINDS)
+        check_snapshot['rules']['body_characters']=[max(200,n-reserved) for n in snapshot['rules']['body_characters']]
+    content,checks=validate(base,check_snapshot,material_scope(snapshot))
     content['raw_article']=original
     if normalized:content['evidence_indexing_normalization']='zero_based_to_one_based_verified_source_mapping'
-    content['format_version']=FORMAT
+    content['format_version']=snapshot.get('workflow',FORMAT)
     editorial=checks['editorial'];editorial['version']=FORMAT
     editorial['notes'].extend(e['message'] for e in editorial['errors'])
     nonblocking=editorial['errors'];checks['errors']=[e for e in checks['errors'] if e not in nonblocking]
@@ -303,13 +318,17 @@ def validate_edited(raw,snapshot):
         if obsolete:
             error=issue('product_obsolete_identity','正文沿用已变更的产品或指数名称：'+'、'.join(obsolete))
             checks['errors'].append(error);checks['policy']['errors'].append(error);checks['status']='needs_changes'
-    if definition.get('kind')=='family':
+    if definition.get('kind')=='family' and not v3:
         body='\n'.join(p['text'] for p in content['paragraphs'])
         missing=[c for c in definition['member_codes'] if c not in body]
         if missing:
             error=issue('family_members','正文未完整覆盖红利系列成员：'+'、'.join(missing))
             checks['errors'].append(error);checks['policy']['errors'].append(error);checks['status']='needs_changes'
     from .writing_delivery import attach_appendix,render
-    attach_appendix(content,raw['appendix'],snapshot,checks)
+    if v3:
+        from .writing_templates import attach
+        attach(content,snapshot,checks)
+        content['verification']={k:deepcopy(raw[k]) for k in ('evidence','entities','review','editorial_review')}
+    else:attach_appendix(content,raw['appendix'],snapshot,checks)
     content['text']=render(content)
     return content,checks

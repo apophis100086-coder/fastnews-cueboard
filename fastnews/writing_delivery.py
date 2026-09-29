@@ -61,6 +61,11 @@ def blocks(content):
     for p in content.get('paragraphs',[]):
         yield 'body',clean(p['text'])
         yield 'source',source_line(p.get('sources',[]))
+    if 'template_blocks' in content:
+        for block in content['template_blocks']:
+            yield ('body' if block['kind'] in {'product_intro','manager_intro'} else 'note'),clean(block['text'])
+            if block.get('display_sources',True):yield 'source',source_line(block.get('sources',[]))
+        return
     notes=content.get('appendix',[])
     for kind,label in [('product_note','产品备注'),('risk','风险提示')]:
         entries=[p for p in notes if p['kind']==kind]

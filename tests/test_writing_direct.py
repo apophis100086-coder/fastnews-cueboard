@@ -21,10 +21,11 @@ class DirectWritingTests(unittest.TestCase):
         payload=json.loads(prompt.split('INPUT_JSON:\n')[1]);self.calls.append((payload,kwargs))
         sid=payload['news_sources'][0]['source_id'];statement=self.fixture.statement
         raw=dict(status='ready',title='设备订单增长',paragraphs=[dict(text=statement,source_ids=[sid])],issues=[])
-        if payload['stage']=='edit':
-            raw.update(appendix=[],evidence=[dict(paragraph_index=1,source_id=sid,statement=statement,quote=statement,kind='reported',data_period='',supported=True,reason='')],
+        if payload['stage']=='edit':raw['changes']=['删除重复解释']
+        if payload['stage']=='audit':
+            raw=dict(evidence=[dict(paragraph_index=1,source_id=sid,statement=statement,quote=statement,kind='reported',data_period='',supported=True,reason='')],
                 entities=[],review={k:True for k in NEWS_EDIT['properties']['review']['properties']},
-                editorial_review={k:[] if k=='issues' else True if k=='material_sufficient' else '合成检查' for k in NEWS_EDIT['properties']['editorial_review']['properties']},changes=['删除重复解释'])
+                editorial_review={k:[] if k=='issues' else True if k=='material_sufficient' else '合成检查' for k in NEWS_EDIT['properties']['editorial_review']['properties']},)
         return HostResult(raw,dict(input_tokens=20,output_tokens=10,model_requested=kwargs['model'],reasoning_effort_requested=kwargs['reasoning_effort']),{})
 
     def run_direct(self,runner=None,**data):
@@ -36,7 +37,7 @@ class DirectWritingTests(unittest.TestCase):
     def test_direct_requires_selection_but_no_outline_and_keeps_two_actual_versions(self):
         before=w.ed.latest_decision(self.conn,self.fixture.eid)
         result=self.run_direct()
-        self.assertEqual([c[0]['stage'] for c in self.calls],['compose','edit'])
+        self.assertEqual([c[0]['stage'] for c in self.calls],['compose','edit','audit'])
         self.assertEqual(self.run['action'],'writing-generate')
         self.assertEqual(result['content']['format_version'],direct.FORMAT)
         self.assertFalse(result['checks']['errors'])
@@ -54,6 +55,19 @@ class DirectWritingTests(unittest.TestCase):
         self.assertEqual(first,w.accept_run(self.conn,self.cfg,'generate',data,control))
         with self.assertRaises(ValueError):w.accept_run(self.conn,self.cfg,'generate',dict(data,feedback='不同意见'),control)
         with self.assertRaises(ValueError):w.accept_run(self.conn,self.cfg,'generate',dict(self.fixture.data(),decision_revision=99),control)
+
+    def test_audit_failure_preserves_edited_version_and_does_not_rewrite_prose(self):
+        def fail_audit(*args,**kwargs):
+            if len(self.calls)==2:raise TaskStopped('timed_out')
+            return self.runner(*args,**kwargs)
+        with self.assertRaises(TaskStopped):self.run_direct(fail_audit)
+        row=self.conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(self.run['run_id'],)).fetchone()
+        saved=w.version(self.conn,row['version_id'])
+        self.assertEqual(saved['content']['pipeline']['status'],'verification_incomplete')
+        self.assertEqual(saved['content']['paragraphs'][0]['text'],self.fixture.statement)
+        self.assertIn('编辑稿和起草稿已保留',w.run_record(row)['error'])
+        self.assertIn('独立核验',w.run_record(row)['error'])
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],2)
 
     def test_manual_edit_is_a_separate_unverified_version_with_same_export(self):
         from fastnews.writing_delivery import save_manual
