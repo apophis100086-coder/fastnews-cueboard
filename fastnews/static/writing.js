@@ -46,7 +46,7 @@ function renderWriting(){
    '<details><summary>本轮补搜与实际编辑</summary><p>'+h(draft.supplemental_research?.summary||'沿用已核对材料')+'</p><ul>'+(c.editing_changes||c.pipeline?.changes||[]).map(x=>'<li>'+h(x)+'</li>').join('')+'</ul><p class="muted">'+h((c.pipeline?.input_coverage?.omitted||[]).map(x=>(x.title||x.source_id)+'：'+writingOmission(x.reason)).join('；'))+'</p></details>';
   const editor=$('writing-local-text');editor.value=localStorage.getItem(key('draft-edit:'+draft.version_id))??c.manual_text??c.text??'';
   const storage=key('draft-edit:'+draft.version_id);editor.oninput=()=>localStorage.setItem(storage,editor.value);
- }else $('writing-draft-result').innerHTML='<div class="draft-empty"><h3>选好材料，开始写作</h3><p>后台将依次补充资料、起草、编辑。完成后可在这里审阅、修改和下载。</p></div>';
+ }else $('writing-draft-result').innerHTML='<div class="draft-empty"><h3>选好材料，开始写作</h3><p>后台将依次补充资料、起草、编辑和核验，并拼装公司模板。完成后可在这里审阅、修改和下载。</p></div>';
  $('writing-history').innerHTML=[...versions].reverse().map(v=>'<p>'+h(v.content.human_edited?'人工修改':v.stage==='draft'?(v.content.pipeline?.status==='editing_incomplete'?'起草稿':'编辑稿'):'旧版框架')+' · '+h(displayTime(v.created_at))+' <button class="compact" data-view-writing="'+h(v.version_id)+'">查看</button></p>').join('')||'<p class="muted">尚无历史版本。</p>';
  $('writing-usage').innerHTML=(detail?.writing?.runs||[]).slice().reverse().map(r=>'<p>'+h(r.status)+' · '+(r.usage?.total_elapsed_seconds??'—')+'秒'+(r.error?' · '+h(r.error):'')+'</p>').join('');
  const lastRun=detail?.writing?.runs?.at(-1);
@@ -106,4 +106,4 @@ document.addEventListener('click',safe(async event=>{
  }
  if(b.dataset.saveManual){const eid=editionId,vid=b.dataset.saveManual;const v=await api('writing-save-edit',{version_id:vid,text:$('writing-local-text').value,request_id:crypto.randomUUID()});if(eid===editionId){detail.writing.versions.push(v);renderWriting();}message('人工修改已另存为新版本，原稿保留。');}
 }));
-if(typeof detail!=='undefined'&&detail)renderWriting();
+renderWriting();
