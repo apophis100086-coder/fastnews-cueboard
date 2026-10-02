@@ -14,7 +14,7 @@ class ImprovementTests(unittest.TestCase):
         from fastnews.server import serve
         with patch('fastnews.server.LocalApplication') as app,patch('fastnews.server.make_server') as make:
             conn=MagicMock();app.return_value.connection.return_value=conn
-            with patch('fastnews.server.sync_registry'),patch('fastnews.source_catalog.configured_view'),patch('fastnews.server.workspace_settings',return_value={'port':8787}):
+            with patch('fastnews.server.sync_registry'),patch('fastnews.source_catalog.configured_view'),patch('fastnews.server.workspace_settings',return_value={'port':8787}),patch('builtins.print'):
                 serve('synthetic.db',config={'synthetic':True})
             self.assertEqual(make.call_args.args[1],8787)
             make.return_value.serve_forever.assert_called_once()

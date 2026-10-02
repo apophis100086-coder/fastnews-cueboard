@@ -32,7 +32,7 @@ class AgentExchangeTests(unittest.TestCase):
         for _ in range(100):
             pending=a.pending_requests(self.root)
             if pending:
-                self.path=Path(pending[0]['path']);self.meta=json.loads(self.path.read_text());return
+                self.path=Path(pending[0]['path']);self.meta=json.loads(self.path.read_text(encoding='utf-8'));return
             time.sleep(.01)
         self.fail('Request was not saved')
 
