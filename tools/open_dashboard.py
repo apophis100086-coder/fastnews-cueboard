@@ -14,7 +14,10 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
-URL = 'http://127.0.0.1:8767/'
+sys.path.insert(0, str(ROOT))
+from fastnews.workspace import settings, bootstrap_profile
+PORT = settings(ROOT)['port']
+URL = f'http://127.0.0.1:{PORT}/'
 LOGGER = logging.getLogger('fastnews.launcher')
 
 
@@ -39,7 +42,7 @@ def check_service():
         return 'occupied_by_another_service'
     except (OSError, ValueError):
         try:
-            with socket.create_connection(('127.0.0.1', 8767), timeout=1):
+            with socket.create_connection(('127.0.0.1', PORT), timeout=1):
                 return 'occupied_by_another_service'
         except OSError:
             return 'stopped'
@@ -122,7 +125,7 @@ def ensure_running():
     if status != 'stopped':
         if wait_until_ready(timeout=4):
             return
-        raise RuntimeError('8767 端口已被其他程序占用，或看板未能响应。请查看启动日志。')
+        raise RuntimeError(f'{PORT} 端口已被其他程序占用，或看板未能响应。请查看启动日志。')
     child = spawn_server()
     if not wait_until_ready(child=child):
         raise RuntimeError('看板未能在 25 秒内启动。请查看 data/logs/dashboard.log。')
@@ -138,7 +141,7 @@ def serve():
             LOGGER.info('Dashboard already ready; reused existing server.')
             return 0
         if status != 'stopped':
-            raise RuntimeError('8767 端口已被其他程序占用，未启动或停止任何程序。')
+            raise RuntimeError(f'{PORT} 端口已被其他程序占用，未启动或停止任何程序。')
         os.chdir(ROOT)
         sys.path.insert(0, str(ROOT))
         from fastnews.config import load_config
@@ -148,8 +151,11 @@ def serve():
         app = LocalApplication(ROOT / 'data' / 'fastnews.db', load_config(),
                                output_dir=ROOT / 'exports')
         with closing(app.connection()) as conn:
+            bootstrap_profile(conn, ROOT)
             sync_registry(conn, configured_view(conn, app.config))
-        server = make_server(app, port=8767)
+        from fastnews.agent_runner import recover_requests
+        recover_requests(ROOT/'data/agent-exchange')
+        server = make_server(app, port=PORT)
         runtime_path = ROOT / 'data' / 'dashboard-runtime.json'
         try:
             runtime_path.write_text(json.dumps({

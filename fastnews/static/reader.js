@@ -25,8 +25,8 @@ function sourceCard(source){
 function bindSourceButtons(root){root.querySelectorAll('[data-retry-source]').forEach(b=>b.onclick=safe(()=>startJob('scan',{date:$('news-day').value,section:'all',source_id:b.dataset.retrySource})));root.querySelectorAll('[data-edit-source]').forEach(b=>b.onclick=()=>editSource(b.dataset.editSource));}
 function renderReader(){if(!state||!$('reader-profile'))return;
  $('reader-profile').innerHTML=(state.reader_profiles||[]).map(p=>`<option value="${h(p.profile_id)}">${h(p.name)}</option>`).join('');$('reader-profile').value=activeProfile;
- $('host-badge').textContent=state.reader_profile?.settings.host==='none'?'模型尚未启用':hostLabel()+' · '+(state.host_status?.workbuddy?.login==='required'?'待登录':state.host_status?.workbuddy?.model==='available'?'模型已接通':'待检查连接');$('digest').textContent='生成分类总报 · '+hostLabel();
- $('digest-explainer').textContent=state.reader_profile?.settings.web_search?'当天资讯＋近7个自然日脉络；覆盖已启用来源，每条判断对应事件、日期和出处。':'仅整理当天及近7日已存资料；未检查领域单列。';
+ $('host-badge').textContent=state.reader_profile?.settings.agent_direct?'WorkBuddy 智能体直连 · 来源与稿件待核验':state.reader_profile?.settings.host==='none'?'模型尚未启用':hostLabel()+' · '+(state.host_status?.workbuddy?.login==='required'?'待登录':state.host_status?.workbuddy?.model==='available'?'模型已接通':'待检查连接');$('digest').textContent='生成分类总报 · '+hostLabel();
+ $('digest-explainer').textContent=state.reader_profile?.settings.web_search?'近两天资讯＋近7个自然日脉络；覆盖已启用来源，每条判断对应事件、日期和出处。':'仅整理近两天总览及近7日已存脉络；未检查领域单列。';
  $('sector-date').textContent='与晨报页共用日期。更新全部自动来源，按分类浏览；列表采集不调用模型。';$('source-day').value=$('news-day').value;$('source-day').max=state.default_day;
  $('sector-filters').innerHTML=[['all','全部类别'],...Object.entries(state.source_categories||{})].map(([id,name])=>`<button data-category="${h(id)}" aria-pressed="${sectorCategory===id}" class="${sectorCategory===id?'active':''}">${h(name)}</button>`).join('');
  $('sector-filters').querySelectorAll('button').forEach(b=>b.onclick=()=>{sectorCategory=b.dataset.category;renderReader();});

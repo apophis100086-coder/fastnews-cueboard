@@ -70,7 +70,7 @@ class LauncherTests(unittest.TestCase):
         with patch.object(launcher, 'check_service', return_value='occupied_by_another_service'), \
                 patch.object(launcher, 'spawn_server') as spawn, \
                 patch.object(launcher, 'wait_until_ready', return_value=False):
-            with self.assertRaisesRegex(RuntimeError, '8767'):
+            with self.assertRaisesRegex(RuntimeError, str(launcher.PORT)):
                 launcher.ensure_running()
         spawn.assert_not_called()
 

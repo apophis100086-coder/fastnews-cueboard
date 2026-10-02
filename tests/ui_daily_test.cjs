@@ -811,3 +811,27 @@ test('WorkBuddy settings distinguish login and do not auto probe on load',async(
  assert.match(html,/<script defer src="\/workbuddy.js"><\/script>/);
  assert.ok(!html.includes('<option value="codex">'));
 });
+
+
+test('agent progress reports processing and unlimited mode without claiming source verification',async()=>{
+ const e=directEdition();let release;
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return e;
+  if(c.url.startsWith('/api/job?'))return new Promise(r=>release=()=>r({edition_id:'ed-one',status:'completed',action:'writing-generate',progress:[]}));
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ await app.evaluate("state.reader_profile.settings.agent_direct=true;updateWritingButtons()");
+ assert.match(app.el('writing-research-note').textContent,/不限时/);
+ const running=app.evaluate('pollWriting("bound-run",'+JSON.stringify({status:'running',agent_direct:true,started_at:new Date().toISOString(),deadline_at:null,progress:[{stage:'writing_edit'},{stage:'agent_direct',agent_status:'processing'}]})+')');
+ assert.match(app.el('writing-progress').textContent,/智能体直连.*编辑.*处理中/);
+ assert.doesNotMatch(app.el('writing-progress').textContent,/最长|已核实/);
+ while(!release)await new Promise(r=>setImmediate(r));release();await running;
+});
+
+test('v4 merged drafts remain current workflow while preserving manual editorial gates',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',workflow:'direct-newsroom-v4-agent',version_id:'v4-current',created_at:'2026-09-25',checks:{errors:[]},content:{text:'合成标题\n\n合成正文',pipeline:{status:'complete'}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/等待你审阅/);assert.doesNotMatch(output,/历史稿件|可直接采用/);assert.match(output,/data-word-draft/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});

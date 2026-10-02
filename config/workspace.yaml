@@ -1,0 +1,4 @@
+version: workbuddy-workspace-v1
+port: 8787
+agent_direct: true
+package_folder: 快讯AI看板 改进实验版

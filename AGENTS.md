@@ -1,3 +1,7 @@
+# 2026-10-02 改进实验版当前授权
+
+此目录是以 WorkBuddy 当前文件状态建立的独立开发主线，默认8787；原 Codex 与 WorkBuddy 目录保留。使用 WorkBuddy 智能体文件交换，不回退 Codex、不调用付费 API。用户已明确授权直连任务不限时，只由人工停止，优先于下文历史15分钟要求；请求、页面、容量预算仍有效。新写作使用 direct-newsroom-v4-agent：补搜、起草、编辑兼核验、程序检查与模板组装；历史v3独立核验语义不改。私有样例和模板仅在本地资源及获授权的 WorkBuddy 任务内使用，不入Git。详见 docs/IMPROVEMENT_20261002.md。
+
 # WorkBuddy 独立版当前约束（优先于下文源项目历史说明）
 
 先读 WORKBUDDY.md、WORKBUDDY_ORIGIN.json 与 docs/WORKBUDDY_ACCEPTANCE.md。仅使用官方 WorkBuddy 命令行，默认账户模型，无 Codex 回退、付费 API 或开发会话凭证。默认端口8767，业务空库起步；原项目与数据不修改。此仓库目前只在本地，不得把下文源项目的 GitHub 地址作为推送目标。原三配置字节不改，私有样例和模板仅本地，人工选材后直接成稿，共用900秒，不设每日次数上限，不自动发布。保留 .githooks 完整检查。

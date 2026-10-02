@@ -290,7 +290,9 @@ def build_input(conn, config, profile_id, kind, day, edition=None, extra_keyword
     if config.get('_host_runtime'):
         payload['host_runtime']={k:v for k,v in config['_host_runtime'].items() if k in {'model','reasoning_effort'}}
     if kind=='morning':
-        payload.update(lookback_days=lookback_days,search_plan={'max_queries':24,'queries':[]},
+        payload.update(lookback_days=lookback_days,main_days=min(2,lookback_days),
+            main_window_start=time_bounds(morning_reading.window(day,min(2,lookback_days)))[0].isoformat(),
+            search_plan={'max_queries':24,'queries':[]},
             prompt_version=hashlib.sha256(morning_reading.instructions().encode('utf-8')).hexdigest())
     else:
         payload['task_limits']=dict(payload['task_limits'],max_web_sources=20)
@@ -550,9 +552,9 @@ def validate_report(raw, payload, trace):
     items = merge_report_events(items)
     context_items=[]
     if payload['kind']=='morning':
-        today=time_bounds(payload['day'])[0]
-        context_items=[i for i in items if all(time_bounds(s.get('published_at'))[1] is not None and
-            time_bounds(s['published_at'])[1]<today for s in i['sources'])]
+        today=parse_instant(payload['main_window_start']) if payload.get('main_window_start') else time_bounds(payload['day'])[0]
+        context_items=[i for i in items if all(time_bounds(s.get('first_published_at') or s.get('published_at'))[1] is not None and
+            time_bounds(s.get('first_published_at') or s.get('published_at'))[1]<today for s in i['sources'])]
         items=[i for i in items if i not in context_items]
     if semantic:
         primary=0

@@ -2,6 +2,9 @@
 from pathlib import Path
 import argparse,hashlib,json,subprocess,zipfile
 ROOT=Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0,str(ROOT))
+from fastnews.workspace import settings
 
 def paths():
     tracked=subprocess.check_output(['git','ls-files','-z'],cwd=ROOT).decode('utf-8').split('\0')
@@ -21,12 +24,13 @@ def build(output):
     manifest=dict(format_version=1,source_commit=source,origin=json.loads((ROOT/'WORKBUDDY_ORIGIN.json').read_text(encoding='utf-8')),
         business_database_included=False,account_credentials_included=False,files=[])
     archive=output/'快讯AI看板-WorkBuddy-Windows试用包.zip'
+    folder=settings(ROOT)['package_folder']
     with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for p in paths():
             rel=p.relative_to(ROOT).as_posix();raw=p.read_bytes()
             manifest['files'].append(dict(path=rel,size=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
-            z.writestr('快讯AI看板 WorkBuddy版/'+rel,raw)
-        z.writestr('快讯AI看板 WorkBuddy版/PACKAGE_MANIFEST.json',json.dumps(manifest,ensure_ascii=False,indent=2))
+            z.writestr(folder+'/'+rel,raw)
+        z.writestr(folder+'/PACKAGE_MANIFEST.json',json.dumps(manifest,ensure_ascii=False,indent=2))
     skill=output/'fastnews-dashboard-skill.zip'
     base=ROOT/'.codebuddy/skills'
     with zipfile.ZipFile(skill,'w',compression=zipfile.ZIP_DEFLATED) as z:

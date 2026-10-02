@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import secrets
 import sqlite3
@@ -20,6 +21,7 @@ from .pipeline import scan_morning, collection_window
 from .daily import daily_news
 from .routing import route_product, working_now
 from .strict_json import loads
+from .workspace import identity as workspace_identity, settings as workspace_settings
 
 STATIC = Path(__file__).with_name('static')
 
@@ -100,7 +102,8 @@ class LocalApplication:
                     'default_day': clock.date().isoformat(),
                     'server_now':clock.isoformat(),
                     'default_cutoff': clock.isoformat(),
-                    'latest_scan': dict(latest) if latest else None, 'active_job': self.active_job}
+                    'latest_scan': dict(latest) if latest else None, 'active_job': self.active_job,
+                    'server_pid':os.getpid()}
 
     def detail(self, edition_id, profile_id='default'):
         with closing(self.connection()) as conn:
@@ -183,7 +186,7 @@ class LocalApplication:
                     settings=((config.get('_reader_profile') or {}).get('settings') or {})
                     if settings.get('agent_direct'):
                         from .agent_runner import file_runner
-                        options['runner']=file_runner(job_id)
+                        options['runner']=file_runner(job_id,root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
                     result=execute_run(conn,job_id,self.controls[job_id],progress=writing_progress,**options)
                 elif action in {'scan','digest'}:
                     def progress(item):
@@ -203,7 +206,7 @@ class LocalApplication:
                         settings=((config.get('_reader_profile') or {}).get('settings') or {})
                         if settings.get('agent_direct'):
                             from .agent_runner import file_runner
-                            report_options['runner']=file_runner(job_id, kind='morning')
+                            report_options['runner']=file_runner(job_id,kind='morning',root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
                         result = generate_report(conn,config,profile_id,'morning',data['date'],progress=progress,
                             lookback_days=data.get('lookback_days',7),control=control,task_id=job_id,collection_result=collected,
                             **report_options)
@@ -228,7 +231,7 @@ class LocalApplication:
                         settings=((config.get('_reader_profile') or {}).get('settings') or {})
                         if settings.get('agent_direct'):
                             from .agent_runner import file_runner
-                            report_options['runner']=file_runner(job_id, kind='product')
+                            report_options['runner']=file_runner(job_id,kind='product',root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
                         result=generate_report(conn,config,profile_id,'product',edition['edition_date'],
                             edition=edition,request_mode='explore',research_question=data.get('research_question',''),
                             request_id=data['request_id'],control=control,task_id=job_id,progress=research_progress,
@@ -262,7 +265,7 @@ class LocalApplication:
                         settings=((config.get('_reader_profile') or {}).get('settings') or {})
                         if settings.get('agent_direct'):
                             from .agent_runner import file_runner
-                            report_options['runner']=file_runner(job_id, kind='product')
+                            report_options['runner']=file_runner(job_id,kind='product',root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
                         result['reading_report'] = generate_report(conn,config,profile_id,'product',edition['edition_date'],
                                                                   edition=edition,progress=research_progress,
                                                                   extra_keywords=data.get('extra_keywords'),
@@ -340,6 +343,8 @@ class LocalApplication:
                         raise ValueError('合成模式不自动调用真实写作模型')
                     frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
                     frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
+                    if frozen['_reader_profile']['settings'].get('agent_direct'):
+                        control.make_unbounded()
                     record=accept_run(conn,frozen,action.removeprefix('writing-'),data,control)
                 record['agent_direct']=bool(((frozen.get('_reader_profile') or {}).get('settings') or {}).get('agent_direct'))
                 jid=record['job_id']
@@ -400,6 +405,8 @@ class LocalApplication:
                     frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
                     from .source_catalog import profile
                     frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
+                    if action in {'digest','research','explore'} and frozen['_reader_profile']['settings'].get('agent_direct'):
+                        accepted_control.make_unbounded()
                     if action=='digest' or action in {'research','explore'} and (data.get('use_host') or action=='explore'):
                         from .writing import task_attempts
                         from .host_task_budget import status, exhausted_message
@@ -442,7 +449,8 @@ class LocalApplication:
                                      'request_id':data.get('request_id'),'status': 'running', 'progress': []}
                 if action in {'explore','digest','research'}:
                     self.controls[job_id]=accepted_control
-                    self.jobs[job_id].update(started_at=accepted_at,deadline_at=accepted_control.deadline_at)
+                    self.jobs[job_id].update(started_at=accepted_at,deadline_at=accepted_control.deadline_at,
+                        agent_direct=bool(frozen['_reader_profile']['settings'].get('agent_direct')))
                     if action in {'explore','research'}:
                         self.jobs[job_id].update(product_code=edition['product_code'],news_cutoff=edition['news_cutoff'])
                 self.active_job = job_id
@@ -555,7 +563,8 @@ class LocalApplication:
             return path.read_bytes(), path.name
 
 
-def make_server(app, port=8767):
+def make_server(app, port=None):
+    port=workspace_settings()['port'] if port is None else port
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # No material, path, token or content in access logs.
@@ -641,7 +650,8 @@ def make_server(app, port=8767):
     return ThreadingHTTPServer(('127.0.0.1', port), Handler)
 
 
-def serve(database, config=None, *, offline=False, port=8767):
+def serve(database, config=None, *, offline=False, port=None):
+    port=workspace_settings()['port'] if port is None else port
     if type(port) is not int or not 0 <= port <= 65535:
         raise ValueError('Invalid local port')
     app = LocalApplication(database, config or load_config(), offline)

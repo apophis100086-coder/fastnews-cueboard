@@ -1,58 +1,28 @@
-# 智能体直连模型 · 产品检索与初稿生成
+# WorkBuddy 智能体直连协议 v2
 
-看板在 WorkBuddy 5.6.2 环境里，无法通过自带 CLI 调模型（CLI 认证是沙箱绑定的，
-看板这个独立进程读不到）。因此模型能力改由 **WorkBuddy 智能体**（对话里的 agent）承担：
-智能体负责联网检索、提炼线索、起草初稿，结果回写进看板库，看板继续负责展示与选材。
+2026-10-02 实验版使用本地文件交换。是否已配置、是否收到智能体响应、是否有可核对的联网出处、稿件是否通过业务检查分别显示。此实现不读取或复制 WorkBuddy 登录凭据，不假定桌面登录可被独立 CLI 使用。
 
-## 为什么这样接
+## 用户流程
 
-- 看板自带 CLI 调模型：`Authentication required`，且安装包无交互登录组件，无法 `/login`。
-- WorkBuddy 桌面端模型能力：沙箱 IPC 绑定，只有智能体进程能拿到。
-- 结论：模型这一环改由智能体做，看板做"扫描/路由/选材/导出"这些本地环节（这些本来就正常）。
+在 WorkBuddy 打开“快讯AI看板 改进实验版”。启动网页 8787，选择产品或人工材料，点击相应的研究或生成按钮，再对 WorkBuddy 说“处理看板任务”。智能体连续处理该任务的步骤，直到服务报告完成、失败或取消。直连总时长不限，用户手动停止；请求/页面/输入容量预算仍有效。
 
-## 桥接脚本
+## 智能体命令
 
-`tools/agent_bridge.py`（用包内 Python 运行，只追加、不改人工选择与历史稿）：
+在当前项目目录，以 runtime/python/python.exe -B -X utf8 执行 tools/agent_bridge.py：
 
-```bash
-runtime/python/python.exe -X utf8 tools/agent_bridge.py list-editions
-runtime/python/python.exe -X utf8 tools/agent_bridge.py route <edition_id>          # 看扫描路由出的线索
-runtime/python/python.exe -X utf8 tools/agent_bridge.py pool <edition_id>           # 看当前候选池
-runtime/python/python.exe -X utf8 tools/agent_bridge.py add-candidate <edition_id> <event_id> --snapshot <json>   # 回写检索提炼
-runtime/python/python.exe -X utf8 tools/agent_bridge.py save-draft <edition_id> <markdown>   # 保存初稿到 exports/
-```
+- status：核对当前工作区服务、活动任务及待办；不要只凭端口判断身份。
+- pending-writes：列出协议 v2 的待接手/处理中步骤。
+- claim <request路径>：仅接手当前工作区、尚未接手的请求，并读取完整 prompt 和 schema。
+- respond <request路径> <response路径>：校验绑定后原子回写，禁止手工覆盖 response 文件。
 
-## 典型流程（用户视角）
+响应 JSON 必须包含 request 中原样取得的 workspace_id、run_id、step、request_hash，以及严格符合 schema 的 payload。可附 trace、model；未知则省略。trace 属于智能体自报材料，不能冒充程序实际观测的工具记录；model 也不等于已验证的实际模型。
 
-1. 用 `fastnews-dashboard` 打开看板，选产品建期（扫描/路由照常）。
-2. 对智能体说"帮我检索 XX 的产品线索"——智能体联网搜索，把有用线索提炼成 snapshot，
-   通过 `add-candidate` 回写候选池。
-3. 在看板里勾选线索、填重点（人工选材不受影响）。
-4. 对智能体说"按选中的材料生成快讯初稿"——智能体按公司口径起草，
-   通过 `save-draft` 存到 `exports/`，再交给用户走 `huatai-etf-news-polish` 打磨。
+完成一个步骤后查询 status；若同一 run 仍活动，继续等待其下一待办并按顺序处理，不以暂时没有文件认定整件任务结束。不要接手其他 run，不自动选材、不发布。页面已停止、服务重启或请求版本不匹配时不再回写，保留已经取得的公开材料。
 
-## 关键约定
+## 运行与历史兼容
 
-- snapshot 里 `origin` 写 `agent_research`，`fact_verified: false`，数据必须注来源 URL。
-- 初稿是"线索初稿"，不是可直接发布的稿件；正式稿仍需数据核实 + 合规复核 + 语言打磨。
-- 不复制、不打印任何认证凭据；不切换到 Codex 或付费 API。
+新写作流程 direct-newsroom-v4-agent 合并“编辑兼核验”，之后仍有程序检查。历史版本按其保存的实际步骤解释，不补造独立核验记录。已保存的选材、材料和中间稿不会因响应失败被清空。刷新不覆盖人工选择；选材版本变化后旧稿无法作为当前稿导出。
 
-## 写作流水线直连（2026-09-29 起）
+旧 list-editions、route、pool 等查看命令保留。add-candidate 仅用于有来源的候选线索；它不产生人工选择。save-draft 只保存外部草稿文件，不能代替新的受检查写作流水线，也不能把保存文件称为看板校验通过。
 
-看板的"生成快讯"按钮不再调用本机 CLI（必挂），改为**文件交换式智能体直连**：
-
-1. 用户在看板勾选材料、点击"生成快讯"，写作流水线照常启动（15 分钟时限）。
-2. 每个模型步骤（补搜→起草→编辑→核验）由 `fastnews/agent_runner.py` 落成
-   `data/agent-exchange/<run_id>/step-NN.request.json`（含完整 prompt 与 JSON schema）。
-3. 智能体执行 `agent_bridge.py pending-writes` 查看待办，读取 request 文件，
-   用自身模型能力完成该步骤，把 `{"payload": <符合schema的对象>}` **原子写入**
-   同目录 `step-NN.response.json`（先写 `.tmp` 再改名）。
-4. 看板进程自动拾取响应，走原有校验（事实引用、数字、必写项、口径）与版本保存；
-   页面实时显示"智能体直连 · 当前阶段 · 等待智能体响应"。
-5. 校验不过会按原有失败路径保留中间稿并在页面列出待核对项，绝不静默放行。
-
-要点：
-- 一个 run 通常有 3–4 个步骤，须按 step 顺序逐个响应；全部共用 15 分钟时限，响应要果断。
-- `payload` 必须严格符合 request 中的 schema；除此之外不要写解释文字。
-- 检索类步骤（research）可用联网检索；成稿类步骤只用 request 中给定材料与范文。
-- 读者方案需开启 `agent_direct`（默认方案已开启）；关闭则回退原 CLI 路径（本机不可用）。
+协议 v1 历史文件不自动重放。响应身份不匹配、重复提交、无效 JSON 或容量超限会失败并留痕；不要修改原工作区来绕过失败。

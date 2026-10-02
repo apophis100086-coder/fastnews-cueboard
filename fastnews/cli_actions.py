@@ -68,7 +68,8 @@ def add_options(sub, name):
     if name == "probe-sources":
         sub.add_argument("--output", type=Path)
     if name == "serve":
-        sub.add_argument("--port", type=int, default=8767)
+        from .workspace import settings
+        sub.add_argument("--port", type=int, default=settings()['port'])
 
 
 def dispatch(conn, config, args):

@@ -78,7 +78,7 @@ def host_status():
     return {'codex':{'installed':False,'disabled':True,'label':'Codex（此版本停用）'},
         'workbuddy':connection_status(), 'limits':dict(reader_limits(),max_parallel_tasks=1),
         'billing_note':'只使用 WorkBuddy 官方入口；账户权益由 WorkBuddy 管理，不配置付费 API。',
-        'agent_direct':{'mode':'agent_direct','available':True,
+        'agent_direct':{'mode':'agent_direct','configured':True,'model':'not_verified','web':'not_verified',
             'note':'本机 CLI 无法直连模型；已启用「智能体直连」——检索与成稿由 WorkBuddy 智能体完成，结果回写看板（见 docs/AGENT_BRIDGE.md）。'}}
 
 

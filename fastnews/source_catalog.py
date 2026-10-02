@@ -38,7 +38,9 @@ def save_profile(conn, data):
     if not isinstance(name,str) or not 1 <= len(name.strip()) <= 40:
         raise ValueError('方案名称需为 1—40 个字')
     pid = data.get('profile_id') or 'reader_' + uuid.uuid4().hex[:12]
-    current = profile(conn,pid)['settings'] if data.get('profile_id') else {'host':'workbuddy','web_search':True}
+    from .workspace import settings as workspace_settings
+    current = profile(conn,pid)['settings'] if data.get('profile_id') else {
+        'host':'workbuddy','web_search':True,'agent_direct':workspace_settings()['agent_direct']}
     settings = dict(current)
     if 'host' in data:
         if data['host'] not in {'workbuddy','none'}:

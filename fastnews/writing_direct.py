@@ -16,7 +16,7 @@ from .writing_checks import within_cutoff,date_present,issue,normalized
 
 ROOT=Path(__file__).resolve().parents[1]
 SKILL=ROOT/'skills/huatai-fastnews-writing'
-FORMAT='direct-newsroom-v3'
+FORMAT='direct-newsroom-v4-agent'
 PRODUCT_GUIDES={'513130':'hk_tech','588710':'semiconductor','dividend_family':'dividend_family'}
 RESEARCH=obj(summary=S,gaps=arr(S),sources=arr(obj(material_id=S,title=S,publisher=S,url=S,
     published_at=S,publication_quote=S,excerpt=S,relation=S,subject_code=S)))
@@ -43,7 +43,9 @@ def instructions(stage,code):
 
 def skill_fingerprint(code):
     from .writing import fingerprint
-    return fingerprint([policy(),*[instructions(s,code) for s in ('research','compose','edit','audit')]])
+    from .style_profiles import RULES
+    return fingerprint([policy(),RULES.read_text(encoding='utf-8'),
+        *[instructions(s,code) for s in ('research','compose','edit','audit')]])
 
 
 def accept_run(conn,config,data,control,run_id=None):
@@ -70,7 +72,9 @@ def accept_run(conn,config,data,control,run_id=None):
             raise ValueError('修改意见必须关联本期的一版初稿')
     from .writing_samples import select_examples
     focus=' '.join([snapshot.get('mainline_note') or '',*[m['title'] for m in snapshot['materials']]])
-    snapshot['style_examples']=select_examples(code,focus,cutoff=snapshot['news_cutoff'])
+    snapshot['style_examples']=select_examples(code,focus,library=ROOT/rules['sample_library'],cutoff=snapshot['news_cutoff'])
+    from .style_profiles import profile as style_profile
+    snapshot['style_profile']=style_profile(code,cutoff=snapshot['news_cutoff'])
     if not snapshot['style_examples']:
         from .product_context import writing_examples
         snapshot['style_examples']=writing_examples(conn,w.ed.get_edition(conn,data['edition_id']))
@@ -91,14 +95,14 @@ def accept_run(conn,config,data,control,run_id=None):
         research_instructions=instructions('research',code),
         host_runtime=config.get('_host_runtime') or {})
     content['implementation_hashes']={n:hashlib.sha256((ROOT/'fastnews'/n).read_bytes()).hexdigest()
-        for n in ('writing_direct.py','writing_newsroom.py','writing_checks.py','writing.py','writing_samples.py','writing_templates.py','host_provider.py')}
+        for n in ('writing_direct.py','writing_newsroom.py','writing_checks.py','writing.py','writing_samples.py','writing_templates.py','host_provider.py','style_profiles.py','agent_runner.py','workspace.py')}
     rid=run_id or 'writing_'+uuid.uuid4().hex
     control.check()
     with conn:
         conn.execute('''INSERT INTO fn_writing_runs(run_id,request_id,request_hash,edition_id,decision_revision,stage,
           profile_id,status,input_json,created_at,deadline_at) VALUES(?,?,?,?,?,'draft',?,'running',?,?,?)''',
           (rid,data['request_id'],w.request_signature('generate',data),data['edition_id'],data['decision_revision'],
-           data.get('reader_profile','default'),w.dumps(content),control.started_at,control.deadline_at))
+           data.get('reader_profile','default'),w.dumps(content),control.started_at,control.deadline_at or ''))
     return w.run_record(conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(rid,)).fetchone())
 
 
@@ -255,9 +259,10 @@ def build_input(snapshot,feedback='',previous=None):
         editorial_brief=dict(mainline_note=snapshot.get('mainline_note'),selected_event_id=snapshot.get('selected_event_id'),
             must_include=[dict(id=m,title=materials[m]['title']) for m in sorted(required)],preferences=snapshot['preferences']),
         news_sources=news,product_sources=product,style_examples=deepcopy(snapshot.get('style_examples',[])),
+        style_profile=deepcopy(snapshot.get('style_profile')),
         feedback=feedback,previous_draft=previous,input_coverage=dict(omitted=omitted,style_omitted=[],
             truncated_sources=[s['source_id'] for s in news+product if s['text_truncated']]))
-    if snapshot.get('workflow')==FORMAT:
+    if snapshot.get('workflow') in {'direct-newsroom-v3',FORMAT}:
         from .writing_templates import writer_brief
         result['company_copy']=writer_brief(snapshot.get('company_template',{}))
         result['product']={k:v for k,v in (snapshot.get('product_definition') or {}).items()
@@ -296,7 +301,7 @@ def validate_edited(raw,snapshot):
         and e.get('source_id') in paragraphs[e['paragraph_index']].get('source_ids',[]) for e in evidence):
         for e in evidence:e['paragraph_index']+=1
         normalized=True
-    v3=snapshot.get('workflow')==FORMAT
+    v3=snapshot.get('workflow') in {'direct-newsroom-v3',FORMAT}
     validation_schema=deepcopy(NEWS_EDIT if v3 else DIRECT_EDIT)
     validation_schema['properties']['evidence']['items']['properties']['paragraph_index'].pop('minimum',None)
     _validate_shape(raw,validation_schema)

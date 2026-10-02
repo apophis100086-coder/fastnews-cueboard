@@ -124,12 +124,39 @@ def cmd_save_draft(args):
 def cmd_pending_writes(_args):
     """列出看板写作流水线中等待智能体响应的模型步骤。
 
-    智能体处理方式：读取 path 指向的 request 文件（内含 prompt 与 schema），
-    完成检索/起草后，把 {"payload": <符合schema的对象>} 原子写入同目录同名
-    .response.json（先写 .tmp 再改名）。看板进程会自动拾取并继续校验与保存。
+    使用 claim 接手完整 request，再用 respond 提交包含全部绑定字段的响应。
+    不直接覆盖响应文件；看板继续业务检查及保存。参见 docs/AGENT_BRIDGE.md。
     """
     from fastnews.agent_runner import pending_requests
     print(json.dumps(pending_requests(), ensure_ascii=False, indent=2))
+
+
+def cmd_claim(args):
+    from fastnews.agent_runner import claim_request
+    print(json.dumps(claim_request(args.request), ensure_ascii=False, indent=2))
+
+
+def cmd_respond(args):
+    from fastnews.agent_runner import submit_response
+    raw=json.loads(Path(args.response).read_text(encoding='utf-8'))
+    print(json.dumps(submit_response(args.request,raw),ensure_ascii=False,indent=2))
+
+
+def cmd_status(_args):
+    from urllib.request import build_opener,ProxyHandler
+    from urllib.parse import quote
+    from tools.open_dashboard import check_service,URL
+    from fastnews.agent_runner import pending_requests
+    status=check_service()
+    result={'service':status,'url':URL,'pending':pending_requests()}
+    if status=='ready':
+        opener=build_opener(ProxyHandler({}))
+        with opener.open(URL+'api/state',timeout=3) as response:state=json.load(response)
+        jid=state.get('active_job');result['active_job']=jid
+        if jid:
+            with opener.open(URL+'api/job?id='+quote(jid),timeout=3) as response:job=json.load(response)
+            result['job']={k:job.get(k) for k in ('job_id','status','action','workflow','stop_requested','error')}
+    print(json.dumps(result,ensure_ascii=False,indent=2))
 
 
 def main(argv=None):
@@ -158,6 +185,9 @@ def main(argv=None):
     p.set_defaults(func=cmd_save_draft)
 
     sub.add_parser("pending-writes").set_defaults(func=cmd_pending_writes)
+    sub.add_parser('status').set_defaults(func=cmd_status)
+    p=sub.add_parser('claim');p.add_argument('request');p.set_defaults(func=cmd_claim)
+    p=sub.add_parser('respond');p.add_argument('request');p.add_argument('response');p.set_defaults(func=cmd_respond)
 
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):

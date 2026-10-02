@@ -1,4 +1,4 @@
-﻿param(
+﻿﻿param(
     [switch]$Disable,
     [switch]$Status
 )
@@ -8,8 +8,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $launcherPath = Join-Path $projectRoot 'tools\open_dashboard.py'
 $pythonPath = Join-Path $projectRoot 'runtime\python\pythonw.exe'
 $consolePython = Join-Path $projectRoot 'runtime\python\python.exe'
-$startupPath = Join-Path ([Environment]::GetFolderPath('Startup')) '华泰柏瑞快讯看板 WorkBuddy.lnk'
-$desktopPath = Join-Path ([Environment]::GetFolderPath('Desktop')) '华泰柏瑞快讯看板 WorkBuddy.lnk'
+$startupPath = Join-Path ([Environment]::GetFolderPath('Startup')) ('华泰柏瑞快讯看板 '+(Split-Path -Leaf $projectRoot)+'.lnk')
+$desktopPath = Join-Path ([Environment]::GetFolderPath('Desktop')) ('华泰柏瑞快讯看板 '+(Split-Path -Leaf $projectRoot)+'.lnk')
 $owner = 'Fastnews WorkBuddy | ' + $projectRoot
 if (-not ('Fastnews.WindowsShortcut' -as [type])) {
     Add-Type -Path (Join-Path $PSScriptRoot 'WindowsShortcut.cs')
@@ -60,5 +60,5 @@ if ($Disable) {
     desktop_path = $desktopPath
     python = $pythonPath
     arguments = $startupArguments
-    url = 'http://127.0.0.1:8767/'
+    url = (& $consolePython -X utf8 -c 'import sys; sys.path.insert(0,sys.argv[1]); from tools.open_dashboard import URL; print(URL)' $projectRoot)
 } | ConvertTo-Json

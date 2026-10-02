@@ -71,6 +71,9 @@ def enrich_source(source, raw, payload, trace):
     matched = [e for e in trace.get('tool_excerpts',[]) if e.get('url')==source['url'] and
                source['excerpt'] and source['excerpt'] in e.get('text','') and
                e.get('kind')=='page_fragment' and e.get('tool_ref')]
+    if trace.get('evidence_status')=='agent_reported':
+        matched=[]
+        actions=[]
     missing = ['发生日、实施日或统计期精度待核，原值保留在日期审计；未补造具体日期'] if time_issues else []
     if requested == 'unavailable':
         material = 'not_obtained'

@@ -19,7 +19,7 @@ function updateWritingButtons(){
  $('writing-generate').disabled=busy||!matching||!count;
  $('writing-revise').disabled=busy||!matching||!latestDraft()||!count;
  $('writing-state').textContent=!detail?.edition?'先从产品检索中加入候选材料。':!matching?'当前稿件属于原产品，请载入所选产品的期次。':count?`已选 ${count} 条材料，点击生成时自动保存。`:'勾选左侧材料后，即可直接生成。';
- $('writing-research-note').textContent=detail?.edition?`资讯截至 ${displayTime(detail.edition.news_cutoff)}。${state?.reader_profile?.settings?.agent_direct?'智能体直连已启用：点击生成后对我说"处理看板写作任务"，检索与成稿由智能体完成并回写本页。':state?.reader_profile?.settings?.web_search===false?'当前方案关闭联网。':'将补查近7日相关消息，并核对产品资料。'} 最长15分钟，可随时停止。`:'';
+ $('writing-research-note').textContent=detail?.edition?`资讯截至 ${displayTime(detail.edition.news_cutoff)}。${state?.reader_profile?.settings?.agent_direct?'智能体直连已启用：点击生成后对我说"处理看板写作任务"，检索与成稿由智能体完成并回写本页。':state?.reader_profile?.settings?.web_search===false?'当前方案关闭联网。':'将补查近7日相关消息，并核对产品资料。'}${state?.reader_profile?.settings?.agent_direct?' 不限时，可随时停止。':' 最长15分钟，可随时停止。'}`:'';
 }
 function writingChecksHTML(checks){return (checks?.errors||[]).map(e=>'<li>'+h(e.message)+(e.location?' · '+h(e.location):'')+'</li>').join('');}
 function writingSourceStatus(source){
@@ -34,7 +34,7 @@ function writingDraftHTML(content){
 function renderWriting(){
  restoreWritingEditor();const versions=writingVersions(),draft=latestDraft();
  if(draft){
-  const c=draft.content,checks=draft.checks||{},complete=c.pipeline?.status==='complete',legacy=draft.workflow&&!['direct-newsroom-v2','direct-newsroom-v3'].includes(draft.workflow);
+  const c=draft.content,checks=draft.checks||{},complete=c.pipeline?.status==='complete',legacy=draft.workflow&&!['direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'].includes(draft.workflow);
   const status=c.human_edited?'人工修改已保存，新增文字待核对':legacy?'历史稿件，按原流程和口径保存':c.pipeline?.status==='verification_incomplete'?'编辑稿已保留，核验未完成':!complete?'起草稿已保留，编辑未完成':(checks.errors?.length||c.appendix_missing?.length||c.company_template?.issues?.length)?'初稿已保存，有待核对项':'编辑稿已保存，等待你审阅';
   $('writing-draft-result').innerHTML='<div class="section-head"><h3>本期初稿</h3><span class="pill">'+h(status)+'</span></div>'+
    '<div class="writing-actions"><button class="primary" data-copy-draft="'+h(draft.version_id)+'">复制完整稿件</button>'+(!legacy?'<button data-word-draft="'+h(draft.version_id)+'">下载 Word</button>':'')+'</div>'+writingDraftHTML(c)+
@@ -65,7 +65,8 @@ async function pollWriting(id,initial){
   const elapsed=job.started_at?Math.max(0,Math.round((Date.now()-Date.parse(job.started_at))/1000)):0;
   const total=job.deadline_at&&job.started_at?Math.max(1,Math.round((Date.parse(job.deadline_at)-Date.parse(job.started_at))/1000)):900;
   const s=[...(job.progress||[])].reverse().find(p=>/^writing_(audit|edit|compose|research|verify)/.test(p.stage||''))?.stage||'',stage=s.includes('audit')?'核验':s.includes('edit')?'编辑':s.includes('compose')?'起草':'补充资料';
-  const text=job.status==='running'?(job.agent_direct?`智能体直连 · ${stage} · 等待智能体响应 · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒（对我说：处理看板写作任务）`:`${job.stop_requested?'正在停止':stage} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒 / 最长${Math.ceil(total/60)}分钟`):(job.status==='completed'?'完成，稿件已保存':'本轮已结束，已有内容已保留');
+  const current=[...(job.progress||[])].reverse().find(p=>p.agent_status);
+  const text=job.status==='running'?(job.agent_direct?`智能体直连 · ${stage} · ${current?.agent_status==='processing'?'处理中':current?.agent_status==='completed'?'响应已收到，正在检查':'等待接手'} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒（对我说：处理看板写作任务）`:`${job.stop_requested?'正在停止':stage} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒 / 最长${Math.ceil(total/60)}分钟`):(job.status==='completed'?'完成，稿件已保存':'本轮已结束，已有内容已保留');
   $('writing-progress').textContent=text;$('job').classList.remove('hidden');$('job').textContent=text;
   if(job.status!=='running'){
    await refreshWritingResults(job);

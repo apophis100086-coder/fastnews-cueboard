@@ -10,6 +10,7 @@ def stop():
     if check_service()!='ready':raise RuntimeError('此项目没有正在运行的看板。没有停止其他程序。')
     record=json.loads((ROOT/'data/dashboard-runtime.json').read_text(encoding='utf-8'))
     state=json.load(build_opener(ProxyHandler({})).open(URL+'api/state',timeout=3))
+    if state.get('server_pid')!=record.get('pid'):raise RuntimeError('进程记录与服务不匹配，未停止任何程序。')
     if state.get('active_job'):raise RuntimeError('请先在网页停止当前任务，再关闭看板。')
     if os.name!='nt':raise RuntimeError('此工具仅支持 Windows。')
     from ctypes import wintypes
