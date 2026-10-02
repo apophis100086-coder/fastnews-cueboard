@@ -9,13 +9,15 @@ function renderWorkBuddy(){
  const c=state?.host_status?.workbuddy||{};
  const labels={unchecked:'未检查',required:'待登录',authenticated:'已登录',available:'可用',unavailable:'不可用',unverified:'待验证',failed:'失败'};
  const line=`安装：${c.installed?'已找到':'未找到'} · 登录：${labels[c.login]||'未检查'} · 模型：${labels[c.model]||'未检查'} · 联网：${labels[c.web]||'未检查'}`;
- $('workbuddy-check').title=line;
+ const ad=state?.host_status?.agent_direct;
+ const adLine=ad?.available?' · 智能体直连：已启用':''; 
+ $('workbuddy-check').title=line+adLine;
  $('workbuddy-login').textContent=c.login_entry==='cli'?'首次连接':'打开 WorkBuddy';
  $('workbuddy-login').title=c.login_entry==='cli'?'打开官方交互登录':'打开官方客户端；后台连接需另行检查';
  const p=state?.reader_profile?.settings||{};
  $('workbuddy-verified').innerHTML='<option value="">当前账户默认模型</option>'+(c.verified_models||[]).filter(v=>v.model||v.effort).map(v=>`<option value="${h(JSON.stringify({model:v.model,effort:v.effort}))}">${h((v.model||'默认模型')+' · '+(v.effort||'默认档位'))}</option>`).join('');
  if(p.workbuddy_model||p.workbuddy_effort)$('workbuddy-verified').value=JSON.stringify({model:p.workbuddy_model||null,effort:p.workbuddy_effort||null});
- $('workbuddy-state').textContent=line+'。'+(c.note||'');
+ $('workbuddy-state').textContent=line+'。'+(ad?.available?ad.note:(c.note||''));
 }
 async function checkWorkBuddy(custom=false){
  if(workbuddyJob)return;

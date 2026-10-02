@@ -131,6 +131,12 @@ class LocalApplication:
             result['writing']=workflow(conn,edition_id)
             return result
 
+    def writing_archive(self, limit=200):
+        # 跨期次历史稿件库：不依赖当前期次，直接列出所有生成过的快讯初稿。
+        with closing(self.connection()) as conn:
+            from .writing import archive
+            return {'items':archive(conn,limit)}
+
     def daily(self, day, profile_id='default'):
         with closing(self.connection()) as conn:
             from .source_catalog import configured_view, section_ids
@@ -160,6 +166,12 @@ class LocalApplication:
                 from .reading_reports import generate_report
                 profile_id = data.get('reader_profile','default')
                 config = data.get('_config') or configured_view(conn,self.config,profile_id)
+                # 智能体直连（文件交换）不套用同步模型时限：智能体在对话里异步回写，
+                # 只有用户点"停止"才中断，不再被分钟级 deadline 卡死。
+                if ((config.get('_reader_profile') or {}).get('settings') or {}).get('agent_direct'):
+                    _ad_control = self.controls.get(job_id)
+                    if _ad_control is not None:
+                        _ad_control.make_unbounded()
                 if not action.startswith('writing-'):
                     sync_registry(conn,config)
                 if action in {'writing-outline','writing-draft','writing-generate'}:
@@ -167,7 +179,12 @@ class LocalApplication:
                     def writing_progress(item):
                         with self.guard:
                             self.jobs[job_id]['progress'].append(item)
-                    result=execute_run(conn,job_id,self.controls[job_id],progress=writing_progress)
+                    options={}
+                    settings=((config.get('_reader_profile') or {}).get('settings') or {})
+                    if settings.get('agent_direct'):
+                        from .agent_runner import file_runner
+                        options['runner']=file_runner(job_id)
+                    result=execute_run(conn,job_id,self.controls[job_id],progress=writing_progress,**options)
                 elif action in {'scan','digest'}:
                     def progress(item):
                         with self.guard:
@@ -182,8 +199,14 @@ class LocalApplication:
                         control=self.controls[job_id]
                         collected=collect(conn,config,'digest',dict(collection_date=data.get('date'),source_ids=source_ids),
                             control,progress) if source_ids else None
+                        report_options={}
+                        settings=((config.get('_reader_profile') or {}).get('settings') or {})
+                        if settings.get('agent_direct'):
+                            from .agent_runner import file_runner
+                            report_options['runner']=file_runner(job_id, kind='morning')
                         result = generate_report(conn,config,profile_id,'morning',data['date'],progress=progress,
-                            lookback_days=data.get('lookback_days',7),control=control,task_id=job_id,collection_result=collected)
+                            lookback_days=data.get('lookback_days',7),control=control,task_id=job_id,collection_result=collected,
+                            **report_options)
                     else:
                         result = scan_morning(conn, config, offline=self.offline, progress=progress,
                             collection_date=data.get('date'),source_ids=source_ids,
@@ -201,10 +224,15 @@ class LocalApplication:
                     if action=='explore':
                         control=self.controls[job_id]
                         control.check()
+                        report_options={}
+                        settings=((config.get('_reader_profile') or {}).get('settings') or {})
+                        if settings.get('agent_direct'):
+                            from .agent_runner import file_runner
+                            report_options['runner']=file_runner(job_id, kind='product')
                         result=generate_report(conn,config,profile_id,'product',edition['edition_date'],
                             edition=edition,request_mode='explore',research_question=data.get('research_question',''),
                             request_id=data['request_id'],control=control,task_id=job_id,progress=research_progress,
-                            writing_context=data.get('writing_context'))
+                            writing_context=data.get('writing_context'),**report_options)
                         with self.guard:
                             self.jobs[job_id].update(status='completed',result=result)
                         return
@@ -230,11 +258,16 @@ class LocalApplication:
                         else:
                             result = research_product(conn, config, edition['product_code'], **options)
                     if data.get('use_host'):
+                        report_options={}
+                        settings=((config.get('_reader_profile') or {}).get('settings') or {})
+                        if settings.get('agent_direct'):
+                            from .agent_runner import file_runner
+                            report_options['runner']=file_runner(job_id, kind='product')
                         result['reading_report'] = generate_report(conn,config,profile_id,'product',edition['edition_date'],
                                                                   edition=edition,progress=research_progress,
                                                                   extra_keywords=data.get('extra_keywords'),
                                                                   control=self.controls[job_id],task_id=job_id,
-                                                                  collection_result=result)
+                                                                  collection_result=result,**report_options)
                 else:
                     raise ValueError('Unknown job action')
             with self.guard:
@@ -297,6 +330,8 @@ class LocalApplication:
                 with closing(self.connection()) as conn:
                     previous=previous_request(conn,action.removeprefix('writing-'),data)
                     if previous:
+                        from .agent_runner import EXCHANGE_ROOT
+                        previous['agent_direct']=previous.get('agent_direct') or (EXCHANGE_ROOT/previous['job_id']).is_dir()
                         self.jobs.setdefault(previous['job_id'],previous)
                         return {'job_id':previous['job_id']}
                     if self.active_job:
@@ -306,6 +341,7 @@ class LocalApplication:
                     frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
                     frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
                     record=accept_run(conn,frozen,action.removeprefix('writing-'),data,control)
+                record['agent_direct']=bool(((frozen.get('_reader_profile') or {}).get('settings') or {}).get('agent_direct'))
                 jid=record['job_id']
                 self.jobs[jid]=record
                 self.controls[jid]=control
@@ -570,6 +606,8 @@ def make_server(app, port=8767):
                     result = app.daily(query['date'][0],query.get('profile',['default'])[0])
                 elif request.path == '/api/edition':
                     result = app.detail(query['id'][0],query.get('profile',['default'])[0])
+                elif request.path == '/api/writing-archive':
+                    result = app.writing_archive()
                 elif request.path == '/api/job':
                     with app.guard:
                         result = dict(app.jobs[query['id'][0]])

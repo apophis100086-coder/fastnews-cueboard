@@ -55,9 +55,7 @@ DIRECT_EDIT['properties']['appendix']=arr(obj(kind=enum('product_note','risk'),t
     subject_code=S,source_id=S,quote=S))
 DIRECT_EDIT['required']=list(DIRECT_EDIT['properties'])
 
-# v3 editors only edit prose. The independent audit cannot replace that prose.
-EDITORIAL_EDIT=deepcopy(NEWS_ARTICLE)
-EDITORIAL_EDIT['properties']['changes']=arr(S)
-EDITORIAL_EDIT['required']=list(EDITORIAL_EDIT['properties'])
+# v3 编辑与核验合并为一次调用：既改正文又逐项核对原文，返回证据台账与检查结果。
+EDITORIAL_EDIT=deepcopy(NEWS_EDIT)
 ARTICLE_AUDIT=obj(**{key:deepcopy(NEWS_EDIT['properties'][key])
     for key in ('evidence','entities','review','editorial_review')})

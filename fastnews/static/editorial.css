@@ -82,3 +82,12 @@ textarea{line-height:1.7;font-size:14px}#writing-local-text{width:100%;box-sizin
 
 /* Fill the right column even before the first draft exists. */
 .draft-column>.writing-panel{width:100%;box-sizing:border-box;margin:0}
+
+/* 历史稿件库：跨期次列出所有生成过的快讯初稿。 */
+.archive-panel{margin-top:24px;padding:28px;max-width:1100px;margin-inline:auto}
+.archive-row{padding:16px 0;border-bottom:1px solid var(--line,#d9e3e9)}
+.archive-row h4{margin:6px 0 0;font-size:17px;line-height:1.5;color:#193a50;font-weight:600}
+.archive-meta{font-size:13px;color:#607989;line-height:1.7}
+.archive-row .writing-actions{margin:12px 0 0}
+.archive-panel #archive-content{margin-top:18px}
+@media(max-width:760px){.archive-panel{padding:18px}}

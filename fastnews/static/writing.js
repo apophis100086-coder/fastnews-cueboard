@@ -19,7 +19,7 @@ function updateWritingButtons(){
  $('writing-generate').disabled=busy||!matching||!count;
  $('writing-revise').disabled=busy||!matching||!latestDraft()||!count;
  $('writing-state').textContent=!detail?.edition?'先从产品检索中加入候选材料。':!matching?'当前稿件属于原产品，请载入所选产品的期次。':count?`已选 ${count} 条材料，点击生成时自动保存。`:'勾选左侧材料后，即可直接生成。';
- $('writing-research-note').textContent=detail?.edition?`资讯截至 ${displayTime(detail.edition.news_cutoff)}。${state?.reader_profile?.settings?.web_search===false?'当前方案关闭联网。':'将补查近7日相关消息，并核对产品资料。'} 最长15分钟，可随时停止。`:'';
+ $('writing-research-note').textContent=detail?.edition?`资讯截至 ${displayTime(detail.edition.news_cutoff)}。${state?.reader_profile?.settings?.agent_direct?'智能体直连已启用：点击生成后对我说"处理看板写作任务"，检索与成稿由智能体完成并回写本页。':state?.reader_profile?.settings?.web_search===false?'当前方案关闭联网。':'将补查近7日相关消息，并核对产品资料。'} 最长15分钟，可随时停止。`:'';
 }
 function writingChecksHTML(checks){return (checks?.errors||[]).map(e=>'<li>'+h(e.message)+(e.location?' · '+h(e.location):'')+'</li>').join('');}
 function writingSourceStatus(source){
@@ -65,7 +65,7 @@ async function pollWriting(id,initial){
   const elapsed=job.started_at?Math.max(0,Math.round((Date.now()-Date.parse(job.started_at))/1000)):0;
   const total=job.deadline_at&&job.started_at?Math.max(1,Math.round((Date.parse(job.deadline_at)-Date.parse(job.started_at))/1000)):900;
   const s=[...(job.progress||[])].reverse().find(p=>/^writing_(audit|edit|compose|research|verify)/.test(p.stage||''))?.stage||'',stage=s.includes('audit')?'核验':s.includes('edit')?'编辑':s.includes('compose')?'起草':'补充资料';
-  const text=job.status==='running'?`${job.stop_requested?'正在停止':stage} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒 / 最长${Math.ceil(total/60)}分钟`:(job.status==='completed'?'完成，稿件已保存':'本轮已结束，已有内容已保留');
+  const text=job.status==='running'?(job.agent_direct?`智能体直连 · ${stage} · 等待智能体响应 · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒（对我说：处理看板写作任务）`:`${job.stop_requested?'正在停止':stage} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒 / 最长${Math.ceil(total/60)}分钟`):(job.status==='completed'?'完成，稿件已保存':'本轮已结束，已有内容已保留');
   $('writing-progress').textContent=text;$('job').classList.remove('hidden');$('job').textContent=text;
   if(job.status!=='running'){
    await refreshWritingResults(job);
@@ -104,6 +104,38 @@ document.addEventListener('click',safe(async event=>{
   else if(b.dataset.wordDraft){if(!pack.word_base64)throw Error('旧版稿件请从历史记录查看，Word 下载用于新版直接成稿。');const bytes=Uint8Array.from(atob(pack.word_base64),c=>c.charCodeAt(0));downloadWritingFile('快讯-'+id.slice(-8)+'.docx',bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');}
   else downloadWritingFile(id+'-依据.json',JSON.stringify(pack.trace,null,2),'application/json');
  }
+ const aid=b.dataset.archiveView||b.dataset.archiveCopy||b.dataset.archiveWord;
+ if(aid){const pack=await api('writing-export',{version_id:aid});
+  if(b.dataset.archiveCopy){await navigator.clipboard.writeText(pack.markdown||'');message('已复制该历史稿件，包含来源与产品备注。');}
+  else if(b.dataset.archiveWord){if(!pack.word_base64)throw Error('该稿件暂不提供 Word 下载。');const bytes=Uint8Array.from(atob(pack.word_base64),c=>c.charCodeAt(0));downloadWritingFile('快讯-'+aid.slice(-8)+'.docx',bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');}
+  else{const pre=$('archive-content');pre.hidden=false;pre.textContent=pack.markdown||'';pre.scrollIntoView({behavior:'smooth',block:'nearest'});message('已载入该历史稿件，可在下方阅读。');}
+ }
  if(b.dataset.saveManual){const eid=editionId,vid=b.dataset.saveManual;const v=await api('writing-save-edit',{version_id:vid,text:$('writing-local-text').value,request_id:crypto.randomUUID()});if(eid===editionId){detail.writing.versions.push(v);renderWriting();}message('人工修改已另存为新版本，原稿保留。');}
 }));
 renderWriting();
+
+// 历史稿件库：跨期次列出所有生成过的快讯初稿，默认只展示完整成稿，中间版本折叠。
+let archiveData=null;
+async function loadArchive(force){
+ if(archiveData&&!force){renderArchive();return archiveData;}
+ try{const r=await api('writing-archive');archiveData=r.items||[];}
+ catch(err){archiveData=[];}
+ renderArchive();return archiveData;
+}
+function archiveStatusLabel(it){
+ if(it.human_edited)return '人工修改';
+ if(it.pipeline_status==='complete')return '完整成稿';
+ if(it.pipeline_status==='verification_incomplete')return '待核验';
+ if(it.pipeline_status==='editing_incomplete')return '起草中';
+ return '历史稿';
+}
+function renderArchive(){
+ const box=$('archive-list');if(!box)return;
+ const all=archiveData||[];
+ const done=all.filter(x=>x.pipeline_status==='complete'||x.human_edited);
+ const rest=all.filter(x=>!(x.pipeline_status==='complete'||x.human_edited));
+ const count=$('archive-count');if(count)count.textContent=done.length+' 篇成稿';
+ const row=it=>'<div class="archive-row"><div class="archive-meta"><span class="pill">'+h(archiveStatusLabel(it))+'</span> '+h(it.product_code||'')+' · '+h(it.edition_date||'')+' · 约'+h(it.body_characters)+'字 · '+h(displayTime(it.created_at))+'</div><h4>'+h(it.title||'（无标题）')+'</h4><div class="writing-actions"><button class="compact" data-archive-view="'+h(it.version_id)+'">查看全文</button><button class="compact" data-archive-copy="'+h(it.version_id)+'">复制</button><button class="compact" data-archive-word="'+h(it.version_id)+'">下载 Word</button></div></div>';
+ box.innerHTML=(done.length?done.map(row).join(''):'<p class="empty">尚无完整成稿。</p>')
+  +(rest.length?'<details><summary>展开其余 '+rest.length+' 个中间版本</summary>'+rest.map(row).join('')+'</details>':'');
+}

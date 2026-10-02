@@ -62,7 +62,14 @@
 <div id="writing-draft-result"></div>
 <details><summary>让 AI 按意见修改</summary><label>修改意见<textarea id="writing-feedback" rows="3" maxlength="4000" placeholder="例如：把主要变化提前，合并重复分析，产品段再简练一些。"></textarea></label><button id="writing-revise">按意见生成新版本</button></details>
 <details><summary>历史版本与运行记录</summary><div id="writing-history"></div><pre id="writing-history-content" class="writing-prose"></pre><div id="writing-usage"></div></details>
-</section></div></div></section>
+</section></div></div>
+<section class="panel archive-panel" id="archive-panel">
+<div class="section-head"><div><p class="eyebrow">ARCHIVE / 稿件库</p><h2>历史稿件库</h2></div><span class="pill" id="archive-count"></span></div>
+<p class="muted">按生成时间归档所有期次生成过的快讯初稿，不必切换期次即可直接查看、复制或下载。</p>
+<div id="archive-list"><p class="empty">正在读取…</p></div>
+<pre id="archive-content" class="writing-prose" hidden></pre>
+</section>
+</section>
 <section id="sources-workspace" class="workspace-screen" aria-label="来源与连接" hidden><div class="workspace-title"><div><p class="eyebrow">SOURCE LIBRARY / 信息源</p><h2>可用信息，<em>各有入口。</em></h2><p class="muted">自动来源获取列表，手动来源保留原站。找到重要信息后，可加入自己的写作背景。</p></div></div><section class="panel" id="sector-panel" aria-label="细分领域来源">
  <div class="section-head"><div><p class="eyebrow">BROWSE BY TOPIC</p><h2>按领域查找信息源</h2><p class="muted" id="sector-date"></p></div><div class="right"><label>采集日期<input type="date" id="source-day"></label><button id="scan-sector">更新全部自动来源</button></div></div>
  <div class="category-filter" id="sector-filters"></div><div class="source-group-heading"><h3>自动采集 <span id="automatic-source-count"></span></h3><p>优先读取可用的公开列表，保留每条信息的出处。</p></div><div id="sector-sources" class="source-grid"></div><div class="source-group-heading manual-heading"><h3>产品补搜 / 人工资料 <span id="manual-source-count"></span></h3><p>可检索的公开来源会在产品运行时补搜；访问受限或范围未确认的材料保留人工入口。</p></div><div id="manual-sources" class="source-grid manual-source-grid"></div>

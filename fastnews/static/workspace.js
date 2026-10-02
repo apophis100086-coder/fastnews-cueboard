@@ -13,6 +13,7 @@ function showWorkspace(name, scroll=true){
   button.classList.toggle('current',active);
  });
  if(name==='product')$('editor-panel').open=true;
+ if(name==='materials'&&typeof loadArchive==='function')loadArchive();
  if(scroll)$(name+'-workspace').scrollIntoView({behavior:'smooth',block:'start'});
 }
 document.querySelectorAll('[data-workspace]').forEach(button=>button.addEventListener('click',()=>showWorkspace(button.dataset.workspace)));

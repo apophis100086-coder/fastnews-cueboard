@@ -896,6 +896,38 @@ def workflow(conn,edition_id):
     return {'versions':versions,'runs':runs,'rules_version':policy()['version'],'task_budget':status(conn)}
 
 
+def archive(conn,limit=200):
+    """跨期次的历史成稿摘要（stage=draft 且有正文），供看板"历史稿件库"直接查找。
+
+    看板原有"历史版本与运行记录"只列当前期次的版本，用户切换期次才能翻到旧稿。
+    这里按生成时间倒序列出所有期次的 draft 版本（起草稿与编辑稿都会列出，前端
+    按状态标注），并用 edition 表补齐产品与日期，便于不切期次也能直接查到。
+    """
+    rows=conn.execute(
+        '''SELECT v.version_id,v.edition_id,v.content_json,v.created_at,v.run_id,
+                  e.product_code,e.edition_date
+           FROM fn_writing_versions v
+           LEFT JOIN fn_editions e ON e.edition_id=v.edition_id
+           WHERE v.stage='draft'
+           ORDER BY v.rowid DESC LIMIT ?''',(limit,)).fetchall()
+    items=[]
+    for row in rows:
+        try:content=json.loads(row['content_json'])
+        except (TypeError,ValueError):continue
+        if not isinstance(content,dict):continue
+        text=content.get('text') or ''
+        if not str(text).strip():continue
+        items.append({
+            'version_id':row['version_id'],'edition_id':row['edition_id'],
+            'product_code':row['product_code'] or '','edition_date':row['edition_date'] or '',
+            'title':content.get('title') or '','body_characters':content.get('body_characters') or len(str(text)),
+            'status':content.get('status') or '',
+            'pipeline_status':(content.get('pipeline') or {}).get('status') or '',
+            'human_edited':bool(content.get('human_edited')),
+            'created_at':row['created_at'],'run_id':row['run_id']})
+    return items
+
+
 def export_draft(conn,identifier):
     record=version(conn,identifier)
     if record['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'} and record['stage']=='draft':

@@ -24,7 +24,7 @@ RESEARCH=obj(summary=S,gaps=arr(S),sources=arr(obj(material_id=S,title=S,publish
 
 def policy():
     value=yaml.safe_load((ROOT/'config/writing.direct.yaml').read_text(encoding='utf-8'))
-    if value['deadline_seconds']!=900 or sum(value[k] for k in ('preparation_seconds','compose_seconds','edit_seconds','audit_seconds','finalize_seconds'))>900:
+    if value['deadline_seconds']!=900 or sum(value[k] for k in ('preparation_seconds','compose_seconds','edit_seconds','finalize_seconds'))>900:
         raise ValueError('直接写作各阶段必须共用15分钟时限')
     if value['max_pages']>20 or value['pages_per_material']>4 or value['finalize_seconds']<30:
         raise ValueError('直接写作的原文容量或保存时间配置无效')
@@ -34,6 +34,9 @@ def policy():
 def instructions(stage,code):
     if stage=='audit':return (SKILL/'guides/direct_audit.md').read_text(encoding='utf-8')
     paths=[SKILL/'SKILL.md',SKILL/'guides/direct_common.md',SKILL/('guides/direct_'+stage+'.md')]
+    if stage=='edit':
+        # 编辑与核验已合并为一次调用：编辑指令后追加核验要求。
+        paths.append(SKILL/'guides/direct_audit.md')
     if code in PRODUCT_GUIDES:paths.append(SKILL/('products/'+PRODUCT_GUIDES[code]+'.md'))
     return '\n\n'.join(p.read_text(encoding='utf-8') for p in paths)
 
