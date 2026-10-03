@@ -2,6 +2,7 @@
 // Change visibility only: forms, drafts and selections remain mounted.
 function showWorkspace(name, scroll=true){
  if(!['morning','product','materials','sources'].includes(name))return;
+ if($('workspace-menu'))$('workspace-menu').open=false;
  for(const id of ['morning','product','materials','sources']){
   const screen=$(id+'-workspace');if(screen)screen.hidden=id!==name;
  }
@@ -13,6 +14,11 @@ function showWorkspace(name, scroll=true){
   button.classList.toggle('current',active);
  });
  if(name==='product')$('editor-panel').open=true;
+ const pool=$('pool-panel');
+ if(name==='materials'&&pool&&!pool.dataset.viewInitialized){
+  pool.open=typeof innerWidth==='undefined'||innerWidth>680;
+  pool.dataset.viewInitialized='true';
+ }
  if(name==='materials'&&typeof loadArchive==='function')loadArchive();
  if(scroll)$(name+'-workspace').scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -23,3 +29,9 @@ document.querySelectorAll('[role="tab"]').forEach(button=>button.addEventListene
  event.preventDefault();showWorkspace(tabs[next],false);$('tab-'+tabs[next]).focus();
 }));
 showWorkspace('morning',false);
+document.addEventListener('keydown',event=>{
+ if(event.key!=='Escape')return;
+ for(const menu of document.querySelectorAll('.workspace-menu[open], .utility-menu[open]')){
+  menu.open=false;menu.querySelector('summary').focus();
+ }
+});
