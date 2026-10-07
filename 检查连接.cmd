@@ -1,5 +1,4 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-"runtime\python\python.exe" -X utf8 "tools\workbuddy_connect.py" --probe
-pause
+start "" "%~dp0runtime\python\pythonw.exe" "%~dp0tools\open_dashboard.py" --entry

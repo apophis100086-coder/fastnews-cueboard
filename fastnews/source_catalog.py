@@ -43,9 +43,13 @@ def save_profile(conn, data):
         'host':'workbuddy','web_search':True,'agent_direct':workspace_settings()['agent_direct']}
     settings = dict(current)
     if 'host' in data:
-        if data['host'] not in {'workbuddy','none'}:
+        if data['host'] not in {'workbuddy','codex','api','none'}:
             raise ValueError('请选择支持的模型执行工具')
         settings['host'] = data['host']
+        if data['host'] in {'workbuddy','codex'}:
+            settings['agent_direct']=True
+        else:
+            settings['agent_direct']=False
     if 'web_search' in data:
         if type(data['web_search']) is not bool:
             raise ValueError('联网检索必须为布尔值')

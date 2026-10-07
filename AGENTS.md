@@ -1,3 +1,9 @@
+# 2026-10-08 三入口升级当前授权（优先于历史单入口限制）
+
+本轮以改进实验版 4708cea 为基线，依次完成 WorkBuddy / OpenAI 兼容 API / Codex 三入口、体验与存储调优、Windows 带教包。用户已授权支持三入口；不再沿用下文“禁止 Codex / 禁止 API 适配”的旧产品限制。实际新付费调用仍须使用者在入口设置授权。智能体入口不限时、用户可停止；API 写作共用 900 秒。切换入口不迁移人工选择，不自动回退。代码仓库仍只在本地，无远程推送授权。
+
+日常用户要求“打开看板”或“处理看板任务”时，先读 `.agents/skills/fastnews-dashboard/SKILL.md`（Codex）或 `.codebuddy/skills/fastnews-dashboard/SKILL.md`（WorkBuddy）。使用当前目录，不能跳到桌面旧项目。日常操作无需重做历史 M0/M1 或重新开发。
+
 # 2026-10-02 改进实验版当前授权
 
 此目录是以 WorkBuddy 当前文件状态建立的独立开发主线，默认8787；原 Codex 与 WorkBuddy 目录保留。使用 WorkBuddy 智能体文件交换，不回退 Codex、不调用付费 API。用户已明确授权直连任务不限时，只由人工停止，优先于下文历史15分钟要求；请求、页面、容量预算仍有效。新写作使用 direct-newsroom-v4-agent：补搜、起草、编辑兼核验、程序检查与模板组装；历史v3独立核验语义不改。私有样例和模板仅在本地资源及获授权的 WorkBuddy 任务内使用，不入Git。详见 docs/IMPROVEMENT_20261002.md。

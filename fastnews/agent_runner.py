@@ -76,7 +76,7 @@ def pending_requests(root=None):
             status = state_of(request).get('status')
             if meta.get('protocol_version') != 2 or status not in ACTIVE:
                 continue
-            items.append({k: meta.get(k) for k in (*BINDING, 'kind', 'web_search', 'created_at', 'respond_by')}
+            items.append({k: meta.get(k) for k in (*BINDING, 'host', 'kind', 'web_search', 'created_at', 'respond_by')}
                          | dict(status=status, path=str(request)))
         except (OSError, ValueError, TypeError):
             continue
@@ -127,13 +127,16 @@ def recover_requests(root=None):
             set_state(path, 'interrupted', reason='server_restarted')
 
 
-def file_runner(run_id, *, kind='writing', root=None, workspace_id=None):
+def file_runner(run_id, *, kind='writing', root=None, workspace_id=None, expected_host=None):
     folder = exchange_dir(run_id, root)
     workspace_id = workspace_id or identity()
     state = {'step': max((int(p.name.split('-')[1].split('.')[0]) for p in folder.glob('step-*.request.json')), default=0)}
 
     def runner(host, prompt, schema, *, web_search=True, timeout=None, progress=None, control=None,
                model=None, reasoning_effort=None, input_character_limit=36000, task_kind=None):
+        if host not in {'workbuddy','codex'} or (expected_host and host!=expected_host):
+            raise HostUnavailable('任务与所选智能体入口不匹配')
+        label='Codex' if host=='codex' else 'WorkBuddy'
         if not isinstance(prompt, str) or len(prompt) > input_character_limit:
             raise ValueError('本次任务输入超过容量上限，请精简选材')
         if control:
@@ -143,7 +146,7 @@ def file_runner(run_id, *, kind='writing', root=None, workspace_id=None):
         state['step'] += 1
         step = state['step']
         path = folder / f'step-{step:02d}.request.json'
-        meta = dict(protocol_version=2, workspace_id=workspace_id, run_id=run_id, step=step,
+        meta = dict(protocol_version=2, workspace_id=workspace_id, run_id=run_id, step=step, host=host,
                     kind=task_kind or kind, web_search=bool(web_search),
                     created_at=datetime.now(timezone.utc).isoformat(), respond_by=None,
                     nonce=uuid.uuid4().hex, prompt=prompt, schema=schema)
@@ -158,8 +161,8 @@ def file_runner(run_id, *, kind='writing', root=None, workspace_id=None):
         def report(status):
             if progress:
                 progress(dict(stage='agent_direct', agent_status=status, step=step,
-                    message={'waiting':'等待 WorkBuddy 接手：请在对话中说“处理看板任务”',
-                             'processing':'WorkBuddy 已接手，正在处理本步骤',
+                    message={'waiting':f'等待 {label} 接手：请在该项目对话中说“处理看板任务”',
+                             'processing':f'{label} 已接手，正在处理本步骤',
                              'completed':'本步骤已收到响应，继续业务校验'}[status]))
         report('waiting')
         end = None if unbounded else time.monotonic() + timeout
@@ -185,7 +188,7 @@ def file_runner(run_id, *, kind='writing', root=None, workspace_id=None):
                 if end is not None and time.monotonic() >= end:
                     raise TaskStopped('timed_out')
                 time.sleep(0.1)
-            usage = dict(host='workbuddy_agent', billing='workbuddy_account', api_key_used=False,
+            usage = dict(host=host+'_agent', billing=host+'_account', api_key_used=False,
                 model_actual=None, model_reported=raw.get('model'), model_requested=model,
                 reasoning_effort_requested=reasoning_effort, input_tokens=None, output_tokens=None,
                 cost=None, cost_status='managed_by_host', exchange_file=path.name)

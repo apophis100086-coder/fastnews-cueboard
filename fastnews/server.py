@@ -21,6 +21,7 @@ from .pipeline import scan_morning, collection_window
 from .daily import daily_news
 from .routing import route_product, working_now
 from .strict_json import loads
+from .execution import is_agent, runner_options, preflight
 from .workspace import identity as workspace_identity, settings as workspace_settings
 
 STATIC = Path(__file__).with_name('static')
@@ -95,6 +96,7 @@ class LocalApplication:
             return {'csrf_token': self.token, 'workspace_id': self.database, 'is_fixture': self.offline,
                     'reader_sources':reader_sources,'reader_profiles':profiles(conn),'reader_profile':profile(conn,profile_id),
                     'source_categories':CATEGORIES,'host_status':host_status(),
+                    'execution':__import__('fastnews.execution',fromlist=['status']).status(self.database),
                     'search_plans': {code: build_search_plan(reader_config, code) for code in self.config['products']},
                     'morning_briefings':briefings,
                     'products': [p for p in self.config['products'].values() if p.get('selectable',True)], 'sources': source_summary,
@@ -156,6 +158,26 @@ class LocalApplication:
 
     def _run_job(self, job_id, action, data):
         try:
+            if action=='connection-check':
+                from .api_connection import record_probe
+                from .host_provider import run_host
+                settings=data['_settings']
+                opts=runner_options(settings,job_id,self.database,kind='connection')
+                runner=opts.get('runner',run_host)
+                def probe_progress(item):
+                    with self.guard:self.jobs[job_id]['progress'].append(item)
+                response=runner(settings['host'],'仅返回 JSON {\"ok\":true}。本次只验证任务响应，不代表联网或稿件质量。',
+                    {'type':'object','properties':{'ok':{'type':'boolean'}},'required':['ok'],'additionalProperties':False},
+                    web_search=False,control=self.controls[job_id],progress=probe_progress,timeout=60)
+                if response.payload.get('ok') is not True:raise ValueError('未收到预期的连接检查响应')
+                result=dict(host=settings['host'],model='available',web='not_verified',usage=response.usage)
+                if settings['host']=='api':record_probe(response,root=Path(self.database).parent/'connections')
+                from .agent_runner import atomic_json
+                record_path=Path(self.database).parent/'connections'/('probe-'+settings['host']+'.json')
+                record_path.parent.mkdir(parents=True,exist_ok=True)
+                atomic_json(record_path,dict(result,checked_at=self.controls[job_id].started_at))
+                with self.guard:self.jobs[job_id].update(status='completed',result=result)
+                return
             if action=='workbuddy-check':
                 from .workbuddy_connection import probe
                 def probe_progress(item):
@@ -171,7 +193,7 @@ class LocalApplication:
                 config = data.get('_config') or configured_view(conn,self.config,profile_id)
                 # 智能体直连（文件交换）不套用同步模型时限：智能体在对话里异步回写，
                 # 只有用户点"停止"才中断，不再被分钟级 deadline 卡死。
-                if ((config.get('_reader_profile') or {}).get('settings') or {}).get('agent_direct'):
+                if is_agent((config.get('_reader_profile') or {}).get('settings') or {}):
                     _ad_control = self.controls.get(job_id)
                     if _ad_control is not None:
                         _ad_control.make_unbounded()
@@ -184,9 +206,7 @@ class LocalApplication:
                             self.jobs[job_id]['progress'].append(item)
                     options={}
                     settings=((config.get('_reader_profile') or {}).get('settings') or {})
-                    if settings.get('agent_direct'):
-                        from .agent_runner import file_runner
-                        options['runner']=file_runner(job_id,root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
+                    options.update(runner_options(settings,job_id,self.database,kind='writing'))
                     result=execute_run(conn,job_id,self.controls[job_id],progress=writing_progress,**options)
                 elif action in {'scan','digest'}:
                     def progress(item):
@@ -204,9 +224,7 @@ class LocalApplication:
                             control,progress) if source_ids else None
                         report_options={}
                         settings=((config.get('_reader_profile') or {}).get('settings') or {})
-                        if settings.get('agent_direct'):
-                            from .agent_runner import file_runner
-                            report_options['runner']=file_runner(job_id,kind='morning',root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
+                        report_options.update(runner_options(settings,job_id,self.database,kind='morning'))
                         result = generate_report(conn,config,profile_id,'morning',data['date'],progress=progress,
                             lookback_days=data.get('lookback_days',7),control=control,task_id=job_id,collection_result=collected,
                             **report_options)
@@ -229,9 +247,7 @@ class LocalApplication:
                         control.check()
                         report_options={}
                         settings=((config.get('_reader_profile') or {}).get('settings') or {})
-                        if settings.get('agent_direct'):
-                            from .agent_runner import file_runner
-                            report_options['runner']=file_runner(job_id,kind='product',root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
+                        report_options.update(runner_options(settings,job_id,self.database,kind='product'))
                         result=generate_report(conn,config,profile_id,'product',edition['edition_date'],
                             edition=edition,request_mode='explore',research_question=data.get('research_question',''),
                             request_id=data['request_id'],control=control,task_id=job_id,progress=research_progress,
@@ -263,9 +279,7 @@ class LocalApplication:
                     if data.get('use_host'):
                         report_options={}
                         settings=((config.get('_reader_profile') or {}).get('settings') or {})
-                        if settings.get('agent_direct'):
-                            from .agent_runner import file_runner
-                            report_options['runner']=file_runner(job_id,kind='product',root=Path(self.database).parent/'agent-exchange',workspace_id=workspace_identity(self.database))
+                        report_options.update(runner_options(settings,job_id,self.database,kind='product'))
                         result['reading_report'] = generate_report(conn,config,profile_id,'product',edition['edition_date'],
                                                                   edition=edition,progress=research_progress,
                                                                   extra_keywords=data.get('extra_keywords'),
@@ -279,6 +293,9 @@ class LocalApplication:
             from .task_control import TaskStopped
             from .host_provider import HostUnavailable
             error=str(exc) if isinstance(exc,(ValueError,TaskStopped,HostUnavailable)) else type(exc).__name__
+            if action=='connection-check' and data.get('_settings',{}).get('host')=='api':
+                from .api_connection import record_probe
+                record_probe(error=error,root=Path(self.database).parent/'connections')
             if action.startswith('writing-'):
                 # The writing service retains a stage-specific, scrubbed error
                 # together with the draft. Keep it visible during polling too.
@@ -314,6 +331,27 @@ class LocalApplication:
             else:
                 accepted_control=TaskControl(policy()['deadline_seconds'])
         with self.guard:
+            if action=='storage-backup':
+                if self.active_job:raise ValueError('请完成或停止当前任务后再创建完整备份')
+                from .storage import backup
+                return backup(self.database,exports=self.output_dir,drafts=data.get('browser_drafts',{}))
+            if action=='api-settings':
+                if self.active_job:raise ValueError('请完成或停止当前任务后再更改 API 设置')
+                from .api_connection import save
+                return save(data,Path(self.database).parent/'connections')
+            if action=='connection-check':
+                if self.offline:raise ValueError('合成模式不能发起真实连接检查')
+                if self.active_job:raise ValueError('已有任务在运行，完成或停止后再检查连接')
+                from .source_catalog import profile
+                from .task_control import TaskControl
+                with closing(self.connection()) as conn:settings=profile(conn,data.get('reader_profile','default'))['settings']
+                preflight(settings,Path(self.database).parent/'connections')
+                jid='connection_'+uuid.uuid4().hex;control=TaskControl(70)
+                if is_agent(settings):control.make_unbounded()
+                self.jobs[jid]=dict(job_id=jid,action=action,status='running',progress=[],host=settings['host'],agent_direct=is_agent(settings),created_at=control.started_at,deadline_at=control.deadline_at)
+                self.controls[jid]=control;self.active_job=jid
+                threading.Thread(target=self._run_job,args=(jid,action,dict(data,_settings=settings)),daemon=True).start()
+                return {'job_id':jid}
             if action=='workbuddy-login':
                 from .workbuddy_connection import login
                 return login()
@@ -343,10 +381,11 @@ class LocalApplication:
                         raise ValueError('合成模式不自动调用真实写作模型')
                     frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
                     frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
-                    if frozen['_reader_profile']['settings'].get('agent_direct'):
+                    preflight(frozen['_reader_profile']['settings'],Path(self.database).parent/'connections')
+                    if is_agent(frozen['_reader_profile']['settings']):
                         control.make_unbounded()
                     record=accept_run(conn,frozen,action.removeprefix('writing-'),data,control)
-                record['agent_direct']=bool(((frozen.get('_reader_profile') or {}).get('settings') or {}).get('agent_direct'))
+                record['agent_direct']=is_agent((frozen.get('_reader_profile') or {}).get('settings') or {})
                 jid=record['job_id']
                 self.jobs[jid]=record
                 self.controls[jid]=control
@@ -355,7 +394,7 @@ class LocalApplication:
                 return {'job_id':jid}
             if action=='job-stop':
                 job=self.jobs.get(data.get('job_id'))
-                if not job or job['action'] not in {'explore','digest','research','writing-outline','writing-draft','writing-generate','workbuddy-check'}:
+                if not job or job['action'] not in {'explore','digest','research','writing-outline','writing-draft','writing-generate','workbuddy-check','connection-check'}:
                     raise ValueError('没有可停止的探查或写作任务')
                 control=self.controls.get(data['job_id'])
                 if control:
@@ -405,9 +444,10 @@ class LocalApplication:
                     frozen=configured_view(conn,self.config,data.get('reader_profile','default'))
                     from .source_catalog import profile
                     frozen['_reader_profile']=profile(conn,data.get('reader_profile','default'))
-                    if action in {'digest','research','explore'} and frozen['_reader_profile']['settings'].get('agent_direct'):
+                    if action in {'digest','research','explore'} and is_agent(frozen['_reader_profile']['settings']):
                         accepted_control.make_unbounded()
                     if action=='digest' or action in {'research','explore'} and (data.get('use_host') or action=='explore'):
+                        preflight(frozen['_reader_profile']['settings'],Path(self.database).parent/'connections')
                         from .writing import task_attempts
                         from .host_task_budget import status, exhausted_message
                         budget=status(conn,used=task_attempts(conn))
@@ -450,7 +490,7 @@ class LocalApplication:
                 if action in {'explore','digest','research'}:
                     self.controls[job_id]=accepted_control
                     self.jobs[job_id].update(started_at=accepted_at,deadline_at=accepted_control.deadline_at,
-                        agent_direct=bool(frozen['_reader_profile']['settings'].get('agent_direct')))
+                        agent_direct=bool(is_agent(frozen['_reader_profile']['settings'])))
                     if action in {'explore','research'}:
                         self.jobs[job_id].update(product_code=edition['product_code'],news_cutoff=edition['news_cutoff'])
                 self.active_job = job_id
@@ -484,6 +524,7 @@ class LocalApplication:
                     return adopt_report_item(conn,data.get('reader_profile','default'),data['report_id'],
                                              data['item_id'],data['edition_id'])
                 if action=='reader-profile':
+                    if self.active_job:raise ValueError('请完成或停止当前任务后再切换入口或方案设置')
                     from .source_catalog import save_profile
                     return save_profile(conn,{k:v for k,v in data.items() if k!='reader_profile'})
                 if action=='reader-source':
@@ -559,7 +600,12 @@ class LocalApplication:
             record = json.loads(row[0])
             path = Path(record['paths'][kind]).resolve()
             if not path.is_relative_to(self.output_dir):
-                raise ValueError('Export belongs to another output directory')
+                # Portable copies preserve original provenance but resolve delivery locally.
+                folder='fixture' if record.get('is_fixture') else 'live'
+                path=(self.output_dir/folder/record['edition_id']/record['export_id']/
+                      ('writing_handoff.md' if kind=='markdown' else 'writing_handoff.json')).resolve()
+                if not path.is_relative_to(self.output_dir) or not path.is_file():
+                    raise ValueError('该历史导出文件未随项目迁移，请重新导出本期背景')
             return path.read_bytes(), path.name
 
 
@@ -607,7 +653,7 @@ def make_server(app, port=None):
                     names = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/editorial.css': ('editorial.css', 'text/css')}
                     filename, mime = names[request.path]
                     return self._send(200, (STATIC / filename).read_bytes(), mime + '; charset=utf-8')
-                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js','/exploration.js','/writing.js','/workbuddy.js'}:
+                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js','/exploration.js','/writing.js','/workbuddy.js','/execution.js','/storage.js'}:
                     return self._send(200,(STATIC/request.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
                 if request.path == '/api/state':
                     result = app.state(query.get('profile',['default'])[0])
@@ -617,6 +663,19 @@ def make_server(app, port=None):
                     result = app.detail(query['id'][0],query.get('profile',['default'])[0])
                 elif request.path == '/api/writing-archive':
                     result = app.writing_archive()
+                elif request.path == '/api/storage':
+                    from .storage import status
+                    result=status(app.database,app.output_dir)
+                elif request.path == '/api/browser-recovery':
+                    from .storage import recovery
+                    result=recovery(app.database)
+                elif request.path == '/api/backup-download':
+                    name=query.get('name',[''])[0]
+                    if not re.fullmatch(r'fastnews-backup-[0-9T]+-[a-f0-9]{8}\.zip',name):
+                        raise ValueError('无效的备份文件名')
+                    folder=(Path(app.database).parent/'backups').resolve();path=folder/name
+                    if not path.resolve().is_relative_to(folder):raise ValueError('备份路径无效')
+                    return self._send(200,path.read_bytes(),'application/zip',name)
                 elif request.path == '/api/job':
                     with app.guard:
                         result = dict(app.jobs[query['id'][0]])

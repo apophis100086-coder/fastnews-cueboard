@@ -133,6 +133,8 @@ def cmd_pending_writes(_args):
 
 def cmd_claim(args):
     from fastnews.agent_runner import claim_request
+    meta=json.loads(Path(args.request).read_text(encoding='utf-8'))
+    if args.host and meta.get('host','workbuddy')!=args.host:raise ValueError('请求不属于当前客户端入口')
     print(json.dumps(claim_request(args.request), ensure_ascii=False, indent=2))
 
 
@@ -157,6 +159,16 @@ def cmd_status(_args):
             with opener.open(URL+'api/job?id='+quote(jid),timeout=3) as response:job=json.load(response)
             result['job']={k:job.get(k) for k in ('job_id','status','action','workflow','stop_requested','error')}
     print(json.dumps(result,ensure_ascii=False,indent=2))
+
+
+def cmd_wait(args):
+    import time
+    from fastnews.agent_runner import pending_requests
+    end=time.monotonic()+max(1,min(args.seconds,20))
+    while time.monotonic()<end:
+        if any(x['run_id']==args.run_id for x in pending_requests()):break
+        time.sleep(.5)
+    cmd_status(args)
 
 
 def main(argv=None):
@@ -186,8 +198,10 @@ def main(argv=None):
 
     sub.add_parser("pending-writes").set_defaults(func=cmd_pending_writes)
     sub.add_parser('status').set_defaults(func=cmd_status)
-    p=sub.add_parser('claim');p.add_argument('request');p.set_defaults(func=cmd_claim)
+    p=sub.add_parser('claim');p.add_argument('request');p.add_argument('--host',choices=['workbuddy','codex']);p.set_defaults(func=cmd_claim)
     p=sub.add_parser('respond');p.add_argument('request');p.add_argument('response');p.set_defaults(func=cmd_respond)
+
+    p=sub.add_parser('wait');p.add_argument('--run-id',required=True);p.add_argument('--seconds',type=int,default=20);p.set_defaults(func=cmd_wait)
 
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):

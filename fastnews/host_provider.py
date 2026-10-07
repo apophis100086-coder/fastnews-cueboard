@@ -75,11 +75,12 @@ def host_command(host):
 
 def host_status():
     from .workbuddy_runtime import connection_status
-    return {'codex':{'installed':False,'disabled':True,'label':'Codex（此版本停用）'},
+    return {'codex':{'installed':None,'disabled':False,'configured':True,'label':'Codex 智能体',
+                    'note':'在 Codex 打开本项目后说“处理看板任务”；账号与联网由该客户端提供。'},
         'workbuddy':connection_status(), 'limits':dict(reader_limits(),max_parallel_tasks=1),
-        'billing_note':'只使用 WorkBuddy 官方入口；账户权益由 WorkBuddy 管理，不配置付费 API。',
+        'billing_note':'WorkBuddy / Codex 使用对应账户；自接 API 按所配置服务商计费。不会自动切换入口。',
         'agent_direct':{'mode':'agent_direct','configured':True,'model':'not_verified','web':'not_verified',
-            'note':'本机 CLI 无法直连模型；已启用「智能体直连」——检索与成稿由 WorkBuddy 智能体完成，结果回写看板（见 docs/AGENT_BRIDGE.md）。'}}
+            'note':'在所选客户端打开本项目并说“处理看板任务”。收到响应、取得原文及稿件通过检查分别记录。'}}
 
 
 @dataclass

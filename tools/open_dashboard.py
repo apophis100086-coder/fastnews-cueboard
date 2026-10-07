@@ -181,6 +181,7 @@ def main(argv=None):
     group.add_argument('--check', action='store_true', help='check only; no start or browser')
     group.add_argument('--serve', action='store_true', help='run the server; no browser')
     parser.add_argument('--no-browser', action='store_true', help='ensure running without opening a browser')
+    parser.add_argument('--entry', action='store_true', help='open the usage entry settings')
     args = parser.parse_args(argv)
     if args.check:
         status = check_service()
@@ -194,7 +195,7 @@ def main(argv=None):
         ensure_running()
         LOGGER.info('Dashboard available: %s', URL)
         if not args.no_browser:
-            webbrowser.open(URL)
+            webbrowser.open(URL + ('?entry=1' if args.entry else ''))
         if sys.stdout is not None:
             print('看板已在后台运行：' + URL)
             print('可以关闭此窗口；下次双击“一键启动”即可重新打开。')

@@ -70,6 +70,7 @@ function edition() {
 
 async function harness(options = {}) {
   const elements = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(match => [match[1], new Element(match[1])]));
+  elements.set('retry-archive',new Element('retry-archive'));
   elements.set('writing-local-text',new Element('writing-local-text')); // dynamically rendered editor
   elements.get('group').value = 'all';
   const listeners = new Map();
@@ -120,6 +121,7 @@ async function harness(options = {}) {
   if(options.writing)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/writing.js'),'utf8'),context,{filename:'writing.js'});
   if(options.workspace)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workspace.js'),'utf8'),context,{filename:'workspace.js'});
   if(options.workbuddy)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workbuddy.js'),'utf8'),context,{filename:'workbuddy.js'});
+  if(options.execution)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/execution.js'),'utf8'),context,{filename:'execution.js'});
   if(options.visuals)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/visuals.js'),'utf8'),context,{filename:'visuals.js'});
   return {
     el: id => elements.get(id), calls, state, storage,
@@ -814,7 +816,7 @@ test('WorkBuddy settings distinguish login and do not auto probe on load',async(
  assert.match(app.el('workbuddy-state').textContent,/待登录/);
  assert.ok(app.calls.every(c=>c.method==='GET'));
  assert.match(html,/<script defer src="\/workbuddy.js"><\/script>/);
- assert.ok(!html.includes('<option value="codex">'));
+ assert.ok(html.includes('<option value="codex">'));assert.ok(html.includes('<option value="api">'));
 });
 
 
@@ -939,4 +941,33 @@ test('initial history loading locks the product picker until its saved state is 
  assert.equal(app.el('product').disabled,false);assert.equal(app.el('research').disabled,false);
  assert.equal(app.read('busy'),false);
  assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+
+test('entry choice keeps the manual basket and API configuration is not a local browser secret',async()=>{
+ const app=await harness({reader:true,execution:true});
+ await app.evaluate("loadEdition('ed-one')");app.evaluate("basket.selected_clue_ids=['manual-one'];persistDraft()");
+ const before=app.read('basket');app.evaluate('fillEntry()');
+ app.el('reader-host').value='api';app.el('reader-host').onchange();
+ assert.equal(app.el('api-config').hidden,false);assert.equal(app.el('reader-web').disabled,true);
+ app.route(call=>call.url==='/api/reader-profile'?{}:undefined);
+ await app.el('save-entry').onclick();
+ const saved=app.calls.findLast(c=>c.url==='/api/reader-profile');assert.equal(saved.body.host,'api');assert.equal(saved.body.web_search,false);
+ assert.deepEqual(app.read('basket'),before);
+ assert.equal([...app.storage.keys()].some(k=>k.includes('api-key')),false);
+});
+
+test('API connection check cannot run against an unsaved entry selection',async()=>{
+ const app=await harness({reader:true,execution:true});app.evaluate('fillEntry()');
+ app.el('reader-host').value='api';await app.el('check-entry').onclick();
+ assert.equal(app.calls.some(c=>c.url==='/api/connection-check'),false);
+ assert.match(app.el('entry-result').textContent,/先保存/);
+});
+
+test('initial busy state is released for the entry selector and failed archive reads remain visible',async()=>{
+ const app=await harness({writing:true,execution:true});assert.equal(app.el('open-execution').disabled,false);
+ app.route(call=>{if(call.url==='/api/writing-archive')throw Error('合成读取失败');});
+ // The retry element is dynamic in a real DOM; inspect the visible error before its handler binds.
+ try{await app.evaluate('loadArchive(true)');}catch{}
+ assert.match(app.el('archive-list').innerHTML,/合成读取失败/);assert.doesNotMatch(app.el('archive-list').innerHTML,/尚无完整成稿/);
 });

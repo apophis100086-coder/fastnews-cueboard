@@ -1,3 +1,13 @@
+# 2026-10-08 三入口带教版
+
+日常使用请打开根目录 **使用指南.html**。支持 WorkBuddy、OpenAI 兼容 API、Codex；发行包默认为 WorkBuddy，网页端口 8797。开发副本仍使用 config/workspace.yaml 中的端口。两种客户端都通过项目技能接手页面任务，API 由程序直接执行。数据与账户能力分开验证。
+
+双击“一键启动.cmd”打开页面；“检查连接.cmd”打开当前入口设置；“恢复数据.cmd”只向未启动的新项目恢复备份。切换入口保留选材与稿件，旧客户端的 CLI 诊断仅供历史排障。
+
+现行要求见 AGENTS.md 顶部，验证记录见 docs/THREE_ENTRY_ACCEPTANCE_20261008.md。以下为历史说明，旧端口和单客户端限制不再适用于本次交付。
+
+---
+
 # WorkBuddy 独立版入口
 
 当前启动、登录、使用和交付状态请先读 [WORKBUDDY.md](WORKBUDDY.md)。下文为源项目保留的历史说明；其中 Codex 模型、8765端口和原 GitHub 仓库不适用于此版。

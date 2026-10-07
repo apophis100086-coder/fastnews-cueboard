@@ -24,7 +24,7 @@ function updateWritingButtons(){
  document.querySelectorAll('#writing-draft-result [data-copy-draft], #writing-draft-result [data-word-draft]').forEach(button=>button.disabled=stale||!matching);
  $('writing-state').textContent=!detail?.edition?'先从产品检索中加入候选材料。':!matching?'当前稿件属于原产品，请载入所选产品的期次。':stale?'选材已变更：当前稿仅供参考，请重新生成后导出。':count?`已选 ${count} 条材料 · 生成时自动保存`:'勾选左侧材料后，即可直接生成。';
  $('writing-state').classList.toggle('warning',stale);
- $('writing-research-note').textContent=detail?.edition?(state?.reader_profile?.settings?.agent_direct?'点击生成后，在 WorkBuddy 说“处理看板写作任务”。不限时，可随时停止。':state?.reader_profile?.settings?.web_search===false?'当前方案关闭联网。最长15分钟，可随时停止。':'生成时补查相关消息并核对产品资料。最长15分钟，可随时停止。'):'';
+ $('writing-research-note').textContent=detail?.edition?(state?.reader_profile?.settings?.agent_direct?'点击生成后，在 '+({codex:'Codex',workbuddy:'WorkBuddy'}[state?.reader_profile?.settings?.host]||'所选客户端')+' 的本项目对话中说“处理看板任务”。不限时，可随时停止。':state?.reader_profile?.settings?.web_search===false?'当前方案关闭联网。最长15分钟，可随时停止。':'生成时补查相关消息并核对产品资料。最长15分钟，可随时停止。'):'';
 }
 function writingChecksHTML(checks){return (checks?.errors||[]).map(e=>'<li>'+h(e.message)+(e.location?' · '+h(e.location):'')+'</li>').join('');}
 function writingSourceStatus(source){
@@ -81,7 +81,7 @@ async function pollWriting(id,initial){
   const total=job.deadline_at&&job.started_at?Math.max(1,Math.round((Date.parse(job.deadline_at)-Date.parse(job.started_at))/1000)):900;
   const s=[...(job.progress||[])].reverse().find(p=>/^writing_(audit|edit|compose|research|verify)/.test(p.stage||''))?.stage||'',stage=s.includes('audit')?'核验':s.includes('edit')?'编辑':s.includes('compose')?'起草':'补充资料';
   const current=[...(job.progress||[])].reverse().find(p=>p.agent_status);
-  const text=job.status==='running'?(job.agent_direct?`智能体直连 · ${stage} · ${current?.agent_status==='processing'?'处理中':current?.agent_status==='completed'?'响应已收到，正在检查':'等待接手'} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒（对我说：处理看板写作任务）`:`${job.stop_requested?'正在停止':stage} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒 / 最长${Math.ceil(total/60)}分钟`):(job.status==='completed'?'完成，稿件已保存':'本轮已结束，已有内容已保留');
+  const text=job.status==='running'?(job.agent_direct?`智能体直连 · ${stage} · ${current?.agent_status==='processing'?'处理中':current?.agent_status==='completed'?'响应已收到，正在检查':'等待接手'} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒（回到所选客户端说：处理看板任务）`:`${job.stop_requested?'正在停止':stage} · 已用 ${Math.floor(elapsed/60)}分${elapsed%60}秒 / 最长${Math.ceil(total/60)}分钟`):(job.status==='completed'?'完成，稿件已保存':'本轮已结束，已有内容已保留');
   $('writing-progress').textContent=text;$('job').classList.remove('hidden');$('job').textContent=text;
   if(job.status!=='running'){
    await refreshWritingResults(job);
@@ -89,7 +89,7 @@ async function pollWriting(id,initial){
    message(text);return;
   }
   await new Promise(resolve=>setTimeout(resolve,1200));job=null;
- }}finally{writingJob=null;$('writing-stop').hidden=true;setBusy(false);updateWritingButtons();}
+ }}finally{archiveData=null;writingJob=null;$('writing-stop').hidden=true;setBusy(false);updateWritingButtons();}
 }
 async function startWriting(extra={}){
  requireCurrentEdition();if(busy)throw Error('已有任务正在运行。');
@@ -131,16 +131,16 @@ document.addEventListener('click',safe(async event=>{
   else if(b.dataset.archiveWord){if(!pack.word_base64)throw Error('该稿件暂不提供 Word 下载。');const bytes=Uint8Array.from(atob(pack.word_base64),c=>c.charCodeAt(0));downloadWritingFile('快讯-'+aid.slice(-8)+'.docx',bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');}
   else{const pre=$('archive-content');pre.hidden=false;pre.textContent=pack.markdown||'';pre.scrollIntoView({behavior:'smooth',block:'nearest'});message('已载入该历史稿件，可在下方阅读。');}
  }
- if(b.dataset.saveManual){const eid=editionId,vid=b.dataset.saveManual;const v=await api('writing-save-edit',{version_id:vid,text:$('writing-local-text').value,request_id:crypto.randomUUID()});if(eid===editionId){detail.writing.versions.push(v);renderWriting();}message('人工修改已另存为新版本，原稿保留。');}
+ if(b.dataset.saveManual){const eid=editionId,vid=b.dataset.saveManual;const v=await api('writing-save-edit',{version_id:vid,text:$('writing-local-text').value,request_id:crypto.randomUUID()});if(eid===editionId){detail.writing.versions.push(v);archiveData=null;renderWriting();}message('人工修改已另存为新版本，原稿保留。');}
 }));
 renderWriting();
 
 // 历史稿件库：跨期次列出所有生成过的快讯初稿，默认只展示完整成稿，中间版本折叠。
-let archiveData=null;
+let archiveData=null,archiveError='';
 async function loadArchive(force){
  if(archiveData&&!force){renderArchive();return archiveData;}
- try{const r=await api('writing-archive');archiveData=r.items||[];}
- catch(err){archiveData=[];}
+ try{const r=await api('writing-archive');archiveData=r.items||[];archiveError='';}
+ catch(err){archiveError=err.message||'历史稿件读取失败';}
  renderArchive();return archiveData;
 }
 function archiveStatusLabel(it){
@@ -152,11 +152,15 @@ function archiveStatusLabel(it){
 }
 function renderArchive(){
  const box=$('archive-list');if(!box)return;
- const all=archiveData||[];
+ if(archiveError){box.innerHTML='<p class="warning">'+h(archiveError)+'</p><button id="retry-archive">重新读取历史稿件</button>';$('retry-archive').onclick=()=>loadArchive(true);return;}
+ const query=($('archive-search')?.value||'').trim().toLowerCase();
+ const all=(archiveData||[]).filter(x=>!query||[x.title,x.product_code,x.edition_date].join(' ').toLowerCase().includes(query));
  const done=all.filter(x=>x.pipeline_status==='complete'||x.human_edited);
  const rest=all.filter(x=>!(x.pipeline_status==='complete'||x.human_edited));
  const count=$('archive-count');if(count)count.textContent=done.length+' 篇成稿';
  const row=it=>'<div class="archive-row"><div class="archive-meta"><span class="pill">'+h(archiveStatusLabel(it))+'</span> '+h(it.product_code||'')+' · '+h(it.edition_date||'')+' · 约'+h(it.body_characters)+'字 · '+h(displayTime(it.created_at))+'</div><h4>'+h(it.title||'（无标题）')+'</h4><div class="writing-actions"><button class="compact" data-archive-view="'+h(it.version_id)+'">查看全文</button><button class="compact" data-archive-copy="'+h(it.version_id)+'">复制</button><button class="compact" data-archive-word="'+h(it.version_id)+'">下载 Word</button></div></div>';
- box.innerHTML=(done.length?done.map(row).join(''):'<p class="empty">尚无完整成稿。</p>')
+ box.innerHTML=(done.length?done.map(row).join(''):'<p class="empty">'+(query?'没有匹配的完整成稿，请更换关键词。':'尚无完整成稿。')+'</p>')
   +(rest.length?'<details><summary>展开其余 '+rest.length+' 个中间版本</summary>'+rest.map(row).join('')+'</details>':'');
 }
+
+$('archive-search').oninput=renderArchive;

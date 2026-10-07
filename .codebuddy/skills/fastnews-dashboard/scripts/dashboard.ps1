@@ -19,5 +19,5 @@ if ($Action -eq 'Open') {
 } elseif ($Action -eq 'Status') {
   & $taskPython -X utf8 (Join-Path $taskRoot 'tools/agent_bridge.py') status
 } else {
-  & $taskPython -X utf8 (Join-Path $taskRoot 'tools/workbuddy_connect.py') --probe
+  & $taskPython -X utf8 (Join-Path $taskRoot 'tools/open_dashboard.py') --entry
 }
