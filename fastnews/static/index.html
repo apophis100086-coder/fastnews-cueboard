@@ -105,7 +105,7 @@
 <details><summary>返回格式与单任务额度</summary><div class="api-grid"><label>JSON 返回方式<select id="api-format"><option value="json_object">JSON 对象（兼容优先）</option><option value="json_schema">严格 JSON Schema</option></select></label><label>最多请求次数<input id="api-requests" type="number" min="1" max="4" value="4"></label><label>每次输出 token 上限<input id="api-output" type="number" min="1000" max="12000" value="6000"></label></div></details>
 <label class="check-label"><input id="api-web" type="checkbox">该 Responses 服务支持 web_search 联网工具</label>
 <label class="check-label"><input id="api-authorized" type="checkbox">允许向上述服务发送本次任务材料（含选用的本地范文），并承担相应调用费用</label>
-<p class="muted">密钥由当前 Windows 账户加密保存，不随备份或发行包迁移。修改地址后需重新填写密钥；更换电脑后需重新配置。</p>
+<p class="muted" id="api-credential-note">密钥由当前 Windows 账户加密保存，不随备份或发行包迁移。修改地址后需重新填写密钥；更换电脑后需重新配置。</p>
 <button id="save-api">保存 API 配置</button><p id="api-status" role="status"></p></section>
 <label class="check-label"><input type="checkbox" id="reader-web">允许模型补充联网检索</label>
 <p class="muted" id="entry-capability"></p><div class="entry-actions"><button id="save-entry" class="primary">保存入口</button><button id="check-entry">检查当前入口响应</button><button id="stop-entry" hidden>停止检查</button></div>

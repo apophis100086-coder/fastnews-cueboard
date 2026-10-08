@@ -19,6 +19,8 @@ def build_request(settings, prompt, schema, web_search=False):
         instruction += '\n本次没有联网工具。只使用输入中的资料，缺少的信息标为未知，不凭记忆补造来源。'
     request=dict(model=settings['model'],stream=False)
     if settings['protocol']=='chat_completions':
+        if urlsplit(settings['base_url']).hostname=='api.deepseek.com':
+            request['thinking']={'type':'disabled'}
         request.update(messages=[dict(role='system',content=instruction),dict(role='user',content=prompt)],
                        max_tokens=settings['max_output_tokens'])
         request['response_format']=({'type':'json_schema','json_schema':{'name':'fastnews_result','schema':schema,'strict':True}}
@@ -34,8 +36,13 @@ def build_request(settings, prompt, schema, web_search=False):
 
 def post_json(url, key, body, timeout):
     """Pin validated public DNS, verify TLS; never redirect Authorization."""
-    from .network import resolve_public, _PinnedHTTP
-    normalized, addresses=resolve_public(url)
+    from .network import resolve_public, _PinnedHTTP, SafeHTTPClient
+    # Use the same verified public DNS infrastructure as source collection for
+    # this fixed official service. Local proxy DNS may return a synthetic IP.
+    if urlsplit(url).hostname=='api.deepseek.com':
+        normalized, addresses=SafeHTTPClient(dns_mode='public_fallback')._resolve(url)
+    else:
+        normalized, addresses=resolve_public(url)
     p=urlsplit(normalized)
     conn=_PinnedHTTP(p.hostname,443,addresses[0],timeout,True)
     try:

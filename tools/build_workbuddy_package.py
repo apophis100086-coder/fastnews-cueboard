@@ -1,4 +1,4 @@
-"""Portable Windows mentor package: source/resources, never business DBs or keys."""
+"""Portable mentor package; shared API credential only through explicit opt-in."""
 from pathlib import Path
 import argparse,hashlib,json,subprocess,zipfile
 ROOT=Path(__file__).resolve().parents[1]
@@ -19,7 +19,7 @@ def paths():
         if rel.parts[0]=='data' and rel.parts[1] not in {'writing_samples','writing_templates'}:raise ValueError('Unexpected data file')
     return sorted(result)
 
-def build(output):
+def build(output,shared_api_file=None):
     output.mkdir(parents=True,exist_ok=True)
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip()
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT).strip():raise ValueError('Commit the reviewed source before packaging')
@@ -34,6 +34,14 @@ def build(output):
     seed['preferences']=[v for v in seed.get('preferences',[]) if v.get('profile_id')=='default']
     overrides={'config/workspace.yaml':f'version: mentor-workspace-v1\nport: {PACKAGE_PORT}\nagent_direct: true\npackage_folder: {folder}\n'.encode(),
                'data/setup/source-settings.json':json.dumps(seed,ensure_ascii=False,indent=2).encode()}
+    if shared_api_file:
+        from fastnews.shared_api import read_seed,SEED,NOTICE
+        shared=read_seed(shared_api_file)
+        overrides[SEED]=json.dumps(shared,ensure_ascii=False,indent=2).encode()
+        overrides['共享API说明.txt']=(NOTICE+'\n\n默认入口仍是 WorkBuddy。切换到自接 API 后，无需输入密钥；确认材料发送和费用授权，保存 API 配置、保存入口，即可检查并使用。\n模型：'+shared['model']+'\n服务：https://api.deepseek.com\n').encode('utf-8')
+        manifest.update(account_credentials_included=True,shared_api_included=True,shared_api_provider='DeepSeek',
+                        shared_api_model=shared['model'],shared_key_storage='portable_plaintext_seed_and_windows_local_encryption')
+        archive=output/'快讯AI看板-Windows带教包-DeepSeek共享版.zip'
     originals={p.relative_to(ROOT).as_posix():p for p in paths()}
     with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for rel in sorted(set(originals)|set(overrides)):
@@ -49,4 +57,6 @@ def build(output):
     print(json.dumps({'source_commit':source,'files':len(manifest['files']),'archive':str(archive),'size_bytes':archive.stat().st_size},ensure_ascii=False))
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,default=ROOT/'workbuddy-dist');args=p.parse_args();build(args.output)
+    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,default=ROOT/'workbuddy-dist')
+    p.add_argument('--shared-api-file',type=Path,help='Explicitly bundle this authorized local DeepSeek key file (never tracked)')
+    args=p.parse_args();build(args.output,args.shared_api_file)

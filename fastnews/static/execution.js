@@ -32,6 +32,7 @@ function fillEntry(){
  $('api-web').checked=!!a.web_search;$('api-authorized').checked=!!a.authorized;
  $('api-requests').value=a.max_requests||4;$('api-output').value=a.max_output_tokens||6000;
  $('api-status').textContent=a.last_error||(a.configured?(a.model_status==='available'?'已收到有效 API 响应。':'配置已保存，尚待检查。'):'尚未配置。');
+ $('api-credential-note').textContent=a.credential_origin==='shared_package'?a.note:'密钥由当前 Windows 账户加密保存，不随备份或标准发行包迁移。修改地址后需重新填写密钥；更换电脑后需重新配置。';
  updateEntryForm();
 }
 $('open-execution').onclick=safe(async()=>{await refreshState();fillEntry();$('execution-dialog').showModal();});

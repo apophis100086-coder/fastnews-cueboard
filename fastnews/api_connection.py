@@ -75,11 +75,14 @@ def validate_base(value):
 def public_status(root=None):
     try:v = load(root)
     except ValueError as exc:v={'last_error':str(exc),'model_status':'failed'}
-    fields = ('base_url','model','protocol','web_search','authorized','max_requests','max_output_tokens','response_format','checked_at','model_status','web_status','last_error')
+    fields = ('base_url','model','protocol','web_search','authorized','max_requests','max_output_tokens','response_format','checked_at','model_status','web_status','last_error','credential_origin')
     result = {k: v.get(k) for k in fields}
     result.update(configured=bool(v.get('base_url') and v.get('model') and v.get('protected_key')),
                   key_saved=bool(v.get('protected_key')), installed=True)
     result['note'] = '密钥仅由当前 Windows 账户解密；普通兼容接口只整理已有材料。费用由你配置的服务商收取。'
+    if v.get('credential_origin')=='shared_package':
+        from .shared_api import NOTICE
+        result['note']=NOTICE
     return result
 
 
@@ -109,10 +112,12 @@ def save(data, root=None):
         raise ValueError('密钥格式无效，请检查空格或换行')
     if key:
         value['protected_key']=protect(key)
+        value['credential_origin']='personal'
     elif old.get('protected_key'):
         if value['base_url'] != old.get('base_url'):
             raise ValueError('更换 API 地址时请重新填写对应密钥，避免把旧密钥发送给另一服务')
         value['protected_key']=old['protected_key']
+        value['credential_origin']=old.get('credential_origin','personal')
     else:
         raise ValueError('首次配置需要填写 API 密钥')
     value.update(model_status='not_verified',web_status='not_verified' if value['web_search'] else 'disabled')

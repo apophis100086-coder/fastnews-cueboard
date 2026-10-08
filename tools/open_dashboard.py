@@ -148,6 +148,9 @@ def serve():
         from fastnews.db import sync_registry
         from fastnews.source_catalog import configured_view
         from fastnews.server import LocalApplication, make_server
+        from fastnews.shared_api import bootstrap as bootstrap_shared_api
+        try:bootstrap_shared_api(ROOT)
+        except ValueError:LOGGER.warning('Shared API preset could not be imported; configure it in the entry settings.')
         app = LocalApplication(ROOT / 'data' / 'fastnews.db', load_config(),
                                output_dir=ROOT / 'exports')
         with closing(app.connection()) as conn:
