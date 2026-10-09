@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -24,6 +25,17 @@ SECRET_PATTERNS = {
 
 def git(*args: str) -> bytes:
     return subprocess.check_output(["git", *args], cwd=ROOT)
+
+
+def isolated_environment() -> dict[str, str]:
+    """Do not let hook-exported Git paths target the real repo from tests."""
+    env = os.environ.copy()
+    for name in git('rev-parse', '--local-env-vars').decode().splitlines():
+        env.pop(name, None)
+    for name in list(env):
+        if name.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_')):
+            env.pop(name)
+    return env
 
 
 def require_clean(head: str) -> None:
@@ -151,8 +163,11 @@ def main() -> None:
                     'import fastnews; '
                     'assert pathlib.Path(fastnews.__file__).resolve()==root/"fastnews"/"__init__.py", "Source checkout was not imported"; '
                     'unittest.main(module=None,argv=["unittest","discover","-s","tests","-q"])')
-        subprocess.run([sys.executable, '-B', '-X', 'utf8', '-c', isolated], cwd=checkout, check=True)
-        subprocess.run([node, "--test", "--test-reporter=dot", "tests/ui_daily_test.cjs"], cwd=checkout, check=True)
+        environment = isolated_environment()
+        subprocess.run([sys.executable, '-B', '-X', 'utf8', '-c', isolated], cwd=checkout,
+                       env=environment, check=True)
+        subprocess.run([node, "--test", "--test-reporter=dot", "tests/ui_daily_test.cjs"], cwd=checkout,
+                       env=environment, check=True)
     require_clean(head)
     print("PASS: source-only checkout, Python and frontend tests. No live collection or LLM calls.")
 
