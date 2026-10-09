@@ -6,11 +6,15 @@ $ErrorActionPreference = 'Stop'
 if ($Disable -and $Status) { throw 'Choose either -Disable or -Status.' }
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $launcherPath = Join-Path $projectRoot 'tools\open_dashboard.py'
-$pythonPath = Join-Path $projectRoot '.venv\Scripts\pythonw.exe'
-$consolePython = Join-Path $projectRoot '.venv\Scripts\python.exe'
-$startupPath = Join-Path ([Environment]::GetFolderPath('Startup')) '华泰柏瑞快讯看板.lnk'
-$desktopPath = Join-Path ([Environment]::GetFolderPath('Desktop')) '华泰柏瑞快讯看板.lnk'
-$owner = 'Fastnews Cueboard | ' + $projectRoot
+$pythonPath = Join-Path $projectRoot 'runtime\python\pythonw.exe'
+$consolePython = Join-Path $projectRoot 'runtime\python\python.exe'
+if (-not (Test-Path -LiteralPath $pythonPath)) {
+    $pythonPath = Join-Path $projectRoot '.venv\Scripts\pythonw.exe'
+    $consolePython = Join-Path $projectRoot '.venv\Scripts\python.exe'
+}
+$startupPath = Join-Path ([Environment]::GetFolderPath('Startup')) ('华泰柏瑞快讯看板 '+(Split-Path -Leaf $projectRoot)+'.lnk')
+$desktopPath = Join-Path ([Environment]::GetFolderPath('Desktop')) ('华泰柏瑞快讯看板 '+(Split-Path -Leaf $projectRoot)+'.lnk')
+$owner = 'Fastnews WorkBuddy | ' + $projectRoot
 if (-not ('Fastnews.WindowsShortcut' -as [type])) {
     Add-Type -Path (Join-Path $PSScriptRoot 'WindowsShortcut.cs')
 }
@@ -42,7 +46,7 @@ if ($Disable) {
     if (Test-Path -LiteralPath $startupPath) { Remove-Item -LiteralPath $startupPath }
 } elseif (-not $Status) {
     if (-not (Test-Path -LiteralPath $pythonPath)) {
-        throw 'Create .venv and install requirements.lock before enabling startup.'
+        throw 'Set up the source environment or extract the complete release before enabling startup.'
     }
     & $consolePython -c 'import yaml, tzdata'
     if ($LASTEXITCODE -ne 0) { throw 'The project Python runtime is missing dependencies.' }
@@ -60,5 +64,5 @@ if ($Disable) {
     desktop_path = $desktopPath
     python = $pythonPath
     arguments = $startupArguments
-    url = 'http://127.0.0.1:8765/'
+    url = (& $consolePython -X utf8 -c 'import sys; sys.path.insert(0,sys.argv[1]); from tools.open_dashboard import URL; print(URL)' $projectRoot)
 } | ConvertTo-Json

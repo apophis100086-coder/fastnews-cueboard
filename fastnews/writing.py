@@ -275,7 +275,7 @@ def accept_run(conn,config,stage,data,control,run_id=None):
             conn.execute('''INSERT INTO fn_writing_runs(run_id,request_id,request_hash,edition_id,decision_revision,stage,
                 profile_id,status,input_json,created_at,deadline_at) VALUES(?,?,?,?,?,?,?,'running',?,?,?)''',
                 (identifier,data['request_id'],request_signature(stage,data),data['edition_id'],data['decision_revision'],
-                 stage,pid,dumps(content),control.started_at,control.deadline_at))
+                 stage,pid,dumps(content),control.started_at,control.deadline_at or ''))
             conn.commit()
         except BaseException:
             conn.rollback(); raise
@@ -680,7 +680,7 @@ def validate_draft(raw,snapshot,outline,*,anchors_required=True):
     content['text']=render_draft(content,compact_sources=v64)
     from .writing_quality import quality_checks
     quality_characters=content['body_characters']
-    if snapshot.get('workflow')=='direct-newsroom-v3':
+    if snapshot.get('workflow') in {'direct-newsroom-v3','direct-newsroom-v4-agent'}:
         from .writing_templates import BODY_KINDS
         quality_characters+=sum(len(b['text']) for b in snapshot.get('company_template',{}).get('blocks',[]) if b['kind'] in BODY_KINDS)
     editorial=quality_checks(raw,quality_characters,v64)
@@ -705,7 +705,7 @@ def risk_notice(snapshot):
 
 
 def render_draft(content,*,compact_sources=False):
-    if content.get('format_version') in {'direct-newsroom-v2','direct-newsroom-v3'}:
+    if content.get('format_version') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'}:
         from .writing_delivery import render
         return render(content)
     lines=[content['title']]
@@ -735,12 +735,13 @@ def _save_version(conn,snapshot,stage,content,checks,*,parent_id=None,run_id=Non
 
 def run_record(row):
     result=dict(row)
+    result['deadline_at']=result['deadline_at'] or None
     saved=json.loads(result.pop('input_json'))
     result.update(job_id=result['run_id'],action='writing-'+result['stage'],reader_profile=result['profile_id'],
         error=saved.get('failure_message'),
         product_code=saved['snapshot']['product_code'],news_cutoff=saved['snapshot']['news_cutoff'],
         started_at=result['created_at'],progress=[],usage=json.loads(result.pop('usage_json') or 'null'))
-    if saved.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'}:
+    if saved.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'}:
         result.update(action='writing-generate',workflow=saved['workflow'])
     return result
 
@@ -750,7 +751,7 @@ def execute_run(conn,identifier,control,*,runner=run_host,fetcher=None,progress=
     if not row or row['status']!='running':
         raise ValueError('任务不存在或已经结束')
     data=json.loads(row['input_json']); snapshot=data['snapshot']; stage=row['stage']; response=None
-    if data.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'}:
+    if data.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'}:
         from .writing_newsroom import execute
         return execute(conn,row,data,control,runner=runner,progress=progress,fetcher=fetcher)
     from .writing_newsroom import enabled, execute
@@ -882,8 +883,8 @@ def workflow(conn,edition_id):
     for item in versions:
         item['stale_selection']=item['decision_revision']!=(decision or {}).get('decision_revision')
         from .writing_direct import skill_fingerprint as direct_fingerprint
-        item['stale_skill_version']=item['skill_version']!=(direct_fingerprint(item['product_code']) if item['workflow'] in {'direct-newsroom-v2','direct-newsroom-v3'} else current_skill)
-        if item['workflow']=='direct-newsroom-v3':
+        item['stale_skill_version']=item['skill_version']!=(direct_fingerprint(item['product_code']) if item['workflow'] in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'} else current_skill)
+        if item['workflow'] in {'direct-newsroom-v3','direct-newsroom-v4-agent'}:
             from .writing_templates import select_template
             current_template=select_template(item['product_code'],item['news_cutoff'])
             item['stale_template_version']=item['content'].get('company_template',{}).get('sha256')!=current_template.get('sha256')
@@ -896,9 +897,41 @@ def workflow(conn,edition_id):
     return {'versions':versions,'runs':runs,'rules_version':policy()['version'],'task_budget':status(conn)}
 
 
+def archive(conn,limit=200):
+    """跨期次的历史成稿摘要（stage=draft 且有正文），供看板"历史稿件库"直接查找。
+
+    看板原有"历史版本与运行记录"只列当前期次的版本，用户切换期次才能翻到旧稿。
+    这里按生成时间倒序列出所有期次的 draft 版本（起草稿与编辑稿都会列出，前端
+    按状态标注），并用 edition 表补齐产品与日期，便于不切期次也能直接查到。
+    """
+    rows=conn.execute(
+        '''SELECT v.version_id,v.edition_id,v.content_json,v.created_at,v.run_id,
+                  e.product_code,e.edition_date
+           FROM fn_writing_versions v
+           LEFT JOIN fn_editions e ON e.edition_id=v.edition_id
+           WHERE v.stage='draft'
+           ORDER BY v.rowid DESC LIMIT ?''',(limit,)).fetchall()
+    items=[]
+    for row in rows:
+        try:content=json.loads(row['content_json'])
+        except (TypeError,ValueError):continue
+        if not isinstance(content,dict):continue
+        text=content.get('text') or ''
+        if not str(text).strip():continue
+        items.append({
+            'version_id':row['version_id'],'edition_id':row['edition_id'],
+            'product_code':row['product_code'] or '','edition_date':row['edition_date'] or '',
+            'title':content.get('title') or '','body_characters':content.get('body_characters') or len(str(text)),
+            'status':content.get('status') or '',
+            'pipeline_status':(content.get('pipeline') or {}).get('status') or '',
+            'human_edited':bool(content.get('human_edited')),
+            'created_at':row['created_at'],'run_id':row['run_id']})
+    return items
+
+
 def export_draft(conn,identifier):
     record=version(conn,identifier)
-    if record['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'} and record['stage']=='draft':
+    if record['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'} and record['stage']=='draft':
         from .writing_delivery import render,word
         import base64
         return dict(artifact_type='human_selected_news_draft',version_id=identifier,
@@ -922,7 +955,7 @@ def review_stored_draft(conn,parent):
     """Apply current deterministic gates without rewriting a saved version."""
     if parent['content'].get('human_edited'):
         raise ValueError('人工修改应重新阅读核对，旧模型检查不能证明新增文字')
-    if parent['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'}:
+    if parent['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'}:
         if parent['content'].get('pipeline',{}).get('status')!='complete':
             raise ValueError('编辑尚未完成，已保存的起草稿仍可查看')
         from .writing_direct import validate_edited
@@ -958,7 +991,7 @@ def recheck_draft(conn,data):
     _decision(conn,parent['edition_id'],parent['decision_revision'])
     current=current_skill_for(parent)
     if parent['snapshot']['skill_version']!=current:
-        action='重新生成快讯初稿' if parent['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'} else '回到框架确认后生成'
+        action='重新生成快讯初稿' if parent['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'} else '回到框架确认后生成'
         raise ValueError('写作技能或规则已更新，请'+action+'；程序复查不能代替新语义检查')
     previous=conn.execute('SELECT version_id,input_hash FROM fn_writing_versions WHERE request_id=?',(rid,)).fetchone()
     signature=fingerprint(['recheck',parent['version_id']])
@@ -973,7 +1006,7 @@ def recheck_draft(conn,data):
 
 
 def current_skill_for(record):
-    if record['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'}:
+    if record['snapshot'].get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'}:
         from .writing_direct import skill_fingerprint as direct_fingerprint
         return direct_fingerprint(record['snapshot']['product_code'])
     return skill_fingerprint()

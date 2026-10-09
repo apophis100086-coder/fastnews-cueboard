@@ -1,0 +1,38 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>快讯看板 · 使用指南</title>
+<style>body{max-width:900px;margin:50px auto;padding:0 24px 60px;font:17px/1.85 system-ui,"Microsoft YaHei",sans-serif;color:#27313b;background:#faf9f7}h1{font-size:36px;line-height:1.3}h2{margin-top:42px;font-size:24px}h3{font-size:19px}a{color:#9b343c}header{border-top:5px solid #9b343c;padding-top:26px}.eyebrow{color:#9b343c;letter-spacing:2px;font-size:14px}.intro{color:#59636d;font-size:19px}.card{padding:22px 28px;background:white;border:1px solid #e0e1e3;border-radius:10px;margin:22px 0}.quote{border-left:3px solid #9b343c;padding:12px 20px;background:#f3eceb;font-weight:600}li{margin:10px 0}code{font-family:inherit;background:#eee;padding:2px 6px;border-radius:3px;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;background:white}td,th{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid #ddd}small{color:#626b74}footer{margin-top:48px;border-top:1px solid #ddd;padding-top:20px;color:#626b74}@media(max-width:600px){body{margin-top:24px;padding:0 16px 40px}h1{font-size:28px}.card{padding:16px}table{font-size:14px}td,th{padding:8px}}@media print{body{background:white;margin:0}h2,.card{break-inside:avoid}}</style>
+<header><div class="eyebrow">华泰柏瑞 · 本地工作台</div><h1>快讯看板，打开就从这里开始</h1><p class="intro">读晨报 → 查产品线索 → 人工选材 → 生成、核对与导出。</p></header><aside class="card"><strong>2026-10-10 整合候选说明</strong><p>本页主要说明完整发行包。若从 GitHub 克隆源码，先读 README.md 并运行源码安装器；源码不携带运行环境、公司模板、样稿、历史数据或密钥。当前分支仍待 WorkBuddy 功能一致性验收，下方为完整发行包的使用方式。</p></aside>
+<div class="card"><h2 style="margin-top:0">第一次使用 WorkBuddy</h2><ol>
+<li>将整个压缩包<strong>全部解压</strong>到本机一个固定文件夹，例如“文档”中的“快讯AI看板 带教版”。不要在压缩包里直接运行。</li>
+<li>打开已登录的 WorkBuddy，选择解压得到的<strong>项目文件夹</strong>作为工作空间。该文件夹里能看到“一键启动.cmd”和本指南。</li>
+<li>在这个项目的对话中输入下面这句话。项目已附带技能和运行环境，无需另装 Python。</li></ol>
+<p class="quote">请使用本项目的 fastnews-dashboard 技能打开快讯看板，并检查当前入口。</p>
+<p>也可以直接双击 <strong>一键启动.cmd</strong> 打开页面。带教发行包默认网址为 <a href="http://127.0.0.1:8797/">http://127.0.0.1:8797/</a>；开发副本使用其他端口，以启动后的实际网址为准。</p>
+<p>页面右上“使用入口”默认为 WorkBuddy。点击“检查当前入口响应”后，回到 WorkBuddy 的这个项目对话，输入 <strong>处理看板任务</strong>。页面收到响应后会自动更新。</p></div>
+<h2>每天怎么用</h2><ol>
+<li><strong>晨报速览：</strong>选日期、点“生成晨报”，随后在客户端说“处理看板任务”。只想更新公开新闻列表时，使用“更多操作 → 仅更新新闻列表”，这一步不调用模型。</li>
+<li><strong>产品检索：</strong>选产品，核对资讯截点，点“检索该产品线索”。模型返回后查看内容与出处，把有用线索加入候选池。没有取得材料的来源会列明原因。</li>
+<li><strong>选材与快讯：</strong>勾选本次采用的材料，按需填写写作重点，点生成初稿，再让客户端处理任务。模型会按现行流程补充同题资料、起草、编辑和核验；最终采用由你决定。</li>
+<li><strong>核对与导出：</strong>查看待核对项、出处和产品信息，修改后另存一个版本，再复制完整稿或下载 Word。历史稿件支持检索和打开。</li></ol>
+<p>WorkBuddy 与 Codex 模式都需要在客户端接手任务；仅打开网页不会自动调用客户端。任务进行时可继续看已有资料，也可以点“停止”。关闭网页后再次打开会显示当前任务状态；停止后台服务前需先停止运行中的任务。</p>
+<div class="card"><h3>DeepSeek 共享版补充</h3><p>如果包内有“共享API说明.txt”，表示项目所有者已授权内置共享 DeepSeek 连接。仍可先在 WorkBuddy 中打开项目。需要使用 DeepSeek 时，打开“使用入口”，选择“自接 API”，地址、模型和密钥已预填；确认材料发送与费用授权，点击“保存 API 配置”，再点“保存入口”。</p><p>共享版的可迁移密钥保存在包内配置文件中，接收者能够读取并调用，费用计入密钥提供者账户。首次启动另存为 Windows 用户加密配置；数据备份不复制密钥，但共享发行包本身含密钥。请只把这个包交给预定带教。</p></div><h2>三种入口怎么选</h2><table><thead><tr><th>入口</th><th>准备</th><th>发起任务之后</th></tr></thead><tbody>
+<tr><td>WorkBuddy</td><td>已安装、登录客户端，并打开本项目文件夹。</td><td>在该项目对话说“处理看板任务”。模型和联网能力由当前账户提供。</td></tr>
+<tr><td>自接 API</td><td>在“使用入口”填写公开 HTTPS 基础地址、模型 ID、密钥，确认材料发送与费用授权，先保存 API 配置，再保存入口。</td><td>程序直接请求接口，不用回客户端接手。普通 Chat Completions 整理已采集或导入的材料；支持 web_search 的 Responses 服务可启用模型补搜。</td></tr>
+<tr><td>Codex</td><td>在 Codex 中打开本项目文件夹，页面选择 Codex 并保存。</td><td>在该项目对话说“处理看板任务”。项目内置 .agents 技能。</td></tr></tbody></table>
+<p>切换入口会保留同一项目的选材与稿件。新客户端不会自动复制另一个客户端的账户或额度。正在运行的任务需完成或停止后再切换入口。</p>
+<div class="card"><h3>API 填写提示</h3><p>基础地址通常形如 <code>https://服务商域名/v1</code>，不要再加 <code>/chat/completions</code> 或 <code>/responses</code>。模型名称使用服务商给出的完整 ID。默认使用 JSON 对象返回；只有模型支持完整严格结构化协议时再选择 JSON Schema。部分模型使用 Responses 协议，按服务商说明选择。</p>
+<p>一次任务默认最多 4 次模型请求，每次输出最多 6000 token，可在额度设置中调整。API 写作共用 15 分钟；失败不会静默改用另一入口。密钥由本机 Windows 账户加密，页面不回显，不随备份迁移。更换服务商地址时需重新填密钥。</p></div>
+<h2>数据怎样保存和搬家</h2><p>资料、选材、稿件版本放在项目的 <code>data</code> 文件夹中，导出稿放在 <code>exports</code> 中。浏览器中还未另存的编辑内容使用本地草稿；建议重要修改点“保存新版本”。请不要删除 data 文件夹，也不要覆盖旧版文件夹来升级。</p>
+<ol><li>旧项目页面点击 <strong>数据与备份 → 创建数据备份</strong>。备份完成后下载到项目外的位置。备份含业务库、上传资料、范文模板、导出稿以及当前浏览器的草稿；不含账户密钥和旧任务会话。</li>
+<li>在新电脑或新目录<strong>重新解压一份完整项目，先不要启动</strong>，双击 <strong>恢复数据.cmd</strong>，选择上一步的备份。</li>
+<li>看到恢复完成后再双击“一键启动.cmd”。选择本机使用入口；API 密钥需重新填写。请保留旧项目和备份，确认新项目内容完整后再自行整理。</li></ol>
+<p>恢复工具不会覆盖已有数据库。如果新文件夹已启动过，请另解压一个新文件夹后重试。同一台电脑的两个带教副本使用同一端口，切换前先通过旧副本的“停止看板.cmd”关闭服务；程序不会强行结束其他项目。</p>
+<h2>遇到这些情况</h2><table><tr><th>页面提示</th><th>处理办法</th></tr>
+<tr><td>等待客户端接手</td><td>回到当前所选客户端的本项目对话，输入“处理看板任务”，不要另开一个没有项目文件夹的空对话。若未自动发现技能，让它读取本项目 .codebuddy（WorkBuddy）或 .agents（Codex）中的 SKILL.md。</td></tr>
+<tr><td>入口响应成功，但没有新闻</td><td>连接检查只验证任务响应。查看日期、来源覆盖和访问限制；未取得内容时可从原站阅读并导入材料。</td></tr>
+<tr><td>API 401 / 429 / 400</td><td>分别核对密钥、额度或限流、接口协议及结构化返回参数。在“使用入口”更新配置后重试。</td></tr>
+<tr><td>端口被其他服务占用</td><td>先确认是否已打开另一个看板。关闭旧副本后重试；不要强行结束未知程序。需要协助时提供 data/logs 中的启动错误类型，不发送密钥文件。</td></tr>
+<tr><td>历史稿件加载失败</td><td>页面会给出失败提示和重试按钮。原数据仍在，先备份，不要通过删库解决。</td></tr>
+<tr><td>Windows 阻止启动或公司限制运行</td><td>核对包的来源与完整性，按公司的软件管理流程处理。不要关闭系统或客户端安全保护。</td></tr></table>
+<h2>这份包包括什么</h2><p>看板程序、Windows x64 运行环境及原许可证、WorkBuddy 和 Codex 项目技能、已调试的来源偏好、13 篇本地写作样例与已有产品模板、备份恢复工具。首次使用自动建立空业务库。公司样例仅用于获授权的内部使用，请勿上传公开仓库或技能市场。</p>
+<p>Windows 10/11 x64 为交付目标。解压和网页启动可离线完成；模型生成、公开来源采集分别需要相应账户或网络。账户、联网原文可达性以及稿件采用程度需要在实际使用中核对；“检查响应成功”只表示模型按要求返回了结果。</p>
+<footer>发行版：2026-10-08 · 三入口带教版<br>完整程序核验记录：docs/THREE_ENTRY_ACCEPTANCE_20261008.md。每个文件的摘要和对应代码版本见 PACKAGE_MANIFEST.json。</footer></html>

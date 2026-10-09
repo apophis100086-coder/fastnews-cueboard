@@ -8,13 +8,16 @@ from datetime import date, timedelta
 import json
 from pathlib import Path
 import sqlite3
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from fastnews.workspace import settings
 import time
 from urllib.request import build_opener, ProxyHandler, Request
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--port', type=int, default=settings()['port'])
     parser.add_argument('--date')
     parser.add_argument('--probe', action='store_true')
     parser.add_argument('--output', default='data/daily_acceptance/live_api.json')

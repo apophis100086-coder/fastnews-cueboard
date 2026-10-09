@@ -1,0 +1,13 @@
+{
+  "format_version": 1,
+  "product": "fastnews-cueboard",
+  "repository": "https://github.com/apophis100086-coder/fastnews-cueboard",
+  "integration_branch": "codex/unify-delivery-20261010",
+  "status": "integration_candidate_pending_workbuddy_parity",
+  "codex_baseline": "b08edbc00162a79f2161812813ca49cebfec400d",
+  "imported_source": "b9f7cdc0a7703463d9ba5443350cca8e212309d7",
+  "business_data_in_git": false,
+  "credentials_in_git": false,
+  "private_resources_in_git": false,
+  "handoff": "docs/REPOSITORY_INTEGRATION_20261010.md"
+}

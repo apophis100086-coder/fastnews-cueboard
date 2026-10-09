@@ -7,3 +7,6 @@
 最后自然承接 company_copy 中的固定产品介绍，避免在新闻正文末尾又写一遍成员名单、指数说明或管理人成绩。来源按每段实际使用的原文填 source_ids。
 
 previous_draft 存在时，按 feedback 实际修改；保留未要求调整的有效内容。最终只输出完整标题和新闻正文，status、issues 如实反映具体材料缺口，不输出分析计划或自评分。
+
+
+读取 style_profile.common 和 style_profile.product：它们是版本化的共用与产品写作规则，samples只是认可范文来源清单，不是新闻依据。两篇完整style_examples用于判断组织方式；其中事实、数字、公司名称和代码不能复制到本期。按材料决定段落顺序，不机械套用某篇样例。

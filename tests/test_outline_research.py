@@ -160,7 +160,7 @@ class OutlineResearchTests(unittest.TestCase):
 
     def test_disabled_web_and_opt_out_do_not_enable_search(self):
         from fastnews.source_catalog import save_profile, configured_view
-        save_profile(self.conn,dict(profile_id='default',name='默认方案',host='codex',web_search=False))
+        save_profile(self.conn,dict(profile_id='default',name='默认方案',host='workbuddy',web_search=False))
         self.cfg=configured_view(self.conn,self.config)
         outline=self.run_outline(runner=self.runner,fetcher=Mock(side_effect=AssertionError('no fetch')))
         self.assertFalse(outline['supplemental_research']['enabled'])

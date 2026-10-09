@@ -15,10 +15,17 @@ class TaskControl:
     def __init__(self, seconds=480):
         self.started=time.monotonic()
         self.deadline=self.started+seconds
+        self.unbounded=False
         now=datetime.now(timezone.utc)
         self.started_at=now.isoformat()
         self.deadline_at=(now+timedelta(seconds=seconds)).isoformat()
         self.cancelled=threading.Event()
+
+    def make_unbounded(self):
+        """No task deadline; individual network operations retain finite limits."""
+        self.unbounded=True
+        self.deadline=float('inf')
+        self.deadline_at=None
 
     def check(self):
         if self.cancelled.is_set():

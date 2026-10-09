@@ -38,7 +38,9 @@ async function pollExploration(id,initial){
    job=job||await api('job?id='+encodeURIComponent(id));
    explorationJob=job;
    const elapsed=job.started_at?Math.max(0,Math.round((Date.now()-Date.parse(job.started_at))/1000)):0;
-   const text=`继续探查 · ${job.product_code||''} · ${job.status==='running'?`${job.stop_requested?'正在停止':'全网检索与判断中'} · ${elapsed} / 480 秒`:job.status==='completed'?'已完成':'已停止'} · 可继续选材、保存和导出`;
+   const total=job.deadline_at&&job.started_at?Math.max(1,Math.round((Date.parse(job.deadline_at)-Date.parse(job.started_at))/1000)):480;
+   const timing=job.agent_direct?`已用 ${elapsed} 秒 · 不限时，可手动停止`:`${elapsed} / ${total} 秒`;
+   const text=`继续探查 · ${job.product_code||''} · ${job.status==='running'?`${job.stop_requested?'正在停止':'检索与判断中'} · ${timing}`:job.status==='completed'?'已完成':'已停止'} · 可继续选材、保存和导出`;
    $('job').textContent=text+(job.error?' · '+job.error:'');
    $('explore-progress').textContent=text;
    if(job.status!=='running'){

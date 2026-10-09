@@ -4,6 +4,8 @@ from urllib.parse import urlsplit
 
 
 def observed_queries(trace):
+    if trace.get('evidence_status')=='agent_reported':
+        return []
     result = []
     for action in trace.get('actions', []):
         if action.get('status') in {'failed', 'cancelled'} or action.get('type') not in {'search', 'search_query', 'web_search'}:

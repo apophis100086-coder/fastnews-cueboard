@@ -1,3 +1,5 @@
+> **2026-10-10 当前整合：** 原仓库继续作为唯一维护仓库，最新候选在 `codex/unify-delivery-20261010`。从原 Codex b08edbc 和改进版 b9f7cdc 合并双方历史。正式主线提升前完成 [功能一致性验收](REPOSITORY_INTEGRATION_20261010.md)，不能把较早的默认 main 当成最新成果。源码首次安装运行 `python tools/setup_workspace.py`；当前启动入口兼容 `.venv` 和发行包 `runtime`。密钥及私有材料仍不上传。
+
 # GitHub 长期维护与回退
 
 私有仓库：https://github.com/apophis100086-coder/fastnews-cueboard

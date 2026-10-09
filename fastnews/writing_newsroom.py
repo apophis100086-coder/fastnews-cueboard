@@ -116,6 +116,7 @@ def build_input(snapshot, outline):
         editorial_brief=brief,
         news_sources=news,product_sources=product,
         style_examples=deepcopy(snapshot.get('style_examples',[])),
+        style_profile=deepcopy(snapshot.get('style_profile')),
         input_coverage=dict(omitted=omitted,style_omitted=[],truncated_sources=[s['source_id'] for s in news+product if s['text_truncated']]))
     # Reserve space for the complete first draft and an editing instruction. The
     # same resulting source set is used in both calls; no mid-task silent trim.
@@ -179,7 +180,7 @@ def validate_edited(raw, snapshot, outline):
             kind=ev['kind'],source_id=sid,quote=located_quote(ev['quote'],source),published_at=source.get('published_at') or '',
             publication_quote='',data_period=ev['data_period'],supported=ev['supported'],reason=ev['reason'])
         identity=snapshot['product_code']
-        if snapshot.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'} and source.get('subject_code') in snapshot.get('product_definition',{}).get('member_codes',[]):
+        if snapshot.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'} and source.get('subject_code') in snapshot.get('product_definition',{}).get('member_codes',[]):
             identity=source['subject_code']
         checks=qualify_claim(claim,sources,snapshot['news_cutoff'],identity)
         if claim['quote']!=ev['quote']:claim['quote_layout_normalized']=True
@@ -221,8 +222,9 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
     """Persist the composing version before starting editing, even on failure."""
     from . import writing as w
     snapshot=data['snapshot']; outline=data['parent']; identifier=row['run_id']
-    direct=data.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3'}
+    direct=data.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'}
     independent=data.get('workflow')=='direct-newsroom-v3'
+    templated=data.get('workflow') in {'direct-newsroom-v3','direct-newsroom-v4-agent'}
     format_version=data['workflow'] if direct else FORMAT
     steps=[]; first_id=None; edited_id=None; response=None
     pipeline=dict(format_version=format_version,status='preparing',steps=[])
@@ -267,12 +269,12 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         else:
             base,checked_snapshot=build_input(snapshot,outline)
         pipeline['input_coverage']=base['input_coverage'];persist()
-        writer_base={k:v for k,v in base.items() if k!='input_coverage'} if independent else base
+        writer_base={k:v for k,v in base.items() if k!='input_coverage'} if templated else base
         first=invoke('compose',dict(writer_base,stage='compose'),data['instructions'],NEWS_ARTICLE,
             snapshot['rules']['compose_seconds'] if direct else min(snapshot['rules']['compose_seconds'],snapshot['rules']['host_seconds']))
         w._validate_shape(first.payload,NEWS_ARTICLE)
         first_content=render_article(first.payload,checked_snapshot)
-        if independent:
+        if templated:
             from .writing_templates import attach
             attach(first_content,checked_snapshot)
         first_content['pipeline']=dict(format_version=format_version,status='editing_incomplete',input_coverage=base['input_coverage'])
@@ -292,18 +294,19 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         if available<=0:
             from .task_control import TaskStopped
             raise TaskStopped('timed_out')
-        from .writing_contracts import DIRECT_EDIT,EDITORIAL_EDIT,ARTICLE_AUDIT
+        from .writing_contracts import DIRECT_EDIT,EDITORIAL_EDIT,MERGED_EDITORIAL_EDIT
+        edit_schema=EDITORIAL_EDIT if independent else MERGED_EDITORIAL_EDIT if templated else DIRECT_EDIT if direct else NEWS_EDIT
         edited=invoke('edit',dict(writer_base,stage='edit',composing_draft=first.payload),data['editing_instructions'],
-            EDITORIAL_EDIT if independent else DIRECT_EDIT if direct else NEWS_EDIT,available)
-        if independent:
-            w._validate_shape(edited.payload,EDITORIAL_EDIT)
+            edit_schema,available)
+        if templated:
+            w._validate_shape(edited.payload,edit_schema)
             edited_content=render_article(edited.payload,checked_snapshot)
             attach(edited_content,checked_snapshot)
             edited_content.update(editing_changes=edited.payload['changes'],
                 pipeline=dict(format_version=format_version,status='verification_incomplete',working_version_id=first_id,
                     changes=edited.payload['changes'],input_coverage=base['input_coverage']))
             edit_checks=deepcopy(first_checks)
-            edit_checks.update(status='verification_incomplete',errors=[issue('verification_incomplete','编辑稿已保存，独立核验尚未完成')])
+            edit_checks.update(status='verification_incomplete',errors=[issue('verification_incomplete','编辑稿已保存，程序核验尚未完成')])
             with conn:
                 saved=w._save_version(conn,checked_snapshot,'draft',edited_content,edit_checks,parent_id=first_id,run_id=identifier)
                 edited_id=saved['version_id']
@@ -311,11 +314,14 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
             pipeline['edited_version_id']=edited_id;persist();control.check()
             if edited.payload['status']!='ready' or not edited.payload['paragraphs']:
                 raise ValueError('编辑材料不足：'+'；'.join(edited.payload['issues'] or ['没有完整正文']))
-            audit_input={k:v for k,v in base.items() if k in {'news_cutoff','editorial_brief','news_sources','product_sources','company_copy'}}
-            audit=invoke('audit',dict(audit_input,stage='audit',edited_article=edited.payload),
-                data['audit_instructions'],ARTICLE_AUDIT,snapshot['rules']['audit_seconds'])
-            w._validate_shape(audit.payload,ARTICLE_AUDIT)
-            final_raw=dict(edited.payload,**audit.payload)
+            if independent:
+                from .writing_contracts import ARTICLE_AUDIT
+                audit_input={k:v for k,v in base.items() if k in {'news_cutoff','editorial_brief','news_sources','product_sources','company_copy'}}
+                audit=invoke('audit',dict(audit_input,stage='audit',edited_article=edited.payload),
+                    data['audit_instructions'],ARTICLE_AUDIT,snapshot['rules'].get('audit_seconds',120))
+                w._validate_shape(audit.payload,ARTICLE_AUDIT)
+                final_raw=dict(edited.payload,**audit.payload)
+            else:final_raw=edited.payload
         else:final_raw=edited.payload
         if direct:
             from .writing_direct import validate_edited as validate_direct
@@ -325,7 +331,7 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
         control.check()
         content['pipeline']=dict(format_version=format_version,status='complete',working_version_id=first_id,
             changes=edited.payload['changes'],input_coverage=base['input_coverage'])
-        if independent:content['pipeline']['edited_version_id']=edited_id
+        if templated:content['pipeline']['edited_version_id']=edited_id
         pipeline['status']='complete';persist()
         usage=combined_usage(steps,control)
         usage['pipeline']=format_version
@@ -347,7 +353,7 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
                 reason=f"{phase}步骤达到{round(last_step['timeout'])}秒时限。"
         elif code=='cancelled':reason='已按要求停止。'
         pipeline.update(status='verification_incomplete' if edited_id else 'editing_incomplete' if first_id else 'compose_incomplete',failure_code=code)
-        data['failure_message']=('独立核验未完成，编辑稿和起草稿已保留。' if edited_id else '编辑未完成，起草稿已保留。' if first_id else phase+'未完成，选材与已取得资料已保留。')+reason+(
+        data['failure_message']=(('独立核验未完成，编辑稿和起草稿已保留。' if independent else '编辑稿已保存，程序核验尚未完成。') if edited_id else '编辑未完成，起草稿已保留。' if first_id else phase+'未完成，选材与已取得资料已保留。')+reason+(
             '可查看保留稿件后填写修改意见或重新生成。' if first_id else '请查看本轮具体缺口后重新生成。')
         # Apply the same secret scrubbing as the legacy failure path.
         from pathlib import Path

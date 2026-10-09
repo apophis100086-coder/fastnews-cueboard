@@ -39,3 +39,8 @@ output/
 .playwright-cli/
 .DS_Store
 Thumbs.db
+
+runtime/
+workbuddy-dist/
+
+config/workbuddy.local.json

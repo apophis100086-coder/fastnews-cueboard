@@ -1,3 +1,31 @@
+# 2026-10-10 同仓库整合授权（优先于以下历史说明）
+
+用户授权将最新成果纳入原 GitHub 项目，继续使用 `apophis100086-coder/fastnews-cueboard`。当前整合分支 `codex/unify-delivery-20261010`，原 Codex 对照基准 b08edbc、导入改进版 b9f7cdc。允许在完整检查后推送本整合分支；历史“仅本地、无远程授权、禁止 Codex/API”不再适用。待 WorkBuddy 功能一致性验收后再合并主线，不把本次入库称为一比一搬迁完成。
+
+先读 README.md、PROJECT_STATUS.json 和 docs/REPOSITORY_INTEGRATION_20261010.md，再读 CODEX_MASTER_HANDOFF.md 与模块文档。保留两条源码历史及原 Codex 验收记录。不得重建、简化或悄悄改变业务流程；对原版与候选的差异逐项验收。日常操作使用本项目技能，从源码运行前准备 `.venv`，完整包可用 `runtime`。默认整合端口 8807，原目录和数据库不修改。
+
+三入口、DeepSeek、备份恢复与交付工具继续保留；密钥、数据库、样稿、公司模板、原始资料及含密钥压缩包不入 GitHub。旧 DeepSeek 共享授权只适用于本地发行包，不扩大到仓库、PR 或公开部署。不新增真实付费或私有资料外发调用。
+
+---
+
+# 2026-10-08 DeepSeek 共享包授权补充
+
+用户明确指定 DeepSeek，并授权将其提供的共享 API 密钥内置于本地交付压缩包。仅允许通过打包器显式传入被 Git 忽略的共享配置；密钥不得写入源码、Git、日志或验收记录。首次启动加密生成本机配置，不覆盖个人连接；共享种子随发行包可读取，必须在包说明与 manifest 中如实标记。默认入口保留 WorkBuddy，接收者首次 API 材料发送授权仍由其确认。允许一次最小真实 API 接入检查，只发送合成测试内容，不发送私有样例。
+
+# 2026-10-08 三入口升级当前授权（优先于历史单入口限制）
+
+本轮以改进实验版 4708cea 为基线，依次完成 WorkBuddy / OpenAI 兼容 API / Codex 三入口、体验与存储调优、Windows 带教包。用户已授权支持三入口；不再沿用下文“禁止 Codex / 禁止 API 适配”的旧产品限制。实际新付费调用仍须使用者在入口设置授权。智能体入口不限时、用户可停止；API 写作共用 900 秒。切换入口不迁移人工选择，不自动回退。代码仓库仍只在本地，无远程推送授权。
+
+日常用户要求“打开看板”或“处理看板任务”时，先读 `.agents/skills/fastnews-dashboard/SKILL.md`（Codex）或 `.codebuddy/skills/fastnews-dashboard/SKILL.md`（WorkBuddy）。使用当前目录，不能跳到桌面旧项目。日常操作无需重做历史 M0/M1 或重新开发。
+
+# 2026-10-02 改进实验版当前授权
+
+此目录是以 WorkBuddy 当前文件状态建立的独立开发主线，默认8787；原 Codex 与 WorkBuddy 目录保留。使用 WorkBuddy 智能体文件交换，不回退 Codex、不调用付费 API。用户已明确授权直连任务不限时，只由人工停止，优先于下文历史15分钟要求；请求、页面、容量预算仍有效。新写作使用 direct-newsroom-v4-agent：补搜、起草、编辑兼核验、程序检查与模板组装；历史v3独立核验语义不改。私有样例和模板仅在本地资源及获授权的 WorkBuddy 任务内使用，不入Git。详见 docs/IMPROVEMENT_20261002.md。
+
+# WorkBuddy 独立版当前约束（优先于下文源项目历史说明）
+
+先读 WORKBUDDY.md、WORKBUDDY_ORIGIN.json 与 docs/WORKBUDDY_ACCEPTANCE.md。仅使用官方 WorkBuddy 命令行，默认账户模型，无 Codex 回退、付费 API 或开发会话凭证。默认端口8767，业务空库起步；原项目与数据不修改。此仓库目前只在本地，不得把下文源项目的 GitHub 地址作为推送目标。原三配置字节不改，私有样例和模板仅本地，人工选材后直接成稿，共用900秒，不设每日次数上限，不自动发布。保留 .githooks 完整检查。
+
 # Codex项目约束｜华泰柏瑞快讯AI线索看板 V2
 
 ## 先做什么

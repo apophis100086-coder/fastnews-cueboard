@@ -1,3 +1,9 @@
+> **2026-10-10 统一仓库入口：** 当前整合候选为 `codex/unify-delivery-20261010`。请先读 [README.md](README.md) 与 [整合和验收清单](docs/REPOSITORY_INTEGRATION_20261010.md)。源码需准备 `.venv`，运行入口同时支持发行包 `runtime`；整合源码端口 8807。下文的独立仓库、单客户端、仅本地开发及旧端口描述属于历史状态。WorkBuddy 一致性尚待验收。
+
+# WorkBuddy 独立版入口
+
+当前启动、登录、使用和交付状态请先读 [WORKBUDDY.md](WORKBUDDY.md)。下文为源项目保留的历史说明；其中 Codex 模型、8765端口和原 GitHub 仓库不适用于此版。
+
 # 华泰柏瑞快讯 AI 线索看板：使用入口
 
 当前支持晨报速览、产品检索、人工候选池，以及选材后一键生成快讯初稿。分类总报、产品推荐与写作沿用本机 Codex / ChatGPT 登录额度，无需模型 API Key。

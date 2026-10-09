@@ -55,9 +55,9 @@ class HostWorkspaceTests(unittest.TestCase):
         control=TaskControl(480)
         process=Mock(returncode=0)
         telemetry='\n'.join(json.dumps(e) for e in [
-            {'type':'item.completed','item':{'type':'reasoning','text':'must not persist'}},
-            {'type':'item.completed','item':{'id':'s1','type':'web_search',
-                'action':{'type':'search','query':'public news'}}},
+            {'type':'assistant','message':{'content':[{'type':'thinking','thinking':'must not persist'}]}},
+            {'type':'assistant','message':{'content':[{'id':'s1','type':'tool_use','name':'WebSearch',
+                'input':{'query':'public news'}}]}},
             {'type':'error','message':'private diagnostic must not persist'}])
         calls=[]
         def interrupted(*args,**kwargs):
@@ -75,7 +75,7 @@ class HostWorkspaceTests(unittest.TestCase):
              patch.object(host_provider.subprocess,'Popen',return_value=process), \
              patch.object(host_provider,'ProcessGroup',return_value=group):
             with self.assertRaises(TaskStopped) as caught:
-                host_provider.run_host('codex','public fixture',{},control=control,timeout=120)
+                host_provider.run_host('workbuddy','public fixture',{},control=control,timeout=120)
         sent=process.communicate.call_args_list[0].args[0]
         self.assertIn('120 秒',sent)
         import re
@@ -92,21 +92,20 @@ class HostWorkspaceTests(unittest.TestCase):
 
     def test_explicit_model_uses_same_subscription_command_and_records_request(self):
         process=Mock(returncode=0)
-        process.communicate.return_value=(json.dumps({'type':'turn.completed','usage':{}}),'')
+        process.communicate.return_value=(json.dumps({'type':'result','structured_output':{'items':[]},'usage':{}}),'')
         process.poll.return_value=0
         commands=[]
         def start(args,**kwargs):
             commands.append(args)
-            Path(args[args.index('-o')+1]).write_text('{"items":[]}',encoding='utf-8')
             return process
         with patch.object(host_provider,'host_command',return_value=['fixture-host']), \
              patch.object(host_provider.subprocess,'run',return_value=Mock(returncode=0,stdout='ChatGPT',stderr='')), \
              patch.object(host_provider.subprocess,'Popen',side_effect=start), \
              patch.object(host_provider,'ProcessGroup'):
-            result=host_provider.run_host('codex','public fixture',{},model='gpt-6-sol',reasoning_effort='low')
-        self.assertEqual(commands[0][commands[0].index('--model')+1],'gpt-6-sol')
-        self.assertIn('model_reasoning_effort="low"',commands[0])
-        self.assertEqual(result.usage['model_requested'],'gpt-6-sol')
+            result=host_provider.run_host('workbuddy','public fixture',{},model='verified-fixture-model',reasoning_effort='low')
+        self.assertEqual(commands[0][commands[0].index('--model')+1],'verified-fixture-model')
+        self.assertEqual(commands[0][commands[0].index('--effort')+1],'low')
+        self.assertEqual(result.usage['model_requested'],'verified-fixture-model')
         self.assertFalse(result.usage['api_key_used'])
         self.assertEqual(result.usage['host_tasks'],1)
 

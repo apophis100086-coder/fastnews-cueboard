@@ -14,7 +14,7 @@ class DirectWritingTests(unittest.TestCase):
     def setUp(self):
         self.fixture=fixtures.NewsWritingTests('runTest');self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
         self.conn=self.fixture.conn
-        self.cfg=dict(self.fixture.cfg,_reader_profile={'settings':{'host':'codex','web_search':False}})
+        self.cfg=dict(self.fixture.cfg,_reader_profile={'settings':{'host':'workbuddy','web_search':False}})
         self.calls=[]
 
     def runner(self,host,prompt,schema,**kwargs):
@@ -22,11 +22,11 @@ class DirectWritingTests(unittest.TestCase):
         sid=payload['news_sources'][0]['source_id'];statement=self.fixture.statement
         raw=dict(status='ready',title='设备订单增长',paragraphs=[dict(text=statement,source_ids=[sid])],issues=[])
         if payload['stage']=='edit':raw['changes']=['删除重复解释']
-        if payload['stage']=='audit':
-            raw=dict(evidence=[dict(paragraph_index=1,source_id=sid,statement=statement,quote=statement,kind='reported',data_period='',supported=True,reason='')],
+        if payload['stage']=='edit':
+            raw.update(evidence=[dict(paragraph_index=1,source_id=sid,statement=statement,quote=statement,kind='reported',data_period='',supported=True,reason='')],
                 entities=[],review={k:True for k in NEWS_EDIT['properties']['review']['properties']},
                 editorial_review={k:[] if k=='issues' else True if k=='material_sufficient' else '合成检查' for k in NEWS_EDIT['properties']['editorial_review']['properties']},)
-        return HostResult(raw,dict(input_tokens=20,output_tokens=10,model_requested=kwargs['model'],reasoning_effort_requested=kwargs['reasoning_effort']),{})
+        return HostResult(raw,dict(input_tokens=20,output_tokens=10,model_requested=kwargs.get('model'),reasoning_effort_requested=kwargs.get('reasoning_effort')), {})
 
     def run_direct(self,runner=None,**data):
         control=TaskControl(900)
@@ -37,16 +37,16 @@ class DirectWritingTests(unittest.TestCase):
     def test_direct_requires_selection_but_no_outline_and_keeps_two_actual_versions(self):
         before=w.ed.latest_decision(self.conn,self.fixture.eid)
         result=self.run_direct()
-        self.assertEqual([c[0]['stage'] for c in self.calls],['compose','edit','audit'])
+        self.assertEqual([c[0]['stage'] for c in self.calls],['compose','edit'])
         self.assertEqual(self.run['action'],'writing-generate')
         self.assertEqual(result['content']['format_version'],direct.FORMAT)
         self.assertFalse(result['checks']['errors'])
         self.assertTrue(result['checks']['editorial']['notes'])
         self.assertEqual(self.conn.execute("SELECT count(*) FROM fn_writing_versions WHERE stage!='draft'").fetchone()[0],0)
         self.assertEqual(before,w.ed.latest_decision(self.conn,self.fixture.eid))
-        self.assertEqual(self.calls[0][1]['model'],'gpt-6-sol')
-        self.assertEqual(self.calls[0][1]['reasoning_effort'],'high')
-        self.assertLessEqual(self.calls[1][1]['timeout'],180)
+        self.assertNotIn('model',self.calls[0][1])
+        self.assertNotIn('reasoning_effort',self.calls[0][1])
+        self.assertLessEqual(self.calls[1][1]['timeout'],360)
         self.assertEqual(w.export_draft(self.conn,result['version_id'])['version_id'],result['version_id'])
 
     def test_idempotency_and_stale_selection(self):
@@ -56,11 +56,33 @@ class DirectWritingTests(unittest.TestCase):
         with self.assertRaises(ValueError):w.accept_run(self.conn,self.cfg,'generate',dict(data,feedback='不同意见'),control)
         with self.assertRaises(ValueError):w.accept_run(self.conn,self.cfg,'generate',dict(self.fixture.data(),decision_revision=99),control)
 
+    def test_unbounded_task_is_saved_without_a_fake_future_deadline(self):
+        control=TaskControl(900);control.make_unbounded()
+        run=w.accept_run(self.conn,self.cfg,'generate',self.fixture.data(),control)
+        self.assertIsNone(run['deadline_at'])
+        result=w.execute_run(self.conn,run['run_id'],control,runner=self.runner)
+        self.assertEqual(result['content']['pipeline']['status'],'complete')
+        self.assertEqual(self.calls[0][0]['style_profile']['purpose'],'style_only_not_current_facts')
+
     def test_audit_failure_preserves_edited_version_and_does_not_rewrite_prose(self):
         def fail_audit(*args,**kwargs):
             if len(self.calls)==2:raise TaskStopped('timed_out')
             return self.runner(*args,**kwargs)
-        with self.assertRaises(TaskStopped):self.run_direct(fail_audit)
+        from fastnews.writing_contracts import EDITORIAL_EDIT
+        # A stored v3 task retains its independent audit contract.
+        control=TaskControl(900)
+        run=w.accept_run(self.conn,self.cfg,'generate',self.fixture.data(),control)
+        self.run=run
+        row=self.conn.execute('SELECT input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()
+        data=json.loads(row[0]);data['workflow']='direct-newsroom-v3';data['snapshot']['workflow']='direct-newsroom-v3'
+        data['snapshot']['rules']['audit_seconds']=120
+        with self.conn:self.conn.execute('UPDATE fn_writing_runs SET input_json=? WHERE run_id=?',(json.dumps(data),run['run_id']))
+        def legacy(*args,**kwargs):
+            if len(self.calls)==2:raise TaskStopped('timed_out')
+            result=self.runner(*args,**kwargs)
+            if len(self.calls)==2:result.payload={k:v for k,v in result.payload.items() if k in EDITORIAL_EDIT['properties']}
+            return result
+        with self.assertRaises(TaskStopped):w.execute_run(self.conn,run['run_id'],control,runner=legacy)
         row=self.conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(self.run['run_id'],)).fetchone()
         saved=w.version(self.conn,row['version_id'])
         self.assertEqual(saved['content']['pipeline']['status'],'verification_incomplete')
@@ -73,9 +95,9 @@ class DirectWritingTests(unittest.TestCase):
         template=dict(status='ready',issues=[],blocks=[dict(kind='product_intro',text='产'*1000,sources=[]),
             dict(kind='risk',text='合成风险',sources=[])])
         with patch('fastnews.writing_templates.select_template',return_value=template):result=self.run_direct()
-        audit=self.calls[2][0]
+        audit=self.calls[1][0]
         self.assertEqual(audit['company_copy']['fixed_body_blocks'][0]['text'],'产'*1000)
-        self.assertNotIn('style_examples',audit)
+        self.assertTrue(audit['company_copy']['fixed_body_blocks'])
         self.assertFalse(any(e['code']=='editorial_length' for e in result['checks']['editorial']['errors']))
 
     def test_citation_reconciliation_requires_verified_quote_and_preserves_prose(self):
@@ -170,7 +192,7 @@ class DirectWritingTests(unittest.TestCase):
         with patch('fastnews.writing.execute_run',side_effect=execute):
             app._run_job(identifier,'writing-generate',{'_config':self.cfg})
         self.assertEqual(app.jobs[identifier]['status'],'timed_out')
-        self.assertIn('编辑步骤达到180秒时限',app.jobs[identifier]['error'])
+        self.assertIn('编辑步骤达到360秒时限',app.jobs[identifier]['error'])
         self.assertIn('起草稿已保留',app.jobs[identifier]['error'])
         self.assertIsNone(app.active_job)
         stored=w.run_record(self.conn.execute('SELECT * FROM fn_writing_runs WHERE run_id=?',(identifier,)).fetchone())
@@ -184,7 +206,7 @@ class DirectWritingTests(unittest.TestCase):
         with patch('time.monotonic',side_effect=lambda:clock[0]):
             result=self.run_direct(runner)
         self.assertEqual(result['content']['pipeline']['status'],'complete')
-        self.assertLessEqual(self.calls[1][1]['timeout'],180)
+        self.assertLessEqual(self.calls[1][1]['timeout'],360)
 
     def test_expired_global_deadline_retains_completed_composing_output(self):
         clock=[100.0]

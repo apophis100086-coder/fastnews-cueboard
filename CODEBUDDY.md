@@ -1,0 +1,1 @@
+请先读 AGENTS.md、README.md 和 docs/REPOSITORY_INTEGRATION_20261010.md。当前是同一 GitHub 仓库中的三入口整合候选。使用用户指定的版本和本项目目录；不要重新生成、简化或改写看板，不自动换入口，不复制账户凭据。WorkBuddy 日常操作读取 .codebuddy/skills/fastnews-dashboard/SKILL.md；客户端响应、联网原文、稿件质量分别验证。旧 WorkBuddy 单入口说明仅是历史记录。

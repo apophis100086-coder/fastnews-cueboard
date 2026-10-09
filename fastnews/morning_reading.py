@@ -1,4 +1,4 @@
-"""Seven natural days of cited context, separate from today's news."""
+"""Two natural days of news with a separate seven-day cited context."""
 from copy import deepcopy
 from datetime import date, timedelta
 from pathlib import Path
@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from .metadata import time_bounds, parse_instant
 
-VERSION = 'morning-v2-seven-day'
+VERSION = 'morning-v3-two-day-overview'
 TIMING = dict(deadline_seconds=480, collection_seconds=60, host_seconds=390, finalize_seconds=30)
 DOMAINS = {
     'macro': ('宏观政策', ['政策','宏观','央行','财政','国务院']),
@@ -107,4 +107,5 @@ def validate(raw, payload, sources, trace):
             basis='cited_material_and_observed_queries_not_exhaustiveness'))
     return dict(timeline=timeline,domain_coverage=coverage,timeline_audit=omitted,
         lookback_days=payload.get('lookback_days',7),reading_version=VERSION,
-        today_scope=payload['day'],context_window_start=payload['window_start'])
+        today_scope=payload['day'],context_window_start=payload['window_start'],
+        main_days=payload.get('main_days'),main_window_start=payload.get('main_window_start'))

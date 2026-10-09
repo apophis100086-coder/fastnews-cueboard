@@ -30,6 +30,7 @@ class Element {
       add: (...names) => names.forEach(name => classes.add(name)),
       remove: (...names) => names.forEach(name => classes.delete(name)),
       contains: name => classes.has(name),
+      toggle: (name, force) => { const on = force === undefined ? !classes.has(name) : !!force; if (on) classes.add(name); else classes.delete(name); return on; },
     };
   }
   set textContent(value) { this._text = String(value); this._html = String(value); }
@@ -69,6 +70,7 @@ function edition() {
 
 async function harness(options = {}) {
   const elements = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(match => [match[1], new Element(match[1])]));
+  elements.set('retry-archive',new Element('retry-archive'));
   elements.set('writing-local-text',new Element('writing-local-text')); // dynamically rendered editor
   elements.get('group').value = 'all';
   const listeners = new Map();
@@ -86,6 +88,7 @@ async function harness(options = {}) {
     host_status:{codex:{installed:true,note:'测试状态'}},
   };
   let handler = options.handler;
+  options.onDom?.(elements);
   const clone = value => JSON.parse(JSON.stringify(value));
   const context = vm.createContext({
     document: {
@@ -117,6 +120,8 @@ async function harness(options = {}) {
   if(options.exploration)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/exploration.js'),'utf8'),context,{filename:'exploration.js'});
   if(options.writing)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/writing.js'),'utf8'),context,{filename:'writing.js'});
   if(options.workspace)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workspace.js'),'utf8'),context,{filename:'workspace.js'});
+  if(options.workbuddy)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workbuddy.js'),'utf8'),context,{filename:'workbuddy.js'});
+  if(options.execution)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/execution.js'),'utf8'),context,{filename:'execution.js'});
   if(options.visuals)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/visuals.js'),'utf8'),context,{filename:'visuals.js'});
   return {
     el: id => elements.get(id), calls, state, storage,
@@ -207,7 +212,7 @@ test('network failures are caught by UI handlers and leave a visible recovery me
     if (call.url === '/api/scan') throw new TypeError('Connection refused');
   });
   await assert.doesNotReject(() => app.el('scan').onclick());
-  assert.match(app.el('message').textContent, /华泰柏瑞快讯看板/);
+  assert.match(app.el('message').textContent, /一键启动/);
   assert.match(app.el('job').textContent, /暂时连不上/);
   assert.equal(app.el('job').classList.contains('error'), true);
   assert.equal(app.el('scan').disabled, false);
@@ -552,8 +557,11 @@ test('morning chart counts come from the saved report and empty data remains exp
  assert.match(app.el('topic-caption').textContent,/3 条/);
  assert.match(app.el('topic-chart').innerHTML,/data-reading-category="technology"/);
  assert.match(app.el('topic-chart').innerHTML,/<strong>2<\/strong>/);
- assert.match(app.el('topic-chart').innerHTML,/<progress max="2" value="2"/);
- assert.match(app.el('topic-chart').innerHTML,/<progress max="2" value="1"/);
+ assert.equal(app.el('reading-overview').hidden,false);
+ assert.match(app.el('topic-chart').innerHTML,/政策与宏观<strong>1<\/strong>/);
+ assert.match(app.el('topic-chart').innerHTML,/aria-pressed="false"/);
+ app.evaluate("daily.reading_report={output:{items:[]}};renderVisuals()");
+ assert.equal(app.el('reading-overview').hidden,true);
  assert.ok(!app.el('topic-chart').innerHTML.includes('style='),'CSP forbids inline style attributes');
  assert.ok(!app.el('source-coverage-visual').innerHTML.includes('style='));
  assert.equal(app.read('basket'),null);
@@ -793,4 +801,173 @@ test('copy and Word controls use the clean delivery fields, not source traces',a
  await click({copyDraft:'v-test'});assert.equal(copied,pack.markdown);assert.doesNotMatch(copied,/https?:/);
  await click({wordDraft:'v-test'});assert.equal(Buffer.from(app.read('downloadCapture.bytes')).toString(),'test-docx-bytes');
  assert.match(app.read('downloadCapture.name'),/\.docx$/);
+});
+
+
+test('empty writing workspace explains next step and disables generation',async()=>{
+ const app=await harness({writing:true});
+ assert.equal(app.el('writing-generate').disabled,true);
+ assert.match(app.el('writing-draft-result').innerHTML,/选好材料/);
+ assert.match(app.el('writing-state').textContent,/候选材料/);
+});
+test('WorkBuddy settings distinguish login and do not auto probe on load',async()=>{
+ const app=await harness({reader:true,workbuddy:true});
+ app.evaluate("state.host_status={workbuddy:{installed:true,login:'required',model:'unchecked',web:'unchecked'}};renderWorkBuddy()");
+ assert.match(app.el('workbuddy-state').textContent,/待登录/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+ assert.match(html,/<script defer src="\/workbuddy.js"><\/script>/);
+ assert.ok(html.includes('<option value="codex">'));assert.ok(html.includes('<option value="api">'));
+});
+
+
+test('agent progress reports processing and unlimited mode without claiming source verification',async()=>{
+ const e=directEdition();let release;
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return e;
+  if(c.url.startsWith('/api/job?'))return new Promise(r=>release=()=>r({edition_id:'ed-one',status:'completed',action:'writing-generate',progress:[]}));
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ await app.evaluate("state.reader_profile.settings.agent_direct=true;updateWritingButtons()");
+ assert.match(app.el('writing-research-note').textContent,/不限时/);
+ const running=app.evaluate('pollWriting("bound-run",'+JSON.stringify({status:'running',agent_direct:true,started_at:new Date().toISOString(),deadline_at:null,progress:[{stage:'writing_edit'},{stage:'agent_direct',agent_status:'processing'}]})+')');
+ assert.match(app.el('writing-progress').textContent,/智能体直连.*编辑.*处理中/);
+ assert.doesNotMatch(app.el('writing-progress').textContent,/最长|已核实/);
+ while(!release)await new Promise(r=>setImmediate(r));release();await running;
+});
+
+test('v4 merged drafts remain current workflow while preserving manual editorial gates',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',workflow:'direct-newsroom-v4-agent',version_id:'v4-current',created_at:'2026-09-25',checks:{errors:[]},content:{text:'合成标题\n\n合成正文',pipeline:{status:'complete'}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/等待你审阅/);assert.doesNotMatch(output,/历史稿件|可直接采用/);assert.match(output,/data-word-draft/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('preview accepts mixed newline conventions without blank paragraphs or executable markup',async()=>{
+ const app=await harness({writing:true});
+ const text='\r\n标题\r\n第一段\n\n第二段\r\n（信息来源：<机构>）\n';
+ const output=app.evaluate('writingDraftHTML('+JSON.stringify({text})+')');
+ assert.match(output,/<h3>标题<\/h3>/);
+ assert.equal((output.match(/<p /g)||[]).length,3);
+ assert.match(output,/class="draft-source">（信息来源：&lt;机构&gt;）/);
+ assert.doesNotMatch(output,/<p[^>]*><\/p>|<机构>/);
+});
+
+test('fixed footer folds only an intact automatic template and preserves its full source text',async()=>{
+ const app=await harness({writing:true});
+ const blocks=[{text:'固定公司介绍',kind:'manager_intro'},{text:'风险提示：保持原文',kind:'risk'}];
+ const content={text:'标题\n\n新闻正文\n\n固定公司介绍\n\n（信息来源：公司资料）\n\n风险提示：保持原文',template_blocks:blocks};
+ const output=app.evaluate('writingDraftHTML('+JSON.stringify(content)+')');
+ assert.match(output,/<details class="draft-template"><summary>/);
+ assert.ok(output.indexOf('新闻正文')<output.indexOf('draft-template'));
+ assert.match(output,/固定公司介绍|信息来源：公司资料|风险提示：保持原文/);
+ for(const fragment of ['固定公司介绍','信息来源：公司资料','风险提示：保持原文'])assert.ok(output.includes(fragment));
+ const changed={...content,human_edited:true};
+ assert.doesNotMatch(app.evaluate('writingDraftHTML('+JSON.stringify(changed)+')'),/class="draft-template"/);
+ const incomplete={...content,text:content.text.replace('固定公司介绍','编辑后的介绍')};
+ assert.doesNotMatch(app.evaluate('writingDraftHTML('+JSON.stringify(incomplete)+')'),/class="draft-template"/);
+ assert.equal(content.text,'标题\n\n新闻正文\n\n固定公司介绍\n\n（信息来源：公司资料）\n\n风险提示：保持原文');
+});
+
+test('stale and locally changed selections block draft delivery before any request',async()=>{
+ for(const savedStale of [true,false]){
+  const e=directEdition();e.writing.versions.push({stage:'draft',version_id:'v-guard',stale_selection:savedStale,created_at:'2026-09-25',content:{text:'标题\n\n正文',pipeline:{status:'complete'}},checks:{errors:[]}});
+  const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+  await app.evaluate("loadEdition('ed-one')");
+  if(!savedStale){app.el('mainline').value='尚未保存的主线';app.el('mainline').oninput();}
+  assert.match(app.el('writing-state').textContent,/选材已变更/);
+  assert.equal(app.el('writing-generate').classList.contains('primary'),true);
+  for(const dataset of [{copyDraft:'v-guard'},{wordDraft:'v-guard'}])await app.on('click',{target:{closest:()=>({dataset})}});
+  assert.ok(!app.calls.some(c=>c.url==='/api/writing-export'));
+  assert.match(app.el('message').textContent,/重新生成后导出/);
+  assert.deepEqual(app.read('basket.selected_fact_ids'),['fact-one']);
+  if(savedStale)assert.match(app.el('writing-draft-result').innerHTML,/data-copy-draft="v-guard" disabled/);
+ }
+});
+
+test('collapsed material options retain selection, main news and must-write controls',async()=>{
+ const e=edition();e.candidate_pool=[{event_id:'evt-one',title:'保留材料',summary:'<script>来源内容</script>',why:'测试产品关系',active:true,sources:[]}];
+ e.decision={...e.decision,selected_clue_ids:['evt-one'],selected_event_id:'evt-one',must_include_ids:['evt-one']};
+ const app=await harness({workflow:true,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('pool-list').innerHTML;
+ assert.match(output,/data-clue="evt-one" checked/);
+ assert.match(output,/主新闻 · 必写/);
+ assert.match(output,/<details class="clue-options"><summary>材料内容与选项/);
+ assert.match(output,/data-main-pool="evt-one"/);assert.match(output,/data-pool-remove="evt-one"/);
+ assert.match(output,/&lt;script&gt;/);assert.doesNotMatch(output,/<script>/);
+ await app.evaluate("workflowChange({dataset:{mustMaterial:'evt-one'},checked:false})");
+ assert.deepEqual(app.read('basket.must_include_ids'),[]);assert.deepEqual(app.read('basket.selected_clue_ids'),['evt-one']);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('workspace navigation closes the settings menu and retains local writing feedback and choices',async()=>{
+ const app=await harness({...writingOptions,workspace:true,handler:c=>c.url.startsWith('/api/edition?')?directEdition():undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('writing-feedback').value='保留这次编辑意见';app.el('writing-feedback').oninput();
+ app.el('workspace-menu').open=true;const before=app.calls.length;
+ for(const name of ['product','morning','materials'])await app.evaluate('showWorkspace('+JSON.stringify(name)+',false)');
+ assert.equal(app.el('workspace-menu').open,false);assert.equal(app.el('writing-feedback').value,'保留这次编辑意见');
+ assert.equal(app.calls.length,before+1); // history read is the sole request
+ assert.deepEqual(app.read('basket.selected_fact_ids'),['fact-one']);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('agent exploration shows manual stop and unlimited time instead of a fixed 480-second limit',async()=>{
+ let release;const app=await harness({workflow:true,exploration:true,handler:c=>c.url.startsWith('/api/job?')?new Promise(r=>release=()=>r({status:'cancelled',edition_id:'other',progress:[]})):undefined});
+ const running=app.evaluate('pollExploration("ui-unlimited",'+JSON.stringify({status:'running',agent_direct:true,started_at:new Date().toISOString(),deadline_at:null,progress:[]})+')');
+ assert.match(app.el('explore-progress').textContent,/不限时，可手动停止/);
+ assert.doesNotMatch(app.el('explore-progress').textContent,/480|已核实/);
+ while(!release)await new Promise(r=>setImmediate(r));release();await running;
+ assert.equal(app.el('explore-stop').hidden,true);
+});
+
+test('switching the product cannot deliver the prior draft as the current product',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',version_id:'v-prior-product',content:{text:'原标题\n\n原正文',pipeline:{status:'complete'}},checks:{errors:[]}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");app.el('product').value='517120';app.el('product').onchange();
+ for(const dataset of [{copyDraft:'v-prior-product'},{wordDraft:'v-prior-product'}])await app.on('click',{target:{closest:()=>({dataset})}});
+ assert.ok(!app.calls.some(c=>c.url==='/api/writing-export'));
+ assert.match(app.el('message').textContent,/已切换产品/);
+ assert.deepEqual(app.read('basket.selected_fact_ids'),['fact-one']);
+});
+
+test('initial history loading locks the product picker until its saved state is ready',async()=>{
+ let dom,release;
+ const loading=harness({onDom:elements=>dom=elements,handler:c=>c.url.startsWith('/api/daily?')?new Promise(resolve=>release=()=>resolve(news('2026-09-15'))):undefined});
+ while(!release)await new Promise(r=>setImmediate(r));
+ assert.equal(dom.get('product').disabled,true);assert.equal(dom.get('research').disabled,true);
+ release();const app=await loading;
+ assert.equal(app.el('product').disabled,false);assert.equal(app.el('research').disabled,false);
+ assert.equal(app.read('busy'),false);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+
+test('entry choice keeps the manual basket and API configuration is not a local browser secret',async()=>{
+ const app=await harness({reader:true,execution:true});
+ await app.evaluate("loadEdition('ed-one')");app.evaluate("basket.selected_clue_ids=['manual-one'];persistDraft()");
+ const before=app.read('basket');app.evaluate('fillEntry()');
+ app.el('reader-host').value='api';app.el('reader-host').onchange();
+ assert.equal(app.el('api-config').hidden,false);assert.equal(app.el('reader-web').disabled,true);
+ app.route(call=>call.url==='/api/reader-profile'?{}:undefined);
+ await app.el('save-entry').onclick();
+ const saved=app.calls.findLast(c=>c.url==='/api/reader-profile');assert.equal(saved.body.host,'api');assert.equal(saved.body.web_search,false);
+ assert.deepEqual(app.read('basket'),before);
+ assert.equal([...app.storage.keys()].some(k=>k.includes('api-key')),false);
+});
+
+test('API connection check cannot run against an unsaved entry selection',async()=>{
+ const app=await harness({reader:true,execution:true});app.evaluate('fillEntry()');
+ app.el('reader-host').value='api';await app.el('check-entry').onclick();
+ assert.equal(app.calls.some(c=>c.url==='/api/connection-check'),false);
+ assert.match(app.el('entry-result').textContent,/先保存/);
+});
+
+test('initial busy state is released for the entry selector and failed archive reads remain visible',async()=>{
+ const app=await harness({writing:true,execution:true});assert.equal(app.el('open-execution').disabled,false);
+ app.route(call=>{if(call.url==='/api/writing-archive')throw Error('合成读取失败');});
+ // The retry element is dynamic in a real DOM; inspect the visible error before its handler binds.
+ try{await app.evaluate('loadArchive(true)');}catch{}
+ assert.match(app.el('archive-list').innerHTML,/合成读取失败/);assert.doesNotMatch(app.el('archive-list').innerHTML,/尚无完整成稿/);
 });
