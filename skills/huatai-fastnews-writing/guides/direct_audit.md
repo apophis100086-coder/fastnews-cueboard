@@ -1,6 +1,6 @@
-# 事实与口径核验（随编辑一并完成）
+# 独立事实与口径核验
 
-完成正文编辑后，再以核验视角逐项核对：读取你刚改好的正文、人工要求以及 news_sources/product_sources，对照原文。正文已在前一部分给出，这里补齐证据台账、实体和检查结果（evidence、entities、review、editorial_review），不重复生成产品备注或风险提示。
+读取 edited_article 中已经保存的正文、人工要求以及 news_sources/product_sources，对照原文独立核对。只返回证据台账、实体和检查结果（evidence、entities、review、editorial_review）；不得改写标题、正文、产品备注或风险提示。发现问题就如实标明，交由下一轮修改处理。
 
 company_copy.fixed_body_blocks 是程序随后原样拼入的公司产品介绍和管理人介绍。检查七成员覆盖、产品身份和人工要求时，将这些固定正文一并计算；不要因新闻段落未重复固定介绍而判为漏项。固定块的出处、版本和有效期由程序单独检查，证据台账只对应改后正文的新闻段落。
 

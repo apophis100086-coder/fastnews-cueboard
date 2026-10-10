@@ -4,6 +4,24 @@ from pathlib import Path,PurePosixPath
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
 
+def verify_resources(read):
+    """A runnable interpreter alone does not make a complete writing package."""
+    samples=json.loads(read('data/writing_samples/library.json'))['items']
+    templates=json.loads(read('data/writing_templates/library.json'))['items']
+    products={'513130','588710','dividend_family'}
+    if len(samples)!=13 or not products.issubset({x['product_code'] for x in samples}):
+        raise ValueError('Expected the reviewed 13 samples across all three products')
+    if not products.issubset({x['product_code'] for x in templates}):
+        raise ValueError('Missing product templates')
+    for item in samples:
+        p=PurePosixPath(item['local_original'])
+        if p.is_absolute() or '..' in p.parts or '\\' in str(p) or ':' in str(p) or p.parts[:2]!=('data','writing_samples'):
+            raise ValueError('Unsafe sample path')
+        if hashlib.sha256(read(str(p))).hexdigest()!=item['sha256']:
+            raise ValueError('Sample original checksum mismatch')
+    return dict(samples=len(samples),templates=len(templates))
+
+
 def verify(path):
     with zipfile.ZipFile(path) as z:
         names=z.namelist()
@@ -38,7 +56,9 @@ def verify(path):
                 '.agents/skills/fastnews-dashboard/SKILL.md','.codebuddy/skills/fastnews-dashboard/SKILL.md',
                 '一键启动.cmd','恢复数据.cmd','使用指南.html']:
             if root+required not in names:raise ValueError('Missing '+required)
+        resources=verify_resources(lambda name:z.read(root+name))
     return dict(verified=True,files=len(manifest['files']),source_commit=manifest['source_commit'],shared_api_included=shared,
+                resources=resources,
                 archive_sha256=hashlib.sha256(Path(path).read_bytes()).hexdigest())
 
 

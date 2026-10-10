@@ -1,73 +1,48 @@
-# 华泰柏瑞快讯 AI 线索看板
+# 华泰柏瑞快讯 AI 看板
 
-本地运行的新闻与写作工作台。人工选材后生成初稿，支持修改、来源追溯、Word 导出和历史数据备份；最终选题和采用由使用者决定，不自动发布。
+用于晨间阅读、产品线索检索、人工选材、快讯写作与 Word 导出。WorkBuddy、Codex 和自接 API 共用这一套程序与页面。继续使用本仓库维护，当前主线为 `main`。
 
-## 当前版本在哪里
+## 下载后直接使用
 
-**统一仓库：** https://github.com/apophis100086-coder/fastnews-cueboard
+**[点击下载 Windows 完整项目](https://github.com/apophis100086-coder/fastnews-cueboard/releases/latest/download/FastNews-Windows.zip)** · [查看版本和下载说明](https://github.com/apophis100086-coder/fastnews-cueboard/releases/latest)
 
-**最新整合候选：** `codex/unify-delivery-20261010`。它合入最新三入口、DeepSeek、存储和交付成果，保留原 Codex 与改进版两条历史。原 Codex 对照基准是 `b08edbc`，导入的改进版是 `b9f7cdc`。原目录和业务数据保留。
+仓库为私有，需要先登录有访问权限的 GitHub 账户。完整包包含程序、Windows x64 运行环境、13 篇写作样稿、3 类公司模板和项目技能，无需另装 Python。若带教没有仓库权限，可由维护者下载完整包后直接转交。
 
-本分支尚待 WorkBuddy 功能一致性验收，不能称为一比一迁移已完成。2026-10-10 的 `main` 仍是较早版本；首次获取请指定本分支，并记录实际提交号，后续正式发行必须固定具体提交。
+1. 下载 **FastNews-Windows.zip**，解压到一个固定文件夹。
+2. 在 WorkBuddy 选择“打开本地文件夹”，打开解压出来的 **快讯AI看板 带教版**。
+3. 输入：**“读取本项目的 CODEBUDDY.md，打开现有看板，按项目技能处理任务。”** 也可直接双击文件夹里的 **一键启动.cmd**。
 
-- [整合范围、已知差异与验收清单](docs/REPOSITORY_INTEGRATION_20261010.md)
-- [Git 维护和数据回退](docs/GIT_MAINTENANCE.md)
-- [当前机器可读状态](PROJECT_STATUS.json)
-- [完整发行包使用指南](使用指南.html)
+页面发起模型任务后，在这个项目对话输入 **“处理看板任务”**。WorkBuddy 负责调用本机账户能力，看板保存材料、稿件和来源记录。安装和启动不等于联网检索已通过；首次可用页面“检查连接”确认任务回传。
 
-## 从 GitHub 取得源码
-
-在有仓库访问权限的 Windows 电脑运行：
-
-```powershell
-git clone --branch codex/unify-delivery-20261010 https://github.com/apophis100086-coder/fastnews-cueboard.git fastnews-cueboard
-cd fastnews-cueboard
-git rev-parse HEAD
-```
-
-把这个完整文件夹作为项目在 WorkBuddy 或 Codex 中打开。让客户端读取现有程序并运行，不要求它根据文档重做看板。开发与修复继续在这个仓库的功能分支进行。
-
-### 源码首次安装
-
-需要 Windows 10/11、Python 3.11+。在项目根目录运行：
-
-```powershell
-python tools/setup_workspace.py
-```
-
-安装器创建本项目 `.venv`，按 `requirements.lock` 安装依赖，检查公开配置并启用本地 Git 推送检查；不启动服务、不导入资料、不配置账户、不调用模型。若电脑使用 Python Launcher，可改为 `py -3.11 tools/setup_workspace.py`。维护和推送还需要 Node.js 20+。
-
-安装完成后双击 **一键启动.cmd**。源码入口兼容本地 `.venv` 与发行包 `runtime`。本整合候选端口为 **8807**，打开后以实际显示地址为准；完整发行包由构建器单独设置端口。端口被其他副本占用时，启动器拒绝接管。
-
-**源码不包含公司模板、13 篇样稿、新闻和旧稿数据库、API 密钥及运行环境。** 写作前需要从获授权的本地资料补齐样稿与模板；迁移旧业务数据应先备份，并在尚未启动的新副本中恢复。请先恢复再启动，恢复工具不会覆盖已有业务库。源码安装通过不表示材料完整或模型账户可用。
+只运行现有程序，不要让客户端依据文档重新开发。GitHub 自动生成的 “Source code” 是开发源码；日常使用请下载上面的完整项目包。每份包的 `PACKAGE_MANIFEST.json` 记录代码版本及逐文件摘要，确保换电脑仍拿到同一版本。
 
 ## 三种使用入口
 
-| 入口 | 使用方式 | 已知边界 |
-| --- | --- | --- |
-| WorkBuddy | 页面选 WorkBuddy；在当前项目对话使用项目技能接手任务 | 账户、联网和实际写作需在该客户端验收 |
-| Codex | 页面选 Codex；在当前项目对话使用项目技能接手任务 | 当前整合候选使用文件任务协议，与原版程序自动调用 CLI 有差异 |
-| 自接 API | 页面填写 API 配置并确认材料发送与费用授权，由程序执行 | 普通 DeepSeek Chat Completions 处理已有材料，不提供本项目所需的模型联网补搜 |
+| 入口 | 使用方法 |
+| --- | --- |
+| WorkBuddy | 在该客户端打开项目文件夹，页面选 WorkBuddy，用项目技能处理任务。 |
+| Codex | 在该客户端打开同一项目，页面选 Codex，用项目技能处理任务。 |
+| 自接 API | 页面选择 DeepSeek 预设，填写自己的密钥，确认材料发送和费用授权后保存。普通 DeepSeek 接口使用已有材料，不提供模型联网补搜。 |
 
-WorkBuddy 技能位于 `.codebuddy/skills/fastnews-dashboard`，Codex 技能位于 `.agents/skills/fastnews-dashboard`。页面发起任务后，在对应项目对话说“处理看板任务”。切换入口不自动迁移其他文件夹的数据库，也不复制账户能力。
+密钥不放在 GitHub 下载包中。先前获授权的共享密钥只保留在本地交付资料里。新电脑需登录自己的 WorkBuddy/Codex 账户，或者配置 API；程序不会复制其他电脑的账户。
 
-DeepSeek 预设及本地共享包构建工具已纳入源码；仓库没有共享密钥。凭据只在本地配置，含共享密钥的发行包按授权私下交付，不上传 GitHub。
+## 稿件与升级
 
-## 备份、升级和带教交付
+人工选材后依次补充同题资料、起草、编辑、独立核验，再由程序组装固定公司模板。每步保留结果，核验不会改写已保存正文；不自动选材、不自动发布。API 写作共用 15 分钟，智能体任务可由使用者停止。
 
-页面“数据与备份”创建一致性备份；在新副本首次启动前，用“恢复数据.cmd”恢复。程序与数据分别管理，不通过删库解决故障，也不直接覆盖正在使用的目录。
+工作数据在 `data`，导出稿件在 `exports`。页面“数据与备份”可生成一致性备份；升级时解压新版本，**先运行“恢复数据.cmd”，再启动**。不要覆盖旧目录或删除数据库。完整包从空业务库开始，不包含其他人的历史稿件。
 
-维护者在完成 WorkBuddy 一致性验收后，从固定提交生成带运行环境和获授权资料的完整包，并核对包内 `PACKAGE_MANIFEST.json`。带教使用完整包即可，无需学习 Git。
+[详细使用指南](使用指南.html) · [交付验收](docs/READY_TO_USE_20261010.md) · [维护与回退](docs/GIT_MAINTENANCE.md)
 
-`tools/build_workbuddy_package.py` 依赖本机已有 `runtime`、写作样稿、模板和来源配置种子。只克隆源码不等于已经取得可交付运行包。历史发行验收见 [三入口记录](docs/THREE_ENTRY_ACCEPTANCE_20261008.md) 和 [DeepSeek 记录](docs/DEEPSEEK_SHARED_20261008.md)，不能当作新客户端已验收的证据。
+## 开发者
 
-## 开发检查
+`git clone https://github.com/apophis100086-coder/fastnews-cueboard.git` 获取主线源码，修改使用独立分支。源码不带运行环境和私有资料，维护者从本地发行环境补齐；也可先取得完整包使用，再开展开发。
+
+源码环境使用 Python 3.11+ 执行 `python tools/setup_workspace.py`。该命令建立 `.venv`、安装锁定依赖、配置 `.githooks`；不调用模型。启动器同时支持 `.venv` 与完整包的 `runtime`。检查命令：
 
 ```powershell
 .venv/Scripts/python.exe -B -X utf8 -m unittest discover -s tests -q
 node --test --test-reporter=dot tests/ui_daily_test.cjs
 ```
 
-提交后推送触发 `.githooks/pre-push`：扫描完整待推历史的敏感路径和常见密钥格式，在独立源码目录运行 Python 和前端测试。不得跳过检查。新克隆需运行安装器或执行 `git config --local core.hooksPath .githooks`。
-
-原三份来源、主题和产品示例配置继续按固定字节校验。历史 `MANIFEST.json` 只记录最初交接资料，不重写为当前版本哈希。完整开发边界见 `AGENTS.md` 顶部；历史说明发生冲突时，以当前授权和整合清单为准。
+推送前自动扫描待推历史并在独立源码目录运行测试，禁止跳过。发布从干净提交构建，验证逐文件摘要后上传到此私有仓库的 Releases。运行环境及获授权样稿模板只进入完整发行附件；密钥和业务数据库不上传。原三份配置保持逐字校验，历史 `MANIFEST.json` 不重写。

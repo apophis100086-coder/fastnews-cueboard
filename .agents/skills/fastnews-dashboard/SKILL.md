@@ -5,7 +5,7 @@ description: 在当前项目打开快讯看板、检查入口，并连续处理�
 
 # 打开和处理快讯看板
 
-从本技能向上找到同时含 WORKBUDDY_ORIGIN.json 与 tools/agent_bridge.py 的目录，以此为项目根目录。先读根目录 README.md 和 PROJECT_STATUS.json，核对当前版本和已知差异。所有命令使用当前项目 runtime/python/python.exe；源码检出没有 runtime 时使用 .venv/Scripts/python.exe。两者都不存在时先按 README 运行 tools/setup_workspace.py，不能跳到桌面其他副本或借用其数据库。执行时添加 -B -X utf8；PowerShell 路径带空格时用 & 和引号。日常请求不要重建或改写看板。
+从本技能向上找到同时含 WORKBUDDY_ORIGIN.json 与 tools/agent_bridge.py 的目录，以此为项目根目录。先读根目录 README.md 和 PROJECT_STATUS.json，核对当前版本和已知差异。所有命令使用当前项目 runtime/python/python.exe；源码检出没有 runtime 时使用 .venv/Scripts/python.exe。需要直接使用时从 README 指向的私有 GitHub Release 下载 FastNews-Windows.zip，解压后在客户端打开完整项目。不要让模型根据文档重写程序。两者都不存在时先按 README 运行 tools/setup_workspace.py，不能跳到桌面其他副本或借用其数据库。执行时添加 -B -X utf8；PowerShell 路径带空格时用 & 和引号。日常请求不要重建或改写看板。
 
 ## 打开
 

@@ -223,7 +223,7 @@ def execute(conn, row, data, control, *, runner, progress=None, fetcher=None):
     from . import writing as w
     snapshot=data['snapshot']; outline=data['parent']; identifier=row['run_id']
     direct=data.get('workflow') in {'direct-newsroom-v2','direct-newsroom-v3','direct-newsroom-v4-agent'}
-    independent=data.get('workflow')=='direct-newsroom-v3'
+    independent=data.get('workflow')=='direct-newsroom-v3' or bool(snapshot.get('rules',{}).get('independent_audit'))
     templated=data.get('workflow') in {'direct-newsroom-v3','direct-newsroom-v4-agent'}
     format_version=data['workflow'] if direct else FORMAT
     steps=[]; first_id=None; edited_id=None; response=None

@@ -20,12 +20,16 @@ def paths():
     return sorted(result)
 
 def build(output,shared_api_file=None):
+    from tools.verify_package import verify_resources
+    resources=verify_resources(lambda name:(ROOT/name).read_bytes())
+    for name in ('runtime/python/python.exe','runtime/python/pythonw.exe'):
+        if not (ROOT/name).is_file():raise ValueError('Missing bundled runtime: '+name)
     output.mkdir(parents=True,exist_ok=True)
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT).decode().strip()
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT).strip():raise ValueError('Commit the reviewed source before packaging')
     manifest=dict(format_version=2,source_commit=source,origin=json.loads((ROOT/'WORKBUDDY_ORIGIN.json').read_text(encoding='utf-8')),
         entries=['workbuddy','api','codex'],default_entry='workbuddy',port=PACKAGE_PORT,
-        business_database_included=False,account_credentials_included=False,files=[])
+        business_database_included=False,account_credentials_included=False,resources=resources,files=[])
     archive=output/'快讯AI看板-Windows带教包.zip'
     folder=PACKAGE_FOLDER
     seed=json.loads((ROOT/'data/setup/source-settings.json').read_text(encoding='utf-8'))
