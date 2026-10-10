@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "storage": "local_private_resources",
+  "items": [
+    {
+      "id": "company_513130",
+      "version": "company-copy-20260929-v1",
+      "product_code": "513130",
+      "effective_from": "2026-09-14",
+      "effective_to": null,
+      "sha256": "a87f1729e0a29b7081ec1cba2ae0d2b7c7e627d3acde2be6ead6a597d0d4b987"
+    },
+    {
+      "id": "company_588710",
+      "version": "company-copy-20260929-v1",
+      "product_code": "588710",
+      "effective_from": "2026-09-22T11:46:00+08:00",
+      "effective_to": null,
+      "sha256": "859c8d90cec4484ba5b9e54394b8f1790b3884a91140b0f99efeea8399df3759"
+    },
+    {
+      "id": "company_dividend_family",
+      "version": "company-copy-20260929-v1",
+      "product_code": "dividend_family",
+      "effective_from": "2026-09-22",
+      "effective_to": null,
+      "sha256": "9c22919cf03d5ddb4c59fcb809e9fe78d8da69276aaf5e1ae3d8fef9f48720df"
+    }
+  ]
+}

@@ -29,12 +29,41 @@ def issue(code, message, location='', excerpt=''):
 def numeric_tokens(text):
     # Compare magnitudes and explicit dates without allowing invented arithmetic.
     text=unicodedata.normalize('NFKC',text).replace(',', '')
-    return {str(Decimal(n).normalize()) for n in re.findall(r'(?<![A-Za-z])\d+(?:\.\d+)?', text)}
+    result={str(Decimal(n).normalize()) for n in re.findall(r'(?<![A-Za-z])\d+(?:\.\d+)?', text)}
+    # Literal English durations can be written with Arabic digits in Chinese.
+    # Do not reinterpret compound, fractional or scaled number phrases.
+    words=dict(zip('one two three four five six seven eight nine ten eleven twelve'.split(),range(1,13)))
+    for match in re.finditer(r'(?<![\w-])('+'|'.join(words)+r')\s+(?:months?|weeks?|days?|years?)\b',text,re.I):
+        prefix=text[:match.start()].rstrip().lower()
+        if re.search(r'\b(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|and|point|minus)\s*$',prefix):continue
+        result.add(str(words[match[1].lower()]))
+    return result
 
 
-def number_units(text):
+def table_number_units(text,context):
+    """Read a four-column quantity/growth table only with its explicit header."""
+    lines=lambda value:[line.strip() for line in unicodedata.normalize('NFKC',value).splitlines() if line.strip()]
+    header=lines(context)
+    expected=['绝对量','同比增长','(%)','绝对量','同比增长','(%)']
+    if header.count('绝对量')!=2 or not any(header[i:i+6]==expected for i in range(len(header))):return set()
+    rows=lines(text);result=set()
+    for i,label in enumerate(rows):
+        match=re.fullmatch(r'.+\((亿块|万块|块|亿元|万元|元|亿份|万份|份)\)',label)
+        values=rows[i+1:i+5]
+        if not match or len(values)!=4 or not all(re.fullmatch(r'-?\d+(?:\.\d+)?',v) for v in values):continue
+        if i+5<len(rows) and re.fullmatch(r'-?\d+(?:\.\d+)?',rows[i+5]):continue
+        for value,unit in zip(values,[match[1],'%',match[1],'%']):
+            result.add((str(Decimal(value).normalize()),unit))
+    return result
+
+
+def number_units(text,*,table_context=None):
     text=unicodedata.normalize('NFKC',text).replace(',','')
-    return {(str(Decimal(number).normalize()),unit.replace('人民币','')) for number,unit in QUANTITY.findall(text)}
+    # PDF layout may split a Chinese unit, but never join adjacent numeric rows.
+    for unit in ('人民币元','亿美元','亿港元','万元','亿元','美元','港元','亿块','万块','亿份','万份','个百分点'):
+        text=re.sub(r'\s*'.join(re.escape(c) for c in unit),unit,text)
+    result={(str(Decimal(number).normalize()),unit.replace('人民币','')) for number,unit in QUANTITY.findall(text)}
+    return result|table_number_units(text,table_context if table_context is not None else text)
 
 
 def quantity_scopes(text):
@@ -65,13 +94,13 @@ def changed_quantity_scopes(text, evidence):
 
 
 def date_present(day, text):
-    text=re.sub(r'\s+','',text)
+    text=re.sub(r'\s+',' ',text)
     try:
         value=date.fromisoformat(day[:10])
     except (ValueError,TypeError):
         return False
     y,m,d=value.year,value.month,value.day
-    return bool(re.search(fr'{y}(?:年|[-/.])0?{m}(?:月|[-/.])0?{d}(?:日|\b)',text))
+    return bool(re.search(fr'{y}\s*(?:年|[-/.])\s*0?{m}\s*(?:月|[-/.])\s*0?{d}(?:\s*日|\b|(?=T\d{{2}}:))',text))
 
 
 def within_cutoff(value, cutoff):
@@ -99,7 +128,7 @@ def _short_period(sentence):
     return None
 
 
-def check_text(text, *, location='', entities=(), product_codes=(), cutoff=None, editorial=False):
+def check_text(text, *, location='', entities=(), product_codes=(), product_names=(), cutoff=None, editorial=False, rules=None):
     result=[]
     body=unicodedata.normalize('NFKC',text or '')
     if editorial:
@@ -107,13 +136,28 @@ def check_text(text, *, location='', entities=(), product_codes=(), cutoff=None,
         # this mode. A forbidden fact elsewhere in the same line is still checked.
         body='。'.join(clause for clause in re.split(r'[。；;，,\n]',body)
             if not re.search(r'不使用|不写|不得|禁止|避免|不涉及|删除|剔除|不采用|不沿用|不能(?:写|推出|推断|断言)|无需',clause))
+    # Funds and permitted indices are financial instruments, even if the host
+    # labels their listing market as HK/CN. Remove only catalogued identities;
+    # arbitrary company names containing "ETF" or "指数" remain checked.
+    from .product_cards import product_aliases, index_names
+    instruments=set(product_names)|set(product_aliases())
+    if (rules or {}).get('allow_index_identity'):
+        instruments.update(index_names())
+    for name in sorted(instruments,key=len,reverse=True):
+        letters=re.sub(r'\s+','',unicodedata.normalize('NFKC',name))
+        body=re.sub(r'\s*'.join(re.escape(c) for c in letters),'本产品',body)
     matched=set()
     for e in [*known_entities(),*entities]:
-        if e.get('name') and e['name'] not in FUND_MANAGER_NAMES and e['name'] in body and e.get('market') in {'CN','UNKNOWN'}:
+        if e.get('name') and e['name'] not in FUND_MANAGER_NAMES and e['name'] in body and e.get('market') in {'CN','HK','UNKNOWN'}:
             if e['name'] in matched: continue
             matched.add(e['name'])
-            result.append(issue('a_share_company' if e['market']=='CN' else 'unknown_company',
-                '不能出现A股具体上市公司' if e['market']=='CN' else '公司上市身份待核实',location,e['name']))
+            code={'CN':'a_share_company','HK':'hk_company','UNKNOWN':'unknown_company'}[e['market']]
+            result.append(issue(code,'标题和正文不能出现A股、港股具体上市公司' if e['market']!='UNKNOWN' else '公司上市身份待核实',location,e['name']))
+    compact=normalized(body)
+    if not (rules or {}).get('allow_index_identity') and (any(normalized(name) in compact for name in index_names()) or re.search(r'跟踪.{0,35}指数|(?:标的|跟踪)指数|指数(?:名称|代码)',body)):
+        result.append(issue('index_identity','跟踪指数仅供内部核对，标题和正文不介绍其名称、代码或机制',location))
+    if re.search(r'(?:港股|股票|证券|个股)(?:代码)?\s*[:：]?\s*\d{4,5}\b',body):
+        result.append(issue('hk_code','标题和正文不能出现港股股票代码',location))
     # Code requires an equity context: six-digit fund/index codes are legitimate.
     for match in re.finditer(r'(?:股票|个股|证券代码|股票代码)\s*[:：]?\s*((?:60|68|00|30|83|87|92)\d{4})',body):
         if match[1] not in product_codes:
@@ -129,7 +173,14 @@ def check_text(text, *, location='', entities=(), product_codes=(), cutoff=None,
             nearest=scopes[-1][0] if scopes else ''
             market_scope=nearest and not re.fullmatch(r'ETF|基金|产品|本品',nearest,re.I)
             if not market_scope:
-                result.append(issue('product_flow','产品规模、总份额或净资金数据不得进入公开稿',location,sentence));break
+                left=max(sentence.rfind(mark,0,finding.start()) for mark in '，,；;')+1
+                right=min([pos for mark in '，,；;' if (pos:=sentence.find(mark,finding.end()))>=0] or [len(sentence)])
+                flow_clause=sentence[left:right]
+                precise=bool(re.search(r'(?:规模|份额|净流入|净流出|净申购|净赎回|净买入|净卖出|资金增持|吸金|增持).{0,16}(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万亿]+)\s*(?:万亿|亿|万|千|百)?(?:元|美元|港元|份)|(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万亿]+)\s*(?:万亿|亿|万|千|百)?(?:元|美元|港元|份).{0,8}(?:净流入|净申购|增持)',flow_clause))
+                if precise and not (rules or {}).get('allow_precise_product_data'):
+                    result.append(issue('product_flow','产品规模、份额或净资金精确量值不得进入公开稿',location,sentence));break
+                if re.search(r'连续.{0,8}(?:天|日).{0,12}(?:增持|净流入|吸金|净买入)',sentence) and not re.search(r'截至|自.{2,20}至|\d{1,2}月\d{1,2}日',sentence):
+                    result.append(issue('flow_period','连续增持趋势需注明统计区间或截止日期',location,sentence));break
         # A benchmark definition names a return series; it reports no return.
         # Only remove the terminal definition token, never a following value.
         performance_text=re.sub(r'((?:业绩比较基准|比较基准)(?:为|是|[:：])\s*[^,，。;；%]{1,60}指数)收益率(?=(?:[(（]使用估值汇率折算[)）]|[,，]\s*使用估值汇率折算)?\s*$)',r'\1',sentence)
@@ -170,7 +221,7 @@ def qualify_claim(claim, sources, cutoff, product_code=None):
         errors.append(issue('unsupported_number','陈述中的数字未出现在对应证据内',claim['id']))
     if numeric_tokens(claim['data_period'])-numeric_tokens(source.get('text','')+' '+(published or '')+' '+reference_date(source)):
         errors.append(issue('unsupported_period','统计期未能对应原文日期',claim['id']))
-    if number_units(claim['statement'])-number_units(quote):
+    if number_units(claim['statement'])-number_units(quote,table_context=source.get('text','')):
         errors.append(issue('unsupported_unit','陈述的数字、单位或币种组合与原文不同',claim['id']))
     if changed_quantity_scopes(claim['statement'],quote):
         errors.append(issue('unsupported_quantity_scope','陈述改变了原文数值的约数或上下限口径',claim['id']))

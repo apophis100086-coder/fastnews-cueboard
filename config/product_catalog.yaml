@@ -1,0 +1,10 @@
+version: product-family-20260929
+inactive: ['513530']
+families:
+  dividend_family:
+    name: 红利全家桶
+    kind: family
+    member_codes: ['510880', '512890', '561580', '513530', '520890', '561630', '561450']
+    topic_weights: {DIVIDEND: 1.0, MACRO_POLICY: 0.8, SOUTHBOUND: 0.7}
+    preferred_sources: [gov_policy_library, hkex_stock_connect_daily, cls_morning, cls_hk_morning, eastmoney_hsgt]
+    search_expansion: [A股 港股 分红 现金流, 国债收益率 利率 红利配置, 央企 股东回报, 低波动 质量因子, 红利ETF 华泰柏瑞]

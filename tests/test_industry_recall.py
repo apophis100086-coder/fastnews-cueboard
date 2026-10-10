@@ -62,7 +62,8 @@ class IndustryRecallTests(TestCase):
                                      'https://www.stats.gov.cn/sj/zxfb/'))
         self.assertEqual(audit['sources']['nbs_public']['query_status'], 'shared_query_only')
         self.assertEqual(audit['observed_query_count'], 1)
-        self.assertEqual(audit['directions'][0]['status'], 'no_query_observed')
+        # The broad direction was queried; a source still has no independent check.
+        self.assertEqual(audit['directions'][0]['status'], 'queried')
         audit = audit_search(p, trace('site:stats.gov.cn.evil.example 集成电路'))
         self.assertEqual(audit['sources']['nbs_public']['query_status'], 'no_query_observed')
 
@@ -128,7 +129,7 @@ class IndustryRecallTests(TestCase):
             one = report_raw(s,object='Synthetic series '+str(n))
             raw['items'] += one['items']; raw['web_sources'] += one['web_sources']
         result = validate_report(raw, self.payload(), trace('site:semi.org.cn 出货'))
-        self.assertEqual(len(result['items']), 5)
+        self.assertEqual(len(result['items']), 6)
         newer = source('https://www.stats.gov.cn/sj/zxfb/synthetic.html',sid='nbs_public')
         newer['id']='web_recent'
         raw = report_raw(self.background());raw['web_sources'].append(newer)

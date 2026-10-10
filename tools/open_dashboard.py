@@ -14,8 +14,28 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
-URL = 'http://127.0.0.1:8765/'
+sys.path.insert(0, str(ROOT))
+from fastnews.workspace import settings, bootstrap_profile
+PORT = settings(ROOT)['port']
+URL = f'http://127.0.0.1:{PORT}/'
 LOGGER = logging.getLogger('fastnews.launcher')
+
+
+def executable_image():
+    """Record the OS image, which can differ from a Windows venv redirector."""
+    if os.name != 'nt':
+        return sys.executable
+    import ctypes
+    from ctypes import wintypes
+    api = ctypes.WinDLL('kernel32', use_last_error=True)
+    fn = api.GetModuleFileNameW
+    fn.argtypes = [wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
+    fn.restype = wintypes.DWORD
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = fn(None, buffer, len(buffer))
+    if not length or length >= len(buffer):
+        raise OSError('Cannot verify the current Python process image')
+    return buffer.value
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -39,7 +59,7 @@ def check_service():
         return 'occupied_by_another_service'
     except (OSError, ValueError):
         try:
-            with socket.create_connection(('127.0.0.1', 8765), timeout=1):
+            with socket.create_connection(('127.0.0.1', PORT), timeout=1):
                 return 'occupied_by_another_service'
         except OSError:
             return 'stopped'
@@ -122,7 +142,7 @@ def ensure_running():
     if status != 'stopped':
         if wait_until_ready(timeout=4):
             return
-        raise RuntimeError('8765 端口已被其他程序占用，或看板未能响应。请查看启动日志。')
+        raise RuntimeError(f'{PORT} 端口已被其他程序占用，或看板未能响应。请查看启动日志。')
     child = spawn_server()
     if not wait_until_ready(child=child):
         raise RuntimeError('看板未能在 25 秒内启动。请查看 data/logs/dashboard.log。')
@@ -138,23 +158,30 @@ def serve():
             LOGGER.info('Dashboard already ready; reused existing server.')
             return 0
         if status != 'stopped':
-            raise RuntimeError('8765 端口已被其他程序占用，未启动或停止任何程序。')
+            raise RuntimeError(f'{PORT} 端口已被其他程序占用，未启动或停止任何程序。')
         os.chdir(ROOT)
         sys.path.insert(0, str(ROOT))
         from fastnews.config import load_config
         from fastnews.db import sync_registry
         from fastnews.source_catalog import configured_view
         from fastnews.server import LocalApplication, make_server
+        from fastnews.shared_api import bootstrap as bootstrap_shared_api
+        try:bootstrap_shared_api(ROOT)
+        except ValueError:LOGGER.warning('Shared API preset could not be imported; configure it in the entry settings.')
         app = LocalApplication(ROOT / 'data' / 'fastnews.db', load_config(),
                                output_dir=ROOT / 'exports')
         with closing(app.connection()) as conn:
+            bootstrap_profile(conn, ROOT)
             sync_registry(conn, configured_view(conn, app.config))
-        server = make_server(app, port=8765)
+        from fastnews.agent_runner import recover_requests
+        recover_requests(ROOT/'data/agent-exchange')
+        server = make_server(app, port=PORT)
         runtime_path = ROOT / 'data' / 'dashboard-runtime.json'
         try:
             runtime_path.write_text(json.dumps({
                 'pid': os.getpid(), 'url': URL, 'workspace_id': app.database,
-                'python': sys.executable, 'started_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+                'python': executable_image(), 'python_launcher': sys.executable,
+                'started_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
             }, ensure_ascii=False, indent=2), encoding='utf-8')
             LOGGER.info('Dashboard ready: pid=%s url=%s', os.getpid(), URL)
             # Startup only serves saved data. No collection, LLM, or browser action.
@@ -175,6 +202,7 @@ def main(argv=None):
     group.add_argument('--check', action='store_true', help='check only; no start or browser')
     group.add_argument('--serve', action='store_true', help='run the server; no browser')
     parser.add_argument('--no-browser', action='store_true', help='ensure running without opening a browser')
+    parser.add_argument('--entry', action='store_true', help='open the usage entry settings')
     args = parser.parse_args(argv)
     if args.check:
         status = check_service()
@@ -188,10 +216,10 @@ def main(argv=None):
         ensure_running()
         LOGGER.info('Dashboard available: %s', URL)
         if not args.no_browser:
-            webbrowser.open(URL)
+            webbrowser.open(URL + ('?entry=1' if args.entry else ''))
         if sys.stdout is not None:
             print('看板已在后台运行：' + URL)
-            print('可以关闭此窗口；重启电脑并登录后会按已安装的启动项自动启动。')
+            print('可以关闭此窗口；下次双击“一键启动”即可重新打开。')
         return 0
     except Exception as exc:
         # Do not log configuration contents, source material, or secrets.

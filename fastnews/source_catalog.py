@@ -38,16 +38,27 @@ def save_profile(conn, data):
     if not isinstance(name,str) or not 1 <= len(name.strip()) <= 40:
         raise ValueError('方案名称需为 1—40 个字')
     pid = data.get('profile_id') or 'reader_' + uuid.uuid4().hex[:12]
-    current = profile(conn,pid)['settings'] if data.get('profile_id') else {'host':'codex','web_search':True}
+    from .workspace import settings as workspace_settings
+    current = profile(conn,pid)['settings'] if data.get('profile_id') else {
+        'host':'workbuddy','web_search':True,'agent_direct':workspace_settings()['agent_direct']}
     settings = dict(current)
     if 'host' in data:
-        if data['host'] not in {'codex','workbuddy','none'}:
+        if data['host'] not in {'workbuddy','codex','api','none'}:
             raise ValueError('请选择支持的模型执行工具')
         settings['host'] = data['host']
+        if data['host'] in {'workbuddy','codex'}:
+            settings['agent_direct']=True
+        else:
+            settings['agent_direct']=False
     if 'web_search' in data:
         if type(data['web_search']) is not bool:
             raise ValueError('联网检索必须为布尔值')
         settings['web_search'] = data['web_search']
+    if any(k in data for k in ('workbuddy_model','workbuddy_effort')):
+        from .workbuddy_connection import require_verified_model
+        model=data.get('workbuddy_model') or None;effort=data.get('workbuddy_effort') or None
+        require_verified_model(model,effort)
+        settings.update(workbuddy_model=model,workbuddy_effort=effort)
     with conn:
         conn.execute('INSERT INTO fn_reader_profiles VALUES(?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET name=excluded.name,settings_json=excluded.settings_json',
                      (pid,name.strip(),json_text(settings),utc_now()))
@@ -167,6 +178,9 @@ def configured_view(conn, config, profile_id='default'):
             result['sources'][sid]['morning_scan'] = 'morning' in item['sections']
     result['reader_sources'] = rows
     result['reader_web_search_enabled'] = profile(conn,profile_id)['settings'].get('web_search',True)
+    from .workbuddy_connection import model_options
+    options=model_options(profile(conn,profile_id)['settings'])
+    result['_host_runtime']=options
     return result
 
 

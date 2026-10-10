@@ -23,6 +23,10 @@ from fastnews.writing_checks import check_text, qualify_claim
 
 class NewsWritingTests(unittest.TestCase):
     def setUp(self):
+        # Legacy short fixtures exercise workflow; V6.4 has full-length cases.
+        original_policy=w.policy()
+        legacy=patch('fastnews.writing.policy',return_value=dict(original_policy,version='legacy-workflow-fixture'))
+        legacy.start();self.addCleanup(legacy.stop)
         self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.path=Path(self.temp.name)/'test.db'
         self.conn=db.connect(self.path,mode='fixture'); self.addCleanup(self.conn.close)
@@ -41,13 +45,92 @@ class NewsWritingTests(unittest.TestCase):
         self.no_network=patch('socket.create_connection',side_effect=AssertionError('fixture forbids network'))
         self.no_network.start(); self.addCleanup(self.no_network.stop)
 
+    def test_failed_model_contract_keeps_raw_response_for_audit(self):
+        control=TaskControl()
+        run=w.accept_run(self.conn,self.cfg,'outline',self.data(),control)
+        bad={'title':'合成未通过结构检查的原始内容'}
+        with self.assertRaises(ValueError):
+            w.execute_run(self.conn,run['run_id'],control,runner=lambda *a,**k:HostResult(bad,{},{}))
+        row=self.conn.execute('SELECT status,input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()
+        self.assertEqual(row['status'],'failed')
+        self.assertEqual(json.loads(row['input_json'])['raw_failed_response'],bad)
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],0)
+
+    def test_publisher_label_survives_snapshot_and_legacy_confirmation_without_rewriting_parent(self):
+        outline=self.generate();parent=w.version(self.conn,outline['version_id'])
+        source=next(s for s in parent['snapshot']['sources'] if s['material_id']==self.mid)
+        self.assertEqual(source['name'],'合成测试出处')
+        source['name']='example.org'
+        legacy=w._save_version(self.conn,parent['snapshot'],'outline',parent['content'],parent['checks'])
+        self.conn.commit()
+        confirmed=self.confirm(legacy)
+        changed=next(s for s in confirmed['snapshot']['sources'] if s['material_id']==self.mid)
+        self.assertEqual(changed['name'],'合成测试出处')
+        self.assertEqual(changed['url'],source['url'])
+        self.assertEqual(changed['identity'],source['identity'])
+        self.assertEqual(w.version(self.conn,legacy['version_id'])['snapshot']['sources'][0]['name'],'example.org')
+        self.assertIn('转引Wind',w.citation_publisher({'declared_source':'Wind','source_type':'media'},source['url'],'example.org'))
+
+    def test_program_renders_outline_source_titles_separately_from_proposed_body(self):
+        snapshot=w._snapshot(self.conn,self.cfg,self.eid,1)
+        snapshot['sources'][0]['title']='北方华创合成原文标题'
+        raw=self.outline(snapshot);content,checks=w.validate_outline(raw,snapshot)
+        self.assertFalse(any(e['code']=='a_share_company' for e in checks['errors']))
+        self.assertIn('资料／数据来源：合成测试出处《北方华创合成原文标题》',content['text'])
+        saved=w._save_version(self.conn,snapshot,'outline',content,checks);self.conn.commit()
+        self.assertEqual(self.confirm(saved)['stage'],'confirmed_outline')
+        with self.assertRaises(ValueError):self.confirm(saved,content['text']+'\n资料／数据来源：北方华创经营增长')
+        raw['paragraphs'][0]['points'].append('北方华创经营增长')
+        self.assertTrue(any(e['code']=='a_share_company' for e in w.validate_outline(raw,snapshot)[1]['errors']))
+
+    def test_literal_english_duration_numbers_do_not_reject_chinese_digits(self):
+        from fastnews.writing_checks import numeric_tokens
+        self.assertEqual(numeric_tokens('within four months; after six months or more'),{'4','6'})
+        self.assertEqual(numeric_tokens('twenty four months; one hundred and six months'),set())
+        self.assertEqual(numeric_tokens('four different models'),set())
+
+    def test_pdf_unit_and_entity_layout_does_not_change_identity_or_magnitude(self):
+        from fastnews.writing_checks import number_units
+        self.assertEqual(number_units('2.5 亿 美元'),number_units('2.5亿美元'))
+        self.assertEqual(number_units('20\n30元'),{('3E+1','元')})
+        source=dict(name='合成出处',text_observed=True,text='合成药业有限 公司',text_segments=['合成药业有限 公司'])
+        entity=dict(name='合成药业有限公司',market='OTHER',quote='合成药业有限 公司',source_id='s1')
+        self.assertEqual(w._entities([entity],{'s1':source}),[])
+        entity['name']='另一家合成公司'
+        self.assertTrue(w._entities([entity],{'s1':source}))
+
+    def test_publication_header_space_before_time_is_not_deleted(self):
+        from fastnews.writing_checks import date_present
+        for value in ['2026-09-15 17:48','2026 年 9 月 15 日 17:48','2026-09-15T17:48:00+08:00']:
+            self.assertTrue(date_present('2026-09-15',value))
+        for value in ['2026-09-150','2026-09-16 17:48','2026-09-1517:48']:
+            self.assertFalse(date_present('2026-09-15',value))
+        snapshot=w._snapshot(self.conn,self.cfg,self.eid,1)
+        source=snapshot['sources'][0];source.update(date_observed=False,text=source['text']+'\n2026-09-15 17:48')
+        raw=self.outline(snapshot);raw['claims'][0]['publication_quote']='2026-09-15 17:48'
+        self.assertFalse(w.validate_outline(raw,snapshot)[1]['errors'])
+        raw['claims'][0]['published_at']='2026-09-17'
+        self.assertTrue(w.validate_outline(raw,snapshot)[1]['errors'])
+
+    def test_interrupted_host_keeps_search_trace_without_a_confirmable_outline(self):
+        control=TaskControl()
+        run=w.accept_run(self.conn,self.cfg,'outline',self.data(),control)
+        error=TaskStopped('timed_out')
+        error.host_trace={'actions':[{'type':'search','query':'public fixture'}],'incomplete':True}
+        with self.assertRaises(TaskStopped):
+            w.execute_run(self.conn,run['run_id'],control,runner=Mock(side_effect=error))
+        row=self.conn.execute('SELECT status,input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()
+        self.assertEqual(row['status'],'timed_out')
+        self.assertEqual(json.loads(row['input_json'])['failed_host_trace'],error.host_trace)
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_writing_versions').fetchone()[0],0)
+
     def save(self,revision,**kw):
         return ed.save_decision(self.conn,edition_id=self.eid,selected_event_id=self.mid,selected_fact_ids=[],
             selected_clue_ids=[self.mid],manual_notes=[],must_include_ids=[self.mid],expected_revision=revision,
             actor_type='human',config=self.config,**kw)
 
     def data(self,**kw):
-        return dict(edition_id=self.eid,decision_revision=1,request_id=uuid.uuid4().hex,**kw)
+        return dict(edition_id=self.eid,decision_revision=1,request_id=uuid.uuid4().hex,**{'supplement_latest':False,**kw})
 
     def outline(self,payload):
         source=payload['sources'][0]
@@ -85,9 +168,24 @@ class NewsWritingTests(unittest.TestCase):
         draft=self.generate('draft',confirmed_version_id=final['version_id'])
         self.assertEqual(draft['checks']['status'],'ready')
         exported=w.export_draft(self.conn,draft['version_id'])
-        self.assertIn('公开日期：2026-09-15',exported['markdown'])
+        self.assertIn('2026-09-15',exported['markdown'])
         self.assertIn('语气简洁',self.last_input['confirmed_outline'])
         self.assertEqual(len(w.workflow(self.conn,self.eid)['versions']),3)
+
+    def test_explicit_host_experiment_is_recorded_without_changing_selection(self):
+        cfg=dict(self.cfg,_host_runtime={'model':'gpt-6-sol','reasoning_effort':'low'})
+        original=ed.latest_decision(self.conn,self.eid)
+        control=TaskControl();run=w.accept_run(self.conn,cfg,'outline',self.data(),control)
+        calls=[]
+        def runner(*args,**kwargs):
+            calls.append(kwargs)
+            return self.runner(*args,**kwargs)
+        w.execute_run(self.conn,run['run_id'],control,runner=runner)
+        saved=json.loads(self.conn.execute('SELECT input_json FROM fn_writing_runs WHERE run_id=?',(run['run_id'],)).fetchone()[0])
+        self.assertEqual(saved['host_runtime'],cfg['_host_runtime'])
+        self.assertEqual(calls[0]['model'],'gpt-6-sol')
+        self.assertGreater(calls[0]['input_character_limit'],w.policy()['max_input_characters'])
+        self.assertEqual(ed.latest_decision(self.conn,self.eid),original)
 
     def test_program_recheck_preserves_old_version_and_does_not_call_model(self):
         outline=self.generate();confirmed=self.confirm(outline);draft=self.generate('draft',confirmed_version_id=confirmed['version_id'])
@@ -372,6 +470,21 @@ class NewsWritingTests(unittest.TestCase):
         raw['claims'][0]['quote']='前一片段\n后一片段'
         self.assertIn('unobserved_quote',{e['code'] for e in w.validate_outline(raw,snap)[1]['errors']})
 
+    def test_writing_excerpts_reuse_short_sources_capacity_without_losing_prior_gap(self):
+        snap=w._snapshot(self.conn,self.cfg,self.eid,1);seed=deepcopy(snap['sources'][0])
+        lengths=[1700,5200,1100,1650,24000,1550,650]
+        snap['sources']=[dict(seed,id='s'+str(i),text='证'*size,text_observed=True) for i,size in enumerate(lengths)]
+        snap['sources'][2]['text_truncated']=True
+        fetcher=Mock(side_effect=AssertionError('Already read'))
+        w.verify_sources(snap,TaskControl(),fetcher=fetcher)
+        self.assertEqual(snap['sources'][1]['text'],'证'*5200)
+        self.assertFalse(snap['sources'][1]['text_truncated'])
+        self.assertTrue(snap['sources'][2]['text_truncated'])
+        self.assertTrue(snap['sources'][4]['text_truncated'])
+        self.assertLessEqual(sum(sum(map(len,s['text_segments'])) for s in snap['sources']),snap['rules']['max_input_characters']*7//12)
+        self.assertEqual(w.source_segments('材料',0,''),[])
+        fetcher.assert_not_called()
+
     def test_new_currency_or_unit_cannot_borrow_an_existing_number(self):
         snap=w._snapshot(self.conn,self.cfg,self.eid,1);raw=self.outline(snap)
         raw['claims'][0]['statement']='设备订单20亿元。'
@@ -437,9 +550,21 @@ class NewsWritingTests(unittest.TestCase):
         self.assertEqual(w.task_attempts(self.conn),1)
 
     def test_shared_budget_blocks_before_launching_another_task(self):
-        with patch('fastnews.writing.task_attempts',return_value=12):
+        with patch('fastnews.writing.task_attempts',return_value=12),\
+            patch('fastnews.writing.reader_limits',return_value=w.reader_limits()|{'max_tasks_per_day':12}):
             with self.assertRaisesRegex(ValueError,'共享预算'):w.accept_run(self.conn,self.cfg,'outline',self.data(),TaskControl())
         self.assertEqual(w.task_attempts(self.conn),0)
+
+    def test_unlimited_daily_tasks_keep_count_without_rejection_or_reset_time(self):
+        from fastnews.host_task_budget import status
+        self.assertIsNone(w.reader_limits()['max_tasks_per_day'])
+        budget=status(self.conn,used=10000)
+        self.assertTrue(budget['unlimited']);self.assertEqual(budget['used'],10000)
+        self.assertIsNone(budget['remaining']);self.assertIsNone(budget['resets_at'])
+        with patch('fastnews.writing.task_attempts',return_value=10000):
+            run=w.accept_run(self.conn,self.cfg,'outline',self.data(),TaskControl())
+        self.assertEqual(run['status'],'running')
+        self.assertEqual(w.task_attempts(self.conn),1)
 
     def test_server_writing_wait_does_not_lock_human_saves_or_old_export(self):
         from fastnews.server import LocalApplication
@@ -503,17 +628,17 @@ class WritingRuleTests(unittest.TestCase):
 
     def test_allowed_industry_turnover_and_index_identity(self):
         for text in ('半导体产业规模达到100亿元，同比增长20%。','ETF日均成交额20亿元。',
-                     '科创50ETF华泰柏瑞（588090）跟踪科创50指数。','联接基金A类份额可以申购。',
+                     '科创50ETF华泰柏瑞（588090）覆盖科创板相关方向。','联接基金A类份额可以申购。',
                      '南向市场净流入100亿元。'):
             with self.subTest(text=text): self.assertEqual(check_text(text),[])
 
     def test_company_scope_not_fund_codes(self):
         self.assertTrue(check_text('某A股公司增长',entities=[dict(name='某A股公司',market='CN')]))
-        self.assertFalse(check_text('某港股公司增长',entities=[dict(name='某港股公司',market='HK')]))
+        self.assertTrue(check_text('某港股公司增长',entities=[dict(name='某港股公司',market='HK')]))
         self.assertFalse(check_text('基金代码588090',product_codes=['588090']))
         self.assertTrue(check_text('中芯国际在港上市',entities=[dict(name='中芯国际',market='HK')]))
         self.assertTrue(check_text('中国移动与北方华创披露经营数据'))
-        self.assertFalse(check_text('腾讯控股披露经营数据',entities=[dict(name='腾讯控股',market='HK')]))
+        self.assertTrue(check_text('腾讯控股披露经营数据',entities=[dict(name='腾讯控股',market='HK')]))
         self.assertFalse(check_text('华泰柏瑞基金管理有限公司',entities=[dict(name='华泰柏瑞基金管理有限公司',market='UNKNOWN')]))
 
     def test_six_month_calendar_boundary(self):
@@ -526,6 +651,6 @@ class WritingRuleTests(unittest.TestCase):
         self.assertTrue(check_text('本基金连续11个交易日获得资金增持。'))
 
     def test_editorial_exemption_never_applies_to_a_public_draft(self):
-        self.assertFalse(check_text('不使用资金追捧等卖点。',editorial=True))
-        self.assertTrue(check_text('本基金近期资金追捧。',editorial=True))
-        self.assertTrue(check_text('不使用资金追捧等卖点。'))
+        self.assertFalse(check_text('不使用基金规模100亿元等卖点。',editorial=True))
+        self.assertTrue(check_text('本基金规模100亿元。',editorial=True))
+        self.assertTrue(check_text('不使用基金规模100亿元等卖点。'))

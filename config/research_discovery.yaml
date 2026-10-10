@@ -1,21 +1,142 @@
 version: product-discovery-v2-star50
 note: 固定源补取与可解释的展示分组；关键词仅为观察变量，不代表当前成份股或已核实产品关系。
 lookback_hours: 72
-morning_sources: [cls_morning, stcn_egs_morning, yicai_overnight, wallstreetcn_breakfast, cls_hk_morning, zhitong_hk_morning]
-supplemental_sources: [cls_morning, cls_hk_morning]
+morning_sources:
+- cls_morning
+- stcn_egs_morning
+- yicai_overnight
+- wallstreetcn_breakfast
+- cls_hk_morning
+- zhitong_hk_morning
+supplemental_sources:
+- cls_morning
+- cls_hk_morning
 products:
-  "588090":
-    core_keywords: [科创50, 科创 50, 科创板, "588090", STAR50, STAR 50]
+  '588090':
+    core_keywords:
+    - 科创50
+    - 科创 50
+    - 科创板
+    - '588090'
+    - STAR50
+    - STAR 50
     excluded_keywords: []
-  "513130":
-    core_keywords: [恒生科技, 港股科技, 腾讯, 阿里, 小米, 美团, 互联网平台, AI应用, 大模型, 云计算, 云服务, 人工智能, AI Agent, 智能体, 消费电子, 自动驾驶, 南向资金, 港股通, 智谱]
+  '513130':
+    core_keywords:
+    - 恒生科技
+    - 港股科技
+    - 腾讯
+    - 阿里
+    - 小米
+    - 美团
+    - 互联网平台
+    - AI应用
+    - 大模型
+    - 云计算
+    - 云服务
+    - 人工智能
+    - AI Agent
+    - 智能体
+    - 消费电子
+    - 自动驾驶
+    - 南向资金
+    - 港股通
+    - 智谱
     excluded_keywords: []
-  "513530":
-    core_keywords: [南向资金, 港股通, 沪港通, 深港通, 净买入, 高股息, 红利, 分红, 派息, 股息率, 回购, 银行, 运营商, 公用事业, 能源, 利率, 降息, 加息, 美联储, CPI, 国债收益率]
+  '513530':
+    core_keywords:
+    - 南向资金
+    - 港股通
+    - 沪港通
+    - 深港通
+    - 净买入
+    - 高股息
+    - 红利
+    - 分红
+    - 派息
+    - 股息率
+    - 回购
+    - 银行
+    - 运营商
+    - 公用事业
+    - 能源
+    - 利率
+    - 降息
+    - 加息
+    - 美联储
+    - CPI
+    - 国债收益率
     excluded_keywords: []
-  "588710":
-    core_keywords: [半导体, 芯片, 晶圆, 光刻, 刻蚀, 薄膜沉积, 半导体设备, 先进制程, HBM, DRAM, NAND, NOR Flash, 存储, 封装, semiconductor, wafer]
+  '588710':
+    core_keywords:
+    - 半导体
+    - 芯片
+    - 晶圆
+    - 光刻
+    - 刻蚀
+    - 薄膜沉积
+    - 半导体设备
+    - 先进制程
+    - HBM
+    - DRAM
+    - NAND
+    - NOR Flash
+    - 存储
+    - 封装
+    - semiconductor
+    - wafer
     excluded_keywords: []
-  "517120":
-    core_keywords: [创新药, 新药, 临床, 三期, II期, III期, ADC, 双抗, License-out, 医保目录, 药品, 生物医药, 抗癌, cancer, drug, drugs, treatment, therapy, therapeutic, biologics, clinical, vaccine, IND]
-    excluded_keywords: [veterinary, animal, animals, cattle, swine, dog, dogs, cat, cats, 宠物, 兽药]
+  '517120':
+    core_keywords:
+    - 创新药
+    - 新药
+    - 临床
+    - 三期
+    - II期
+    - III期
+    - ADC
+    - 双抗
+    - License-out
+    - 医保目录
+    - 药品
+    - 生物医药
+    - 抗癌
+    - cancer
+    - drug
+    - drugs
+    - treatment
+    - therapy
+    - therapeutic
+    - biologics
+    - clinical
+    - vaccine
+    - IND
+    excluded_keywords:
+    - veterinary
+    - animal
+    - animals
+    - cattle
+    - swine
+    - dog
+    - dogs
+    - cat
+    - cats
+    - 宠物
+    - 兽药
+  dividend_family:
+    core_keywords:
+    - A股
+    - 港股
+    - 红利
+    - 分红
+    - 现金流
+    - 央企
+    - 股东回报
+    - 低波
+    - 质量
+    - 利率
+    - 国债收益率
+    - 险资
+    - 南向资金
+    - 股息率
+    excluded_keywords: []

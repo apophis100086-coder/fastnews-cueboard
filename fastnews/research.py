@@ -248,6 +248,8 @@ def research_product(conn, config, code, *, edition_id=None, edition_date=None,
                'discovery_hash':_hash(config.get('discovery',{})),
                'history_snapshot_id':view.get('history_snapshot_id'),
                'prompt_versions':_prompt_versions(), 'research_version':RESEARCH_VERSION}
+    if config.get('_collection_task_id'):
+        context['collection_task_id']=config['_collection_task_id']
     run_id = 'research_' + uuid.uuid4().hex
     with conn:
         conn.execute('INSERT INTO fn_research_runs(run_id,mode,product_code,edition_id,started_at,status,limits_json,context_json) VALUES(?,?,?,?,?,?,?,?)',

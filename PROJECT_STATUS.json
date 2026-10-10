@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "product": "fastnews-cueboard",
+  "repository": "https://github.com/apophis100086-coder/fastnews-cueboard",
+  "integration_branch": "main",
+  "status": "portable_delivery_client_acceptance_pending",
+  "codex_baseline": "b08edbc00162a79f2161812813ca49cebfec400d",
+  "imported_source": "b9f7cdc0a7703463d9ba5443350cca8e212309d7",
+  "business_data_in_git": false,
+  "credentials_in_git": false,
+  "private_resources_in_git": false,
+  "handoff": "docs/READY_TO_USE_20261010.md",
+  "release_version": "v1.0.0",
+  "independent_audit": true,
+  "private_resources_in_release": true,
+  "workbuddy_live_acceptance": "user_will_verify"
+}

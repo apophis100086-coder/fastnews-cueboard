@@ -33,10 +33,10 @@ def search_policy(config=None):
     if not isinstance(policy['source_terms'], dict) or any(not isinstance(v, str) or not 1 <= len(v) <= 80 for v in policy['source_terms'].values()):
         raise ValueError('来源检索词需为简短字符串')
     evidence = policy['evidence']
-    if (not isinstance(evidence,dict) or set(evidence)!={'max_events','max_pages_per_event'} or
+    if (not isinstance(evidence,dict) or set(evidence)!={'max_events','max_pages','max_pages_per_event'} or
             any(type(evidence[k]) is not int or not 1<=evidence[k]<=cap
-                for k,cap in [('max_events',3),('max_pages_per_event',2)])):
-        raise ValueError('定向补证最多3个事件，每事件最多2个页面')
+                for k,cap in [('max_events',6),('max_pages',20),('max_pages_per_event',4)])):
+        raise ValueError('定向补证最多6个事件、合计20页、每事件4页')
     config = load_config() if config is None else config
     if not isinstance(policy['products'], dict) or set(policy['products']) != set(config['products']):
         raise ValueError('产品检索配置必须完整覆盖已登记产品，且不能包含未登记代码')

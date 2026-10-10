@@ -40,9 +40,51 @@ class ProductCatalogTests(unittest.TestCase):
         self.mutate('products.additional.yaml', lambda d: d['products'][0].update(code='588710'))
         with self.assertRaisesRegex(ConfigError, 'cannot override'):
             load_config(self.config_dir)
+
+    def test_member_rename_obeys_edition_cutoff(self):
+        from fastnews.product_cards import registry
+        self.assertIn('高股息',registry('2026-09-13T23:59:59+08:00')['520890']['name'])
+        self.assertIn('红利低波动',registry('2026-09-14T00:00:00+08:00')['520890']['name'])
+        self.assertEqual(registry()['520890']['aliases'][0],'港股通红利低波ETF华泰柏瑞')
+
+    def test_family_has_seven_separate_members_and_five_active_choices(self):
+        config=load_config()
+        self.assertEqual(sum(p.get('selectable',True) for p in config['products'].values()),5)
+        family=config['products']['dividend_family']
+        self.assertEqual(family['kind'],'family')
+        self.assertEqual(len(family['member_codes']),7)
+        self.assertIn('513530',family['member_codes'])
+        self.assertFalse(config['products']['513530']['selectable'])
+        with closing(db.connect(self.root/'family.db',mode='fixture')) as conn:
+            db.sync_registry(conn,config)
+            edition=editorial.create_edition(conn,config,product_code='dividend_family',edition_date='2026-09-25',news_cutoff='2026-09-25T23:59:59+08:00',market_cutoffs={})
+            self.assertEqual(edition['member_codes'],family['member_codes'])
+            self.assertTrue(all(conn.execute('SELECT 1 FROM fn_products WHERE code=?',(c,)).fetchone() for c in family['member_codes']))
+            from fastnews.writing_direct import add_product_sources
+            snapshot=dict(product_definition=deepcopy(family),product_code='dividend_family',product_names=[],product_codes=[],sources=[],materials=[],news_cutoff=edition['news_cutoff'])
+            add_product_sources(snapshot)
+            self.assertEqual(set(s['subject_code'] for s in snapshot['sources']),set(family['member_codes']))
+            self.assertTrue(all(not s['text_observed'] for s in snapshot['sources']))
         self.mutate('products.additional.yaml', lambda d: d['products'].append(deepcopy(d['products'][0])))
         with self.assertRaisesRegex(ConfigError, 'duplicate product code'):
             load_config(self.config_dir)
+
+    def test_family_rereads_product_excerpts_and_binds_only_observed_publication(self):
+        from fastnews.writing_direct import add_product_sources,bind_dates
+        from fastnews.product_cards import registry
+        family=deepcopy(load_config()['products']['dividend_family'])
+        source=dict(id='old_excerpt',evidence_id='saved',url=registry()['513530']['source_url'],text='已存产品摘录',text_observed=True)
+        snapshot=dict(product_definition=family,product_code='dividend_family',product_names=[],product_codes=[],sources=[source],materials=[],news_cutoff='2026-09-13T16:00:00+00:00')
+        add_product_sources(snapshot);count=len(snapshot['sources']);add_product_sources(snapshot)
+        self.assertEqual(len(snapshot['sources']),count)
+        self.assertEqual(source['text'],'已存产品摘录')
+        self.assertTrue(any(s['url']==source['url'] and not s['text_observed'] for s in snapshot['sources']))
+        self.assertEqual(family['effective_updates'][0]['effective_at'],'2026-09-14')
+        renamed=next(s for s in snapshot['sources'] if 'epaper.cs.com.cn' in s['url'])
+        renamed.update(text='未含日期的正文',text_observed=True)
+        bind_dates(snapshot);self.assertFalse(renamed['date_observed'])
+        renamed['text']='公告版面 2026年09月12日 星期六\n更名公告正文'
+        bind_dates(snapshot);self.assertTrue(renamed['date_observed'])
 
     def test_overlay_validates_codes_and_references(self):
         for code in (588090, '５８８０９０', '58809', 'ABCDEF'):
@@ -92,8 +134,8 @@ class ProductCatalogTests(unittest.TestCase):
         for filename in ('research_discovery.yaml', 'product_search.yaml'):
             self.mutate(filename, lambda d: d['products'].update({'999999': deepcopy(d['products']['588090'])}))
         config = load_config(self.config_dir)
-        self.assertEqual(len(config['products']), 6)
-        self.assertEqual(len(editorial.load_editorial_config(self.config_dir)['profiles']['profiles']), 6)
+        self.assertEqual(len(config['products']), 7)
+        self.assertEqual(len(editorial.load_editorial_config(self.config_dir)['profiles']['profiles']), 7)
         with patch.object(search_plan, 'PATH', self.config_dir / 'product_search.yaml'):
             self.assertEqual(search_plan.build_search_plan(config, '999999')['product_code'], '999999')
 
@@ -132,7 +174,7 @@ class ProductCatalogTests(unittest.TestCase):
         old_rows = list(conn.execute('SELECT * FROM fn_products ORDER BY code'))
         for _ in range(2):
             db.sync_registry(conn, config)
-        self.assertEqual(conn.execute('SELECT count(*) FROM fn_products').fetchone()[0], 5)
+        self.assertEqual(conn.execute('SELECT count(*) FROM fn_products').fetchone()[0], 12)
         self.assertEqual([tuple(r) for r in old_rows], [tuple(r) for r in conn.execute("SELECT * FROM fn_products WHERE code!='588090' ORDER BY code")])
         self.assertEqual(editorial.get_edition(conn, old['edition_id']), old)
         self.assertEqual(editorial.latest_decision(conn, old['edition_id']), old_choice)
@@ -149,7 +191,7 @@ class ProductCatalogTests(unittest.TestCase):
             self.assertIn('上证科创板50成份指数', str(payload['product']['observation_variables']))
             self.assertLessEqual(len(payload['search_plan']['queries']) + payload['search_plan']['fallback_queries'], payload['search_plan']['max_queries'])
             self.assertEqual(payload['search_plan']['evidence_budget'],
-                {'max_events': 3, 'max_pages_per_event': 2, 'within_current_host_task': True})
+                {'max_events': 6, 'max_pages':20, 'max_pages_per_event': 4, 'within_current_host_task': True})
             event_id = conn.execute('SELECT event_id FROM fn_events').fetchone()[0]
             add_candidate(conn, config, new['edition_id'], event_id)
             self.assertIsNone(editorial.latest_decision(conn, new['edition_id']))

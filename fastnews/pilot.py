@@ -197,7 +197,9 @@ def _cohort_summary(records, signature):
 
 def pilot_report(conn, product_code=None):
     mode = _mode(conn)
-    products = [row[0] for row in conn.execute('SELECT code FROM fn_products ORDER BY code')]
+    # Member identities support evidence imports but are not standalone routes.
+    products = [row[0] for row in conn.execute('SELECT code,config_json FROM fn_products ORDER BY code')
+                if 'topic_weights' in json.loads(row[1])]
     if product_code is not None and product_code not in products:
         raise PilotError('Unknown product code')
     revisions = [json.loads(row[0]) for row in conn.execute('SELECT data_json FROM fn_pilot_feedback ORDER BY product_code,trial_date,revision')]

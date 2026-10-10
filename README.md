@@ -1,61 +1,48 @@
-# 华泰柏瑞快讯 AI 线索看板
+# 华泰柏瑞快讯 AI 看板
 
-本地运行的新闻与写作工作台：晨报速览、产品专项检索、人工选材、框架反馈、确认后生成有来源的快讯初稿。用户决定采用哪些材料与最终框架；程序不自动选题、自动确认、发布或作投资决策。
+用于晨间阅读、产品线索检索、人工选材、快讯写作与 Word 导出。WorkBuddy、Codex 和自接 API 共用这一套程序与页面。继续使用本仓库维护，当前主线为 `main`。
 
-本仓库保存应用源码、配置、数据库迁移、测试和开发文档。实际日常入口见 [使用说明](RUNNING.md)，开发状态及历史验收见 [实施状态](docs/IMPLEMENTATION_STATUS.md)。历史验收记录中的来源数和联网结果属于各次实测，不代表当前所有来源都可用。
+## 下载后直接使用
 
-最新维护已接通 [产品依据与已发稿回流](docs/PRODUCT_CONTEXT.md)：有日期的公开产品资料进入检索和框架，历史稿用于识别增量；私有稿件保留在本机。五产品真实检索及两篇样稿效果见 [第一轮验收](docs/ROUND1_ACCEPTANCE_20260926.md)。前一轮问题与修复见 [项目审查与修复](docs/PROJECT_AUDIT_20260926.md)。
+**[点击下载 Windows 完整项目](https://github.com/apophis100086-coder/fastnews-cueboard/releases/latest/download/FastNews-Windows.zip)** · [查看版本和下载说明](https://github.com/apophis100086-coder/fastnews-cueboard/releases/latest)
 
-产品池已增加 **科创50ETF华泰柏瑞（588090）**，与原四只产品共同支持专项检索和写作背景导出。身份依据、观察边界及后续扩充步骤见 [产品池维护](docs/PRODUCT_ONBOARDING.md)，本轮验证见 [科创50接入验收](docs/STAR50_ACCEPTANCE.md)。
+仓库为私有，需要先登录有访问权限的 GitHub 账户。完整包包含程序、Windows x64 运行环境、13 篇写作样稿、3 类公司模板和项目技能，无需另装 Python。若带教没有仓库权限，可由维护者下载完整包后直接转交。
 
-产品定点补搜将公开来源的宿主搜索资格与程序晨扫能力分开，片段和待核对陈述随人工选择进入 MD/JSON。此前真实结果、用量和限制见 [定点补搜验收](docs/TARGETED_SEARCH_ACCEPTANCE.md)。
+1. 下载 **FastNews-Windows.zip**，解压到一个固定文件夹。
+2. 在 WorkBuddy 选择“打开本地文件夹”，打开解压出来的 **快讯AI看板 带教版**。
+3. 输入：**“读取本项目的 CODEBUDDY.md，打开现有看板，按项目技能处理任务。”** 也可直接双击文件夹里的 **一键启动.cmd**。
 
-科创产品补搜现增加统计局、SEMI中国及五个产业观察方向，逐站短查询、缺失指标优先补查。近期消息与较早发布的统计/预测背景分别标明，实际查询覆盖可展开查看。改动与真实对照见 [产业数据召回验收](docs/INDUSTRY_RECALL_ACCEPTANCE.md)。
+页面发起模型任务后，在这个项目对话输入 **“处理看板任务”**。WorkBuddy 负责调用本机账户能力，看板保存材料、稿件和来源记录。安装和启动不等于联网检索已通过；首次可用页面“检查连接”确认任务回传。
 
-五只产品现共用 **近期线索＋产品背景**，按相关性与当前用途判读；“继续探查”进行不设固定网站白名单的增量搜索，沿用原截点、最多8分钟，期间可继续选材和导出。结果、版本化提示词、实际耗时与证据限制见 [双栏与探查升级验收](docs/EXPLORATION_ACCEPTANCE.md)。
+只运行现有程序，不要让客户端依据文档重新开发。GitHub 自动生成的 “Source code” 是开发源码；日常使用请下载上面的完整项目包。每份包的 `PACKAGE_MANIFEST.json` 记录代码版本及逐文件摘要，确保换电脑仍拿到同一版本。
 
-第三步现为 **选材与快讯**。运行时显式读取仓库内的 [写作技能](skills/huatai-fastnews-writing/SKILL.md)；先核对材料并提出框架，用户粘贴、修改、确认后才写正文。复制稿逐段绑定来源，风险提示单列，旧背景交接包入口保留。操作与接口见 [快讯写作说明](docs/NEWS_WRITING.md)，真实案例与限制见 [写作升级验收](docs/NEWS_WRITING_ACCEPTANCE.md)。
+## 三种使用入口
 
-## 日常使用
+| 入口 | 使用方法 |
+| --- | --- |
+| WorkBuddy | 在该客户端打开项目文件夹，页面选 WorkBuddy，用项目技能处理任务。 |
+| Codex | 在该客户端打开同一项目，页面选 Codex，用项目技能处理任务。 |
+| 自接 API | 页面选择 DeepSeek 预设，填写自己的密钥，确认材料发送和费用授权后保存。普通 DeepSeek 接口使用已有材料，不提供模型联网补搜。 |
 
-在原电脑上双击“华泰柏瑞快讯看板”桌面入口或项目中的 `打开看板.cmd`。本地页面地址为 `http://127.0.0.1:8765/`。
+密钥不放在 GitHub 下载包中。先前获授权的共享密钥只保留在本地交付资料里。新电脑需登录自己的 WorkBuddy/Codex 账户，或者配置 API；程序不会复制其他电脑的账户。
 
-新电脑取得源码后，在项目根目录运行（Windows、Python 3.11+）：
+## 稿件与升级
+
+人工选材后依次补充同题资料、起草、编辑、独立核验，再由程序组装固定公司模板。每步保留结果，核验不会改写已保存正文；不自动选材、不自动发布。API 写作共用 15 分钟，智能体任务可由使用者停止。
+
+工作数据在 `data`，导出稿件在 `exports`。页面“数据与备份”可生成一致性备份；升级时解压新版本，**先运行“恢复数据.cmd”，再启动**。不要覆盖旧目录或删除数据库。完整包从空业务库开始，不包含其他人的历史稿件。
+
+[详细使用指南](使用指南.html) · [交付验收](docs/READY_TO_USE_20261010.md) · [维护与回退](docs/GIT_MAINTENANCE.md)
+
+## 开发者
+
+`git clone https://github.com/apophis100086-coder/fastnews-cueboard.git` 获取主线源码，修改使用独立分支。源码不带运行环境和私有资料，维护者从本地发行环境补齐；也可先取得完整包使用，再开展开发。
+
+源码环境使用 Python 3.11+ 执行 `python tools/setup_workspace.py`。该命令建立 `.venv`、安装锁定依赖、配置 `.githooks`；不调用模型。启动器同时支持 `.venv` 与完整包的 `runtime`。检查命令：
 
 ```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.lock
-.\.venv\Scripts\python.exe -m fastnews validate-config
-.\.venv\Scripts\python.exe tools\open_dashboard.py
+.venv/Scripts/python.exe -B -X utf8 -m unittest discover -s tests -q
+node --test --test-reporter=dot tests/ui_daily_test.cjs
 ```
 
-新电脑需自行配置运行环境及授权。仓库不携带原电脑的数据库、已有新闻、人工选择、登录状态或模型额度；复制源码不代表模型或来源接入已验证。需要原有业务数据时，使用单独备份恢复。
-
-## 版本维护
-
-私有仓库：[apophis100086-coder/fastnews-cueboard](https://github.com/apophis100086-coder/fastnews-cueboard)。首次版本记录始于 2026-09-17，此前的逐次修改无法从现有目录补成真实历史。
-
-- `main`：通过测试的主线；每次改动使用独立分支，检查差异后合并。
-- `baseline-20260917`：接入 Git 时的原应用基线，保留当时源码与文档。
-- `v0.1.0`：加入仓库维护、可独立运行的测试和推送检查后的起点。
-
-详见 [GitHub 长期维护与回退说明](docs/GIT_MAINTENANCE.md)。新克隆必须执行一次 `git config --local core.hooksPath .githooks`，并安装 Node.js 20+，才能启用本地推送前检查。
-
-```powershell
-# 开发中运行现有测试（离线，无模型调用）
-.\.venv\Scripts\python.exe -m unittest discover -s tests -q
-node --test tests/ui_daily_test.cjs
-
-# 提交后，在临时目录验证这一提交能否独立通过测试
-.\.venv\Scripts\python.exe tools\check_repository.py
-```
-
-推送检查会检查敏感文件路径及常见密钥格式，并测试当前提交中的源码。它是本机检查，不是 GitHub 服务端强制分支保护。当前未配置 GitHub Actions 云端运行。
-
-## 资料与数据边界
-
-`.env*`（示例除外）、`data/`、`exports/`、`logs/`、`references/`、数据库、密钥文件和生成的压缩包不进入仓库，原电脑上的文件继续保留。
-
-原三份配置 `sources.yaml`、`topic_taxonomy.yaml`、`products.example.yaml` 保持字节不变。测试通过从原 ZIP 核对得到的 SHA-256 验证它们，无需上传原资料；本机存在原 ZIP 时还会逐字比较。
-
-`CODEX_MASTER_HANDOFF.md`、`START_HERE.md`、`MANIFEST.json` 和 `INPUT_MANIFEST.json` 是历史交接记录。`tools/validate_handoff.py` 验证原资料包的文件清单，不适用于持续修改后的 Git 仓库验收；原说明可在基线版本查看。当前开发从 `AGENTS.md`、总交接文档及相关模块文档进入。
+推送前自动扫描待推历史并在独立源码目录运行测试，禁止跳过。发布从干净提交构建，验证逐文件摘要后上传到此私有仓库的 Releases。运行环境及获授权样稿模板只进入完整发行附件；密钥和业务数据库不上传。原三份配置保持逐字校验，历史 `MANIFEST.json` 不重写。

@@ -49,7 +49,7 @@ class ProductContextTests(unittest.TestCase):
         ed.save_decision(self.conn,edition_id=e['edition_id'],selected_event_id=None,selected_fact_ids=[],
             expected_revision=0,actor_type='human',config=self.config)
         self.product()
-        with self.assertRaisesRegex(ValueError,'选择事实'):
+        with self.assertRaisesRegex(ValueError,'勾选至少一条'):
             w._snapshot(self.conn,self.config,e['edition_id'],1)
 
     def test_cutoff_and_frozen_edition_and_latest_snapshot(self):

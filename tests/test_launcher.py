@@ -13,6 +13,13 @@ from tools import open_dashboard as launcher
 
 
 class LauncherTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows virtual environment redirector')
+    def test_process_identity_does_not_trust_virtualenv_launcher_path(self):
+        actual = launcher.executable_image()
+        self.assertTrue(Path(actual).is_file())
+        with patch.object(launcher.sys, 'executable', 'C:/synthetic-missing/python.exe'):
+            self.assertEqual(launcher.executable_image(), actual)
+
     def setUp(self):
         logging_patch = patch.object(launcher, 'configure_logging', return_value=Path('launcher.log'))
         logging_patch.start()
@@ -70,7 +77,7 @@ class LauncherTests(unittest.TestCase):
         with patch.object(launcher, 'check_service', return_value='occupied_by_another_service'), \
                 patch.object(launcher, 'spawn_server') as spawn, \
                 patch.object(launcher, 'wait_until_ready', return_value=False):
-            with self.assertRaisesRegex(RuntimeError, '8765'):
+            with self.assertRaisesRegex(RuntimeError, str(launcher.PORT)):
                 launcher.ensure_running()
         spawn.assert_not_called()
 

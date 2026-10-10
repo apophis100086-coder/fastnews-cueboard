@@ -1,0 +1,14 @@
+{
+  "source_project": "fastnews-cueboard",
+  "source_commit": "950ea0038927adbc16d50e0f6d6366914d051955",
+  "created_at": "2026-09-29",
+  "business_data_copied": false,
+  "examples": 13,
+  "template_version": "company-copy-20260929-v1",
+  "supplemental_source_commit": "b08edbc",
+  "supplemental_changes": [
+    "empty writing state",
+    "writing column width",
+    "Word spacing"
+  ]
+}

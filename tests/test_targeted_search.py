@@ -185,14 +185,15 @@ class TargetedSearchTests(TestCase):
         from fastnews import search_plan
         value=yaml.safe_load(search_plan.PATH.read_text(encoding='utf-8'))
         test_path=self.root/'search.yaml'
-        for budget in ({'max_events':True,'max_pages_per_event':2},
-                       {'max_events':4,'max_pages_per_event':2},
-                       {'max_events':3,'max_pages_per_event':3}):
+        for budget in ({'max_events':True,'max_pages':20,'max_pages_per_event':2},
+                       {'max_events':7,'max_pages':20,'max_pages_per_event':2},
+                       {'max_events':3,'max_pages':21,'max_pages_per_event':4},
+                       {'max_events':3,'max_pages':20,'max_pages_per_event':5}):
             value['evidence']=budget
             test_path.write_text(yaml.safe_dump(value,allow_unicode=True),encoding='utf-8')
             with patch.object(search_plan,'PATH',test_path),self.assertRaises(ValueError):
                 search_plan.search_policy()
-        value['evidence']={'max_events':1,'max_pages_per_event':1}
+        value['evidence']={'max_events':1,'max_pages':1,'max_pages_per_event':1}
         test_path.write_text(yaml.safe_dump(value,allow_unicode=True),encoding='utf-8')
         with patch.object(search_plan,'PATH',test_path):
             self.assertEqual(build_search_plan(self.view(),'517120')['evidence_budget']['max_events'],1)

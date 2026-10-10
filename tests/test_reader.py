@@ -134,7 +134,8 @@ class ReaderDatabaseTests(unittest.TestCase):
         payload=build_input(self.conn,self.view(),'default','morning','2026-09-14')
         self.assertEqual(len(payload['items']),1)
         self.assertEqual(payload['items'][0]['evidence_level'],'listing_metadata')
-        self.assertEqual(len(payload['selected_sources']),3)
+        self.assertGreater(len(payload['selected_sources']),3)
+        self.assertEqual(payload['lookback_days'],7)
         save_source(self.conn,self.base,'default',{'source_id':'cls_morning','enabled':False})
         self.assertEqual(build_input(self.conn,self.view(),'default','morning','2026-09-14')['items'],[])
 
@@ -157,7 +158,7 @@ class ReaderDatabaseTests(unittest.TestCase):
         restricted = next(s for s in payload['source_constraints'] if s['source_id']=='dxy_insight')
         self.assertFalse(restricted['search_enabled'])
         self.assertTrue(any('手动参考入口' in note for note in payload['coverage_notes']))
-        self.assertTrue(any(q['lane']=='keywords' for q in payload['search_plan']['queries']))
+        self.assertTrue(any(q['lane']=='keywords' for q in payload['search_plan']['query_hints']))
 
     def runner(self, host, prompt, schema, **kwargs):
         payload=json.loads(prompt.split('INPUT_JSON:\n',1)[1])
@@ -186,11 +187,8 @@ class ReaderDatabaseTests(unittest.TestCase):
         report=generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=self.runner)
         payload=build_input(self.conn,self.view(),'default','product','2026-09-15',self.edition())
         reused=[s for s in payload['items'] if s.get('origin')=='saved_research_report']
-        self.assertEqual(len(reused),1)
-        self.assertEqual(reused[0]['prior_report_id'],report['report_id'])
-        self.assertEqual(reused[0]['url'],'https://example.org/test-article')
-        self.assertEqual(reused[0]['evidence_level'],'prior_ai_reading_hint')
-        self.assertIn('原文待核实',reused[0]['excerpt'])
+        # This fixture labels example.org as cls.cn: never reuse a false identity.
+        self.assertEqual(reused,[])
 
     def test_today_refresh_reuses_recent_report_and_keeps_original_cutoff(self):
         self.save_article()
@@ -231,6 +229,19 @@ class ReaderDatabaseTests(unittest.TestCase):
         self.assertEqual(report['error_code'],'host_unavailable')
         self.assertEqual(self.conn.execute('SELECT count(*) FROM fn_article_versions').fetchone()[0],before)
 
+    def test_timeout_preserves_observed_trace_without_creating_candidates(self):
+        from fastnews.task_control import TaskStopped
+        error=TaskStopped('timed_out')
+        error.host_trace={'actions':[{'type':'search','query':'public fixture news'}],
+                          'incomplete':True,'turn_completed':False}
+        with self.assertRaises(TaskStopped):
+            generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=Mock(side_effect=error))
+        report=latest_report(self.conn,'default','morning','2026-09-14')
+        self.assertEqual(report['error_code'],'timed_out')
+        self.assertEqual(report['output']['tool_trace'],error.host_trace)
+        self.assertTrue(report['output']['incomplete'])
+        self.assertNotIn('items',report['output'])
+
     def test_daily_budget_counts_failed_attempts_across_profiles(self):
         from fastnews.reader_limits import reader_limits
         limits=reader_limits()|{'max_tasks_per_day':1}
@@ -241,6 +252,13 @@ class ReaderDatabaseTests(unittest.TestCase):
                 generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=runner)
             with self.assertRaisesRegex(ValueError,'预算上限'):
                 generate_report(self.conn,self.view(other),other,'morning','2026-09-14',runner=runner)
+        self.assertEqual(runner.call_count,1)
+
+    def test_unlimited_daily_count_does_not_reject_research(self):
+        runner=Mock(side_effect=HostUnavailable('synthetic provider failure'))
+        with patch('fastnews.writing.task_attempts',return_value=10000):
+            with self.assertRaises(HostUnavailable):
+                generate_report(self.conn,self.view(),'default','morning','2026-09-14',runner=runner)
         self.assertEqual(runner.call_count,1)
 
     def test_private_imports_are_not_sent_to_host(self):
@@ -297,6 +315,57 @@ class ReportValidationTests(unittest.TestCase):
         self.payload['allow_web_search']=False
         self.assertEqual(self.validate()['items'],[])
 
+    def test_unique_source_alias_remaps_claims_without_mutating_original_or_evidence(self):
+        from copy import deepcopy
+        self.raw['web_sources'][0]['id']='s1'
+        item=self.raw['items'][0];item['source_refs']=['s1']
+        item.update(event_identity=None,claims=[dict(statement='合成事实',kind='reported',source_ref='s1',quote='合成依据')])
+        original=deepcopy(self.raw);result=self.validate()
+        self.assertEqual(self.raw,original)
+        self.assertEqual(result['items'][0]['sources'][0]['id'],'web_s1')
+        self.assertEqual(result['items'][0]['claims'][0]['source_ref'],'web_s1')
+        self.assertFalse(result['items'][0]['fact_verified'])
+        self.assertEqual(result['validation_audit']['source_aliases'][0]['reported_id'],'s1')
+
+    def test_alias_remapping_preserves_morning_timeline_and_domain_references(self):
+        self.payload.update(kind='morning',day='2026-09-14');self.raw['web_sources'][0]['id']='s1'
+        self.raw['items'][0]['source_refs']=['s1']
+        self.raw.update(timeline=[dict(theme='合成科技进展',development='new',summary='合成变化',events=[
+            dict(date='2026-09-14',event='合成发布',source_refs=['s1'])])],
+            domain_coverage=[dict(domain='technology',status='found',source_refs=['s1'],note='合成科技发布')])
+        result=self.validate()
+        self.assertEqual(result['timeline'][0]['events'][0]['source_refs'],['web_s1'])
+        row=next(r for r in result['domain_coverage'] if r['domain']=='technology')
+        self.assertEqual(row['source_refs'],['web_s1'])
+
+    def test_duplicate_conflicting_and_undefined_source_aliases_are_not_repaired(self):
+        from copy import deepcopy
+        self.raw['web_sources'][0]['id']='s1';self.raw['items'][0]['source_refs']=['s1']
+        original=deepcopy(self.raw)
+        self.raw['web_sources'].append(deepcopy(self.raw['web_sources'][0]))
+        with self.assertRaises(ValueError):self.validate()
+        self.raw=deepcopy(original);self.payload['items']=[{'id':'s1'}]
+        with self.assertRaises(ValueError):self.validate()
+        self.payload['items']=[];self.raw['items'][0]['source_refs']=['web_s1']
+        with self.assertRaises(ValueError):self.validate()
+        self.raw=deepcopy(original);self.raw['web_sources'][0]['published_at']='2026-09-15'
+        self.assertEqual(self.validate()['items'],[])
+
+    def test_coarse_nonpublication_dates_stay_audited_and_do_not_merge_periods(self):
+        from copy import deepcopy
+        from fastnews.host_evidence import SOURCE_EXTRA
+        source=self.raw['web_sources'][0]
+        source.update({k:None for k in SOURCE_EXTRA});source['material_kind']='page_fragment'
+        source.update(effective_at='2026-11',data_period_start='2026-09',data_period_end='2026-09')
+        original=deepcopy(self.raw);result=self.validate()['items'][0];normalized=result['sources'][0]
+        self.assertEqual(self.raw,original)
+        self.assertIsNone(normalized['effective_at'])
+        self.assertEqual(normalized['time_field_audit']['effective_at']['reported'],'2026-11')
+        source.update(data_period_start='2026-08',data_period_end='2026-08')
+        self.assertNotEqual(result['research_identity'],self.validate()['items'][0]['research_identity'])
+        source['first_published_at']='2026-09'
+        with self.assertRaises(ValueError):self.validate()
+
     def test_search_hint_is_distinct_from_opened_link_and_both_remain_unverified(self):
         first=self.validate()['items'][0]
         self.assertEqual(first['sources'][0]['evidence_level'],'host_search_hint')
@@ -323,8 +392,8 @@ class ReportValidationTests(unittest.TestCase):
         self.assertEqual(result['validation_audit']['rejected_items'][0]['unavailable_refs'],['web_invented'])
         self.assertTrue(any('不等于没有搜到消息' in gap for gap in result['gaps']))
 
-    def test_more_than_fifteen_product_items_or_four_citations_is_rejected(self):
-        self.raw['items']*=16
+    def test_more_than_sixty_product_items_or_four_citations_is_rejected(self):
+        self.raw['items']*=61
         with self.assertRaises(ValueError):
             self.validate()
         self.raw['items']=self.raw['items'][:1]

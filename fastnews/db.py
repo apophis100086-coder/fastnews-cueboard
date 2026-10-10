@@ -194,7 +194,12 @@ def sync_registry(conn: sqlite3.Connection, config: dict) -> dict:
                 (source_id, dump(source), runtime.get("capability_status", "needs_probe"), runtime.get("adapter_name"),
                  runtime.get("access_review", "not_checked"), runtime.get("validated_discovery_url"),
                  runtime.get("last_probe_at"), runtime.get("last_success_at")))
-        for code, product in config["products"].items():
+        from .product_cards import registry
+        members={c for p in config['products'].values() for c in p.get('member_codes',[])}
+        cards=registry()
+        all_products={c:dict(cards[c],code=c,kind='fund',selectable=False) for c in members if c in cards}
+        all_products.update(config['products'])
+        for code, product in all_products.items():
             conn.execute("INSERT INTO fn_products(code,config_json) VALUES(?,?) ON CONFLICT(code) DO UPDATE SET config_json=excluded.config_json",
                          (code, dump(product)))
         for topic_id, topic in config["topics"].items():

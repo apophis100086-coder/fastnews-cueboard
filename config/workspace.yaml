@@ -1,0 +1,4 @@
+version: unified-workspace-v1
+port: 8807
+agent_direct: true
+package_folder: 快讯AI看板 统一整合版

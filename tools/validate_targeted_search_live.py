@@ -53,7 +53,7 @@ def main():
             with sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True) as conn:
                 attempted_ids.update(r[0] for r in conn.execute('SELECT report_id,created_at FROM fn_reading_reports') if lo<=parse_instant(r[1])<=hi)
     attempts=len(attempted_ids)
-    if attempts>=reader_limits()['max_tasks_per_day']:
+    if reader_limits()['max_tasks_per_day'] is not None and attempts>=reader_limits()['max_tasks_per_day']:
         raise SystemExit('Daily host task budget reached including acceptance attempts')
     dest=ROOT/'data/targeted_acceptance'/now.strftime('%Y%m%dT%H%M%S%fZ')
     dest.mkdir(parents=True,exist_ok=False)

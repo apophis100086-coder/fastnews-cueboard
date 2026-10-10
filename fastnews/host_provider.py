@@ -1,7 +1,9 @@
 """Official local CLI adapters. No extracted login tokens or model API keys."""
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -60,35 +62,25 @@ class HostUnavailable(ValueError):
 
 def clean_environment():
     allowed = {'PATH','PATHEXT','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP','LOCALAPPDATA',
-               'APPDATA','USERPROFILE','HOMEDRIVE','HOMEPATH','HOME','CODEX_HOME',
+               'APPDATA','USERPROFILE','HOMEDRIVE','HOMEPATH','HOME',
                'HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY','LANG','TERM'}
     return {k:v for k,v in os.environ.items() if k.upper() in allowed}
 
 
 def host_command(host):
-    local = Path(os.environ.get('LOCALAPPDATA',''))
-    if host=='codex':
-        found = shutil.which('codex')
-        candidates = list((local/'OpenAI'/'Codex'/'bin').glob('*/codex.exe'))
-        if found:
-            return [found]
-        if candidates:
-            return [str(max(candidates,key=lambda p:p.stat().st_mtime))]
-    elif host=='workbuddy':
-        cli = local/'Programs'/'WorkBuddy'/'resources'/'app.asar.unpacked'/'cli'/'dist'/'codebuddy.js'
-        node = shutil.which('node') or (str(Path(os.environ.get('ProgramFiles','C:/Program Files'))/'nodejs'/'node.exe'))
-        if cli.is_file() and Path(node).is_file():
-            return [node,str(cli)]
-    return None
+    if host!='workbuddy':return None
+    from .workbuddy_runtime import discover_command
+    return discover_command()
 
 
 def host_status():
-    return {'codex':{'installed':bool(host_command('codex')),'label':'Codex / ChatGPT 订阅',
-                    'note':'运行前核对 ChatGPT 登录；与其他 Codex 任务共享额度'},
-            'workbuddy':{'installed':bool(host_command('workbuddy')),'label':'WorkBuddy',
-                        'note':'使用官方命令行登录状态；首次运行需验证当前账号授权'},
-            'limits':dict(reader_limits(),max_parallel_tasks=1),
-            'billing_note':'使用所选工具的现有额度，不配置模型 API Key；实际额度由对应工具管理。'}
+    from .workbuddy_runtime import connection_status
+    return {'codex':{'installed':None,'disabled':False,'configured':True,'label':'Codex 智能体',
+                    'note':'在 Codex 打开本项目后说“处理看板任务”；账号与联网由该客户端提供。'},
+        'workbuddy':connection_status(), 'limits':dict(reader_limits(),max_parallel_tasks=1),
+        'billing_note':'WorkBuddy / Codex 使用对应账户；自接 API 按所配置服务商计费。不会自动切换入口。',
+        'agent_direct':{'mode':'agent_direct','configured':True,'model':'not_verified','web':'not_verified',
+            'note':'在所选客户端打开本项目并说“处理看板任务”。收到响应、取得原文及稿件通过检查分别记录。'}}
 
 
 @dataclass
@@ -119,7 +111,7 @@ def _urls(value):
     return result
 
 
-def parse_codex_output(output, final):
+def parse_codex_output(output, final, *, incomplete=False):
     usage, searches, urls, actions = {}, [], set(), []
     completed, pending_error, recovered_errors = False, False, 0
     for line in output.splitlines():
@@ -152,17 +144,26 @@ def parse_codex_output(output, final):
             # Only a later explicit completion can clear an intermediate error.
             pending_error=True
             recovered_errors+=1
-        if event.get('type')=='turn.failed':
+        if event.get('type')=='turn.failed' and not incomplete:
             raise HostUnavailable('Codex 任务未完成；请在 Codex 中检查登录、网络或剩余额度')
-    if pending_error:
+    if pending_error and not incomplete:
         raise HostUnavailable('Codex 任务未完成；请在 Codex 中检查登录、网络或剩余额度')
     return HostResult(loads(final),usage,{'web_actions':len(searches),'visited_urls':sorted(urls),
         'actions':actions, 'tool_excerpts':[], 'turn_completed':completed,
+        'incomplete':incomplete,
         'recovered_error_events':recovered_errors,
         'content_observability':'CLI action records do not establish returned page text or successful retrieval'})
 
 
-def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None, control=None):
+def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=None, control=None,
+             model=None, reasoning_effort=None, input_character_limit=36000, task_kind='research'):
+    if type(input_character_limit) is not int or not 1000<=input_character_limit<=128000:
+        raise ValueError('宿主任务输入容量无效')
+    if host!='workbuddy':raise HostUnavailable('此项目只连接 WorkBuddy，Codex 运行入口已停用')
+    if model is not None and (not isinstance(model,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,79}',model) or model.startswith(('gpt-','codex'))):
+        raise ValueError('请选择 WorkBuddy 已验证的模型')
+    if reasoning_effort is not None and reasoning_effort not in {'minimal','low','medium','high','xhigh','max'}:
+        raise ValueError('WorkBuddy 推理档位无效')
     limits=reader_limits()
     timeout=limits['timeout_seconds'] if timeout is None else min(timeout,limits['timeout_seconds'])
     if control:
@@ -170,20 +171,25 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
     command = host_command(host)
     if command is None:
         raise HostUnavailable('未找到所选宿主的命令行入口，请先安装并登录对应软件')
-    if not isinstance(prompt,str) or len(prompt)>36000:
+    if not isinstance(prompt,str) or len(prompt)>input_character_limit:
         raise ValueError('本次资料超过宿主任务输入上限，请减少来源或缩短时间范围')
     env = clean_environment()
     flags = {'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {}
-    if host=='codex':
-        try:
-            auth = subprocess.run(command+['login','status'],capture_output=True,text=True,encoding='utf-8',
-                                  errors='replace',timeout=12,env=env,**flags)
-        except (OSError,subprocess.TimeoutExpired):
-            raise HostUnavailable('无法检查 Codex 登录状态，请打开 Codex 后重试') from None
-        if auth.returncode or 'ChatGPT' not in auth.stdout+auth.stderr:
-            raise HostUnavailable('请先以 ChatGPT 账号登录 Codex；本功能不使用 API Key 计费模式')
     if control:
         timeout=min(timeout,control.host_timeout())
+    # The outer task also reserves verification and saving time. Tell the model
+    # its earlier, actual deadline rather than only the outer 480-second limit.
+    model_deadline=(datetime.now(timezone.utc)+timedelta(seconds=timeout)).isoformat()
+    timing=(f'运行时限：本次模型最多使用 {timeout:.0f} 秒，必须在 {model_deadline} 前返回完整JSON。'
+            '这早于资料中可能出现的整项任务截止时间，以本条为准。')
+    if task_kind=='writing':
+        timing+='直接使用已提供的材料完成当前写作步骤。'
+    else:
+        timing+=('预留最后至少90秒组织和输出结果；时间不足立即结束检索，用已取得材料交付并列明未检查缺口。'
+                 '查询和容量均为上限，不要求用满。')
+    prompt=timing+'\n'+prompt
+    if len(prompt)>input_character_limit:
+        raise ValueError('本次资料及运行指令超过宿主任务输入上限')
     # Use the OS temporary directory for ephemeral runs. Packaged Windows apps
     # can redirect new LOCALAPPDATA children into a package's LocalCache while
     # resolving an existing parent to its unredirected path.
@@ -196,18 +202,15 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             raise ValueError('Unsafe host work directory')
         schema_path, output_path = root/'schema.json', root/'result.json'
         schema_path.write_text(json.dumps(schema,ensure_ascii=False),encoding='utf-8')
-        if host=='codex':
-            args = command+['exec','--ignore-user-config','--ephemeral','--skip-git-repo-check',
-                '--sandbox','read-only','--disable','shell_tool','--disable','multi_agent',
-                '--disable','plugins','-c','web_search="live"' if web_search else 'web_search="disabled"',
-                '--json','-C',str(root),'--output-schema',str(schema_path),'-o',str(output_path),'-']
-        else:
-            args = command+['--print','--output-format','json','--permission-mode','dontAsk',
-                '--tools','WebSearch,WebFetch' if web_search else '',
-                '--allowedTools','WebSearch,WebFetch' if web_search else '',
-                '--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--setting-sources','',
-                '--settings','{"disableAllHooks":true}','--no-session-persistence','--max-turns','8',
-                '--json-schema',json.dumps(schema,ensure_ascii=False)]
+        args = command+['--print','--output-format','stream-json','--verbose','--permission-mode','dontAsk',
+            '--tools','WebSearch,WebFetch' if web_search else '',
+            '--allowedTools','WebSearch,WebFetch' if web_search else '',
+            '--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--setting-sources','',
+            '--settings','{"disableAllHooks":true}','--no-session-persistence',
+            '--json-schema',json.dumps(schema,ensure_ascii=False)]
+        if model:args+=['--model',model]
+        if reasoning_effort:args+=['--effort',reasoning_effort]
+        env['CODEBUDDY_CODE_DISABLE_BACKGROUND_TASKS']='1'
         started = time.monotonic()
         if progress:
             progress({'stage':'host','message':f'正在使用 {host} 整理资料'+('并补充联网检索' if web_search else '')})
@@ -216,6 +219,8 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
             process = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                 text=True,encoding='utf-8',errors='replace',cwd=root,env=env,**flags)
             group = ProcessGroup(process)
+            partial_output=''
+            failure=None
             try:
                 if control:
                     from .task_control import TaskStopped
@@ -229,44 +234,58 @@ def run_host(host, prompt, schema, *, web_search=True, timeout=None, progress=No
                         try:
                             output,diagnostic=process.communicate(prompt if first else None,timeout=min(0.5,remaining))
                             break
-                        except subprocess.TimeoutExpired:
+                        except subprocess.TimeoutExpired as pending:
+                            partial_output=pending.output or partial_output
                             first=False
                 else:
                     output, diagnostic = process.communicate(prompt,timeout=timeout)
                 result = subprocess.CompletedProcess(args,process.returncode,output,diagnostic)
+            except BaseException as exc:
+                failure=exc
+                raise
             finally:
                 group.close()
                 if process.poll() is None:
                     process.kill()
                 process.wait(timeout=10)
+                # Preserve observable public search actions on timeout/cancel.
+                # Never retain raw diagnostics, reasoning or login output.
+                if failure is not None:
+                    # Windows communicate keeps data in reader threads and may
+                    # omit TimeoutExpired.output. Drain after killing the group.
+                    try:
+                        drained,diagnostic=process.communicate(timeout=1)
+                        partial_output=drained or partial_output
+                    except (OSError,subprocess.TimeoutExpired):
+                        pass
+                    if isinstance(partial_output,bytes):
+                        partial_output=partial_output.decode('utf-8',errors='replace')
+                    from .workbuddy_runtime import parse_output
+                    partial=parse_output(partial_output[:4_000_000],incomplete=True)
+                    partial.trace['trace_truncated']=len(partial_output)>4_000_000
+                    failure.host_trace=partial.trace
+                    # Some official CLI versions print an authentication error
+                    # then keep a background handle alive. Report that cause,
+                    # even when the process needed to be stopped at the deadline.
+                    if getattr(failure,'code',None)!='cancelled':
+                        from .workbuddy_runtime import diagnose_failure
+                        known=diagnose_failure(0,partial_output,locals().get('diagnostic',''))
+                        if known:
+                            error=HostUnavailable(known);error.host_trace=partial.trace
+                            raise error from None
         except subprocess.TimeoutExpired:
             raise HostUnavailable(f'宿主任务达到 {timeout} 秒上限，已停止；请缩小来源范围后重试') from None
         except OSError:
             raise HostUnavailable('无法启动模型任务，请检查宿主软件是否仍在安装位置') from None
-        if result.returncode:
-            raise HostUnavailable('宿主未成功完成任务，请在对应软件检查登录、权限、网络和额度；未切换为 API 扣费')
-        if len(result.stdout)>4_000_000:
-            raise HostUnavailable('宿主返回内容超过限制，请缩小任务范围')
-        if host=='codex':
-            if not output_path.is_file() or output_path.stat().st_size>200_000:
-                raise HostUnavailable('Codex 没有返回有效的结构化报告')
-            parsed = parse_codex_output(result.stdout,output_path.read_text(encoding='utf-8'))
-            if not parsed.trace.get('turn_completed'):
-                raise HostUnavailable('Codex 未确认本轮完成，已有结果已保留')
-        else:
-            try:
-                outer = loads(result.stdout)
-                if outer.get('is_error'):
-                    raise ValueError()
-                payload = outer.get('structured_output') or outer.get('result')
-                if isinstance(payload,str):
-                    payload = loads(payload)
-                if not isinstance(payload,dict):
-                    raise ValueError()
-                parsed = HostResult(payload,outer.get('usage',{}),{'web_actions':None,'visited_urls':[]})
-            except (ValueError,AttributeError):
-                raise HostUnavailable('WorkBuddy 尚未返回可用报告，请先确认命令行登录与订阅授权') from None
-        parsed.usage = {'host':host,'billing':'host_subscription','api_key_used':False,
+        from .workbuddy_runtime import parse_output,diagnose_failure
+        failure=diagnose_failure(result.returncode,result.stdout,result.stderr)
+        if failure:raise HostUnavailable(failure)
+        if len(result.stdout)>4_000_000:raise HostUnavailable('WorkBuddy 返回内容超过本次容量')
+        parsed=parse_output(result.stdout)
+        parsed.usage = {'host':host,'billing':'workbuddy_account','api_key_used':False,
+                        'model_actual':parsed.trace.get('model_actual'),
+                        'reasoning_effort_actual':parsed.trace.get('reasoning_effort_actual'),
+                        'model_requested':model,'reasoning_effort_requested':reasoning_effort,
                         'input_tokens':parsed.usage.get('input_tokens'),
                         'output_tokens':parsed.usage.get('output_tokens'),
                         'cached_input_tokens':parsed.usage.get('cached_input_tokens'),

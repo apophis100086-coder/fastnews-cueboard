@@ -30,6 +30,7 @@ class Element {
       add: (...names) => names.forEach(name => classes.add(name)),
       remove: (...names) => names.forEach(name => classes.delete(name)),
       contains: name => classes.has(name),
+      toggle: (name, force) => { const on = force === undefined ? !classes.has(name) : !!force; if (on) classes.add(name); else classes.delete(name); return on; },
     };
   }
   set textContent(value) { this._text = String(value); this._html = String(value); }
@@ -69,6 +70,8 @@ function edition() {
 
 async function harness(options = {}) {
   const elements = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(match => [match[1], new Element(match[1])]));
+  elements.set('retry-archive',new Element('retry-archive'));
+  elements.set('writing-local-text',new Element('writing-local-text')); // dynamically rendered editor
   elements.get('group').value = 'all';
   const listeners = new Map();
   const storage = new Map();
@@ -85,6 +88,7 @@ async function harness(options = {}) {
     host_status:{codex:{installed:true,note:'测试状态'}},
   };
   let handler = options.handler;
+  options.onDom?.(elements);
   const clone = value => JSON.parse(JSON.stringify(value));
   const context = vm.createContext({
     document: {
@@ -107,6 +111,7 @@ async function harness(options = {}) {
       return {ok: status >= 200 && status < 300, status, json: async () => clone(result.payload === undefined ? result : result.payload)};
     },
     setTimeout: (callback, delay) => setTimeout(callback, delay === 900 ? 0 : delay),
+    navigator:{clipboard:{writeText:async text=>options.onCopy?.(text)}},atob,
     clearTimeout, AbortController, URL, Date, console, TypeError, crypto:require('node:crypto').webcrypto,
   });
   await vm.runInContext(script, context, {filename: 'fastnews/static/app.js'});
@@ -115,6 +120,8 @@ async function harness(options = {}) {
   if(options.exploration)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/exploration.js'),'utf8'),context,{filename:'exploration.js'});
   if(options.writing)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/writing.js'),'utf8'),context,{filename:'writing.js'});
   if(options.workspace)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workspace.js'),'utf8'),context,{filename:'workspace.js'});
+  if(options.workbuddy)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workbuddy.js'),'utf8'),context,{filename:'workbuddy.js'});
+  if(options.execution)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/execution.js'),'utf8'),context,{filename:'execution.js'});
   if(options.visuals)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/visuals.js'),'utf8'),context,{filename:'visuals.js'});
   return {
     el: id => elements.get(id), calls, state, storage,
@@ -205,7 +212,7 @@ test('network failures are caught by UI handlers and leave a visible recovery me
     if (call.url === '/api/scan') throw new TypeError('Connection refused');
   });
   await assert.doesNotReject(() => app.el('scan').onclick());
-  assert.match(app.el('message').textContent, /华泰柏瑞快讯看板/);
+  assert.match(app.el('message').textContent, /一键启动/);
   assert.match(app.el('job').textContent, /暂时连不上/);
   assert.equal(app.el('job').classList.contains('error'), true);
   assert.equal(app.el('scan').disabled, false);
@@ -383,7 +390,7 @@ test('AI digest sends chosen day and shows a saved report without selecting any 
   });
   app.el('news-day').value='2026-09-14';
   await app.el('digest').onclick();
-  assert.deepEqual(app.calls.find(c=>c.url==='/api/digest').body,{date:'2026-09-14',section:'morning'});
+  assert.deepEqual(app.calls.find(c=>c.url==='/api/digest').body,{date:'2026-09-14',section:'all',lookback_days:7});
   assert.match(app.el('morning-report').innerHTML,/合成研究线索/);
   assert.equal(app.read('basket'),null);
   assert.ok(!app.calls.some(c=>c.url.includes('decision')||c.url.includes('reading-adopt')));
@@ -550,8 +557,11 @@ test('morning chart counts come from the saved report and empty data remains exp
  assert.match(app.el('topic-caption').textContent,/3 条/);
  assert.match(app.el('topic-chart').innerHTML,/data-reading-category="technology"/);
  assert.match(app.el('topic-chart').innerHTML,/<strong>2<\/strong>/);
- assert.match(app.el('topic-chart').innerHTML,/<progress max="2" value="2"/);
- assert.match(app.el('topic-chart').innerHTML,/<progress max="2" value="1"/);
+ assert.equal(app.el('reading-overview').hidden,false);
+ assert.match(app.el('topic-chart').innerHTML,/政策与宏观<strong>1<\/strong>/);
+ assert.match(app.el('topic-chart').innerHTML,/aria-pressed="false"/);
+ app.evaluate("daily.reading_report={output:{items:[]}};renderVisuals()");
+ assert.equal(app.el('reading-overview').hidden,true);
  assert.ok(!app.el('topic-chart').innerHTML.includes('style='),'CSP forbids inline style attributes');
  assert.ok(!app.el('source-coverage-visual').innerHTML.includes('style='));
  assert.equal(app.read('basket'),null);
@@ -585,7 +595,7 @@ test('failed refresh keeps the previous usable report visible', async () => {
   const app=await harness({reader:true,workflow:true});
   const previous={status:'partial',host:'codex',report_id:'old',output:{items:[{item_id:'item_1',title:'原有研究线索',summary:'先前可用结果',sources:[],rank:1}],gaps:[],coverage:[]}};
   const markup=app.evaluate('reportHTML('+JSON.stringify({status:'failed',previous_report:previous})+',"product")');
-  assert.match(markup,/本次宿主任务未完成/);
+  assert.match(markup,/上次产品检索未完成/);
   assert.match(markup,/原有研究线索/);
   assert.match(markup,/以下保留上次可用结果/);
 });
@@ -663,134 +673,6 @@ test('stopped exploration preserves draft and exposes no fabricated results',asy
  assert.match(app.el('message').textContent,/达到时间上限/);assert.equal(app.el('explore-stop').hidden,true);
 });
 const writingOptions={workflow:true,writing:true,exploration:true};
-test('old-selection drafts remain readable but cannot be exported or rechecked',async()=>{
- const e=writingEdition();e.writing.versions.push({version_id:'stale-draft',stage:'draft',decision_revision:1,
-  created_at:'2026-09-13T11:00:00Z',stale_selection:true,checks:{errors:[]},
-  content:{title:'旧版初稿',paragraphs:[],body_characters:0,risk_notice:{text:'风险',missing:[]}}});
- const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
- await app.evaluate("loadEdition('ed-one')");
- const output=app.el('writing-draft-result').innerHTML;
- assert.match(output,/旧版初稿/);assert.match(output,/对应旧选材，请更新框架/);
- for(const action of ['copy','download','recheck'])assert.match(output,new RegExp('data-'+action+'-draft="stale-draft" disabled'));
-});
-test('writing renders a framework without copying it into the confirmation editor',async()=>{
- const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
- await app.evaluate("loadEdition('ed-one')");
- assert.match(app.el('writing-outline-result').textContent,/合成框架/);
- assert.equal(app.el('writing-final').value,'');assert.equal(app.el('writing-generate').disabled,true);
- app.el('writing-final').value='人工改好的框架';app.el('writing-final').oninput();
- assert.equal(app.el('writing-generate').disabled,false);
-});
-test('writing editor, feedback and material draft survive result completion',async()=>{
- let polls=0;
- const app=await harness({...writingOptions,handler:c=>{
-  if(c.url.startsWith('/api/edition?'))return writingEdition();
-  if(c.url==='/api/writing-outline')return {job_id:'w-one'};
-  if(c.url==='/api/job?id=w-one'){polls++;return {job_id:'w-one',action:'writing-outline',stage:'outline',edition_id:'ed-one',status:polls===1?'running':'completed',reader_profile:'default',progress:[]};}
- }});
- await app.evaluate("loadEdition('ed-one')");
- app.el('writing-final').value='不能覆盖的最终框架';app.el('writing-final').oninput();
- app.el('writing-feedback').value='请保留我的意见';app.el('writing-feedback').oninput();
- await app.el('writing-outline').onclick();
- assert.equal(app.el('writing-final').value,'不能覆盖的最终框架');
- assert.equal(app.el('writing-feedback').value,'请保留我的意见');
- assert.equal(polls,2);assert.equal(app.calls.filter(c=>c.url==='/api/writing-draft').length,0);
-});
-test('writing sends confirmation before draft and preserves pasted modifications',async()=>{
- const app=await harness({...writingOptions,handler:c=>{
-  if(c.url.startsWith('/api/edition?'))return writingEdition();
-  if(c.url==='/api/writing-confirm')return {...writingOutline('confirmed'),stage:'confirmed_outline',content:{confirmed_text:c.body.text}};
-  if(c.url==='/api/writing-draft')return {job_id:'draft-task'};
-  if(c.url==='/api/job?id=draft-task')return {job_id:'draft-task',action:'writing-draft',stage:'draft',edition_id:'ed-one',status:'completed',progress:[]};
- }});
- await app.evaluate("loadEdition('ed-one')");
- app.el('writing-final').value='用户粘贴并补充的最终框架';app.el('writing-final').oninput();
- await app.el('writing-generate').onclick();
- const writes=app.calls.filter(c=>c.method==='POST');
- assert.equal(writes[0].url,'/api/writing-confirm');assert.equal(writes[0].body.text,'用户粘贴并补充的最终框架');
- assert.equal(writes[1].url,'/api/writing-draft');assert.equal(writes[1].body.confirmed_version_id,'confirmed');
-});
-test('writing editor isolates Editions and restores unfinished text on return',async()=>{
- const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition(new URL('http://local'+c.url).searchParams.get('id')):undefined});
- await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='一期未保存框架';app.el('writing-final').oninput();
- await app.evaluate("loadEdition('ed-two')");assert.equal(app.el('writing-final').value,'');
- app.el('writing-final').value='二期草稿';app.el('writing-final').oninput();
- await app.evaluate("loadEdition('ed-one')");assert.equal(app.el('writing-final').value,'一期未保存框架');
-});
-test('writing jobs allow manual editing and switching while heavy controls stay disabled',async()=>{
- const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
- await app.evaluate("loadEdition('ed-one');writingJob={job_id:'running'};setBusy(true)");
- assert.equal(app.el('product').disabled,false);assert.equal(app.el('save').disabled,false);
- assert.equal(app.el('writing-final').disabled,false);assert.equal(app.el('writing-outline').disabled,true);
- assert.equal(app.el('research').disabled,true);
-});
-test('stale selection blocks writing from an older confirmed outline',async()=>{
- const e=writingEdition();e.writing.versions[0].stale_selection=true;
- const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
- await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='旧框架';app.el('writing-final').oninput();
- assert.equal(app.el('writing-generate').disabled,true);assert.match(app.el('writing-state').textContent,/旧选材/);
-});
-test('writing supplement sends only the visible public question and frame ID',async()=>{
- const app=await harness({...writingOptions,reader:true,handler:c=>{
-  if(c.url.startsWith('/api/edition?'))return writingEdition();
-  if(c.url==='/api/explore')return {job_id:'gap-task'};
-  if(c.url==='/api/job?id=gap-task')return {job_id:'gap-task',action:'explore',edition_id:'ed-one',status:'completed',progress:[],result:{output:{items:[]}}};
- }});
- await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='私人草稿不应作为搜索词';app.el('writing-final').oninput();
- app.el('writing-question').value='公开产业问题';app.el('writing-question').oninput();
- await app.el('writing-supplement').onclick();
- const body=app.calls.find(c=>c.url==='/api/explore').body;
- assert.equal(body.research_question,'公开产业问题');assert.deepEqual(body.writing_context,{outline_version_id:'outline-v1'});
- assert.doesNotMatch(JSON.stringify(body),/私人草稿/);
-});
-test('must-include flags are explicit and do not automatically select a material',async()=>{
- const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
- await app.evaluate("loadEdition('ed-one')");await app.evaluate("basket.selected_clue_ids=['clue-one'];workflowChange({dataset:{mustMaterial:'clue-one'},checked:true})");
- assert.deepEqual(app.read('basket.must_include_ids'),['clue-one']);
- await app.evaluate("workflowChange({dataset:{clue:'clue-one'},checked:false})");
- assert.deepEqual(app.read('basket.must_include_ids'),[]);
-});
-
-test('switching to a saved product restores its Edition without starting generation',async()=>{
- const one=writingEdition(),two=writingEdition('ed-two');two.edition.product_code='588090';
- const app=await harness({...writingOptions,products:[{code:'513130',name:'产品一'},{code:'588090',name:'产品二'}],
-  handler:c=>c.url.startsWith('/api/edition?')?(c.url.includes('ed-two')?two:one):undefined});
- await app.evaluate('state.editions='+JSON.stringify([one.edition,two.edition]));
- await app.evaluate("loadEdition('ed-one')");
- app.el('writing-final').value='产品一未确认的修改';app.el('writing-final').oninput();
- app.el('product').value='588090';await app.el('product').onchange();
- assert.equal(app.read('editionId'),'ed-two');assert.equal(app.el('writing-final').value,'');
- app.el('product').value='513130';await app.el('product').onchange();
- assert.equal(app.el('writing-final').value,'产品一未确认的修改');
- assert.ok(app.calls.every(c=>c.method==='GET'));
-});
-
-test('older skill drafts remain readable but cannot be copied as currently checked output',async()=>{
- const e=writingEdition();e.writing.versions.push({version_id:'draft-old',stage:'draft',decision_revision:1,
-  created_at:'2026-09-13T11:00:00Z',stale_skill_version:true,checks:{errors:[]},
-  content:{title:'历史标题',body_characters:10,paragraphs:[{text:'保留历史正文',sources:[{name:'实际出处',url:'https://example.org/article',published_at:'2026-09-12'}]}],risk_notice:{text:'风险提示',missing:[]}}});
- const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
- await app.evaluate("loadEdition('ed-one')");
- const output=app.el('writing-draft-result').innerHTML;
- assert.match(output,/历史标题/);assert.match(output,/保留历史正文/);
- assert.match(output,/旧版技能/);assert.match(output,/data-copy-draft="draft-old" disabled/);
- assert.match(output,/<details class="paragraph-sources">/);
- assert.equal(app.el('writing-framework-panel').open,false);
-});
-
-test('program recheck adds a version while preserving the final editor and avoiding a model task',async()=>{
- const app=await harness({...writingOptions,handler:c=>{
-  if(c.url.startsWith('/api/edition?'))return writingEdition();
-  if(c.url==='/api/writing-recheck')return {...writingOutline('recheck-version'),parent_id:c.body.version_id};
- }});
- await app.evaluate("loadEdition('ed-one')");app.el('writing-final').value='尚未确认的人工修改';app.el('writing-final').oninput();
- const button={dataset:{recheckDraft:'draft-one'}};
- await app.on('click',{target:{closest:()=>button}});
- assert.equal(app.el('writing-final').value,'尚未确认的人工修改');
- assert.equal(app.read('detail.writing.versions').at(-1).parent_id,'draft-one');
- assert.deepEqual(app.calls.filter(c=>c.method==='POST').map(c=>c.url),['/api/writing-recheck']);
-});
-
 test('product relationship evidence keeps its date and untrusted content inert without adoption',async()=>{
  const app=await harness({reader:true});
  const item={sources:[],claims:[],product_relationship:{references:[{title:'<img src=x onerror=alert(1)>',
@@ -801,4 +683,291 @@ test('product relationship evidence keeps its date and untrusted content inert w
  assert.match(output,/引用原句与关联解释待核对/);
  assert.doesNotMatch(output,/<script>|<img|href="javascript:/);
  assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('morning timeline shows dated evidence and gaps without executing source content',async()=>{
+ const app=await harness({reader:true});
+ const report={output:{lookback_days:7,timeline:[{theme:'<img src=x>',development:'ongoing',summary:'已有两次进展',events:[
+  {date:'2026-09-24',event:'<script>bad()</script>',sources:[{url:'javascript:alert(1)',title:'公开材料'}]}]}],
+  domain_coverage:[{name:'医药',status:'not_checked',note:'尚未检查'}]}};
+ const html=app.evaluate('morningContextHTML('+JSON.stringify(report)+')');
+ assert.match(html,/近7个自然日/);assert.match(html,/2026-09-24/);assert.match(html,/医药/);
+ assert.doesNotMatch(html,/<script>|<img|href="javascript:/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+
+
+function directEdition(){const e=writingEdition();e.decision.selected_fact_ids=['fact-one'];return e;}
+test('direct writing has no outline controls and requires human-selected material',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition():undefined});
+ await app.evaluate("loadEdition('ed-one')");assert.equal(app.el('writing-generate').disabled,true);
+ assert.doesNotMatch(html,/id="writing-outline"|id="writing-final"|id="writing-framework-panel"/);
+ await app.evaluate("basket.selected_fact_ids=['fact-one'];persistDraft()");assert.equal(app.el('writing-generate').disabled,false);
+ assert.match(app.el('writing-state').textContent,/自动保存/);
+});
+test('click autosaves once and generates without any outline confirmation',async()=>{
+ const e=directEdition();let revision=1;
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return e;
+  if(c.url==='/api/decision'){e.decision={...c.body,decision_revision:++revision};return e.decision;}
+  if(c.url==='/api/writing-generate')return {job_id:'direct-one'};
+  if(c.url.startsWith('/api/job?'))return {edition_id:'ed-one',status:'completed',action:'writing-generate',progress:[]};
+ }});
+ await app.evaluate("loadEdition('ed-one')");await app.evaluate("basket.mainline_note='新主线';persistDraft()");
+ await app.el('writing-generate').onclick();
+ assert.deepEqual(app.calls.filter(c=>c.method==='POST').map(c=>c.url),['/api/decision','/api/writing-generate']);
+ const body=app.calls.find(c=>c.url==='/api/writing-generate').body;
+ assert.equal(body.decision_revision,2);assert.equal(body.confirmed_version_id,undefined);assert.equal(app.read('dirty'),false);
+});
+test('save conflicts preserve all local edits and do not start writing',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?directEdition():c.url==='/api/decision'?{httpStatus:400,payload:{error:'选材版本冲突'}}:undefined});
+ await app.evaluate("loadEdition('ed-one')");await app.evaluate("basket.mainline_note='保留我';persistDraft()");await app.el('writing-generate').onclick();
+ assert.equal(app.read('basket.mainline_note'),'保留我');assert.equal(app.read('dirty'),true);
+ assert.match(app.el('writing-error').textContent,/冲突/);assert.ok(!app.calls.some(c=>c.url==='/api/writing-generate'));
+});
+
+test('edits during automatic save survive with the acknowledged revision and no generation',async()=>{
+ let release;const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return directEdition();
+  if(c.url==='/api/decision')return new Promise(r=>release=()=>r({...c.body,decision_revision:2}));
+ }});
+ await app.evaluate("loadEdition('ed-one')");await app.evaluate("basket.mainline_note='第一次输入';persistDraft()");
+ const saving=app.el('writing-generate').onclick();await new Promise(r=>setImmediate(r));
+ await app.evaluate("basket.mainline_note='保存时新输入';persistDraft()");release();await saving;
+ assert.equal(app.read('basket.mainline_note'),'保存时新输入');assert.equal(app.read('basket.expected_revision'),2);
+ assert.equal(app.read('dirty'),true);assert.ok(!app.calls.some(c=>c.url==='/api/writing-generate'));
+});
+
+test('yesterday cutoff stays distinct from the current-time default',async()=>{
+ const app=await harness({workflow:true});await app.evaluate("state.default_day='2026-09-29';state.default_cutoff='2026-09-29T15:00:00+08:00'");
+ app.el('cutoff-yesterday').onclick();assert.equal(app.el('cutoff').value,'2026-09-28T23:59:59+08:00');
+});
+test('duplicate click submits only one running generation',async()=>{
+ const e=directEdition();let release;
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return e;
+  if(c.url==='/api/writing-generate')return new Promise(r=>release=()=>r({job_id:'one'}));
+  if(c.url.startsWith('/api/job?'))return {edition_id:'ed-one',status:'completed',action:'writing-generate',progress:[]};
+ }});
+ await app.evaluate("loadEdition('ed-one')");const first=app.el('writing-generate').onclick();
+ await new Promise(r=>setImmediate(r));await app.el('writing-generate').onclick();release();await first;
+ assert.equal(app.calls.filter(c=>c.url==='/api/writing-generate').length,1);
+});
+test('failed submit retries the same request identifier and keeps feedback',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?directEdition():c.url==='/api/writing-generate'?{httpStatus:400,payload:{error:'暂时无法启动'}}:undefined});
+ await app.evaluate("loadEdition('ed-one')");app.el('writing-feedback').value='保留意见';app.el('writing-feedback').oninput();
+ await app.el('writing-generate').onclick();await app.el('writing-generate').onclick();
+ const ids=app.calls.filter(c=>c.url==='/api/writing-generate').map(c=>c.body.request_id);assert.equal(ids[0],ids[1]);
+ assert.equal(app.el('writing-feedback').value,'保留意见');assert.equal(app.read('busy'),false);
+});
+test('draft preview escapes output and keeps incomplete drafts copyable with a status',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',version_id:'v-test',created_at:'2026-09-25',checks:{errors:[{message:'编辑未完成'}]},content:{text:'标题\n\n<script>保留原始起草稿</script>',pipeline:{status:'editing_incomplete'}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;assert.match(output,/编辑未完成/);assert.match(output,/&lt;script&gt;/);assert.doesNotMatch(output,/<script>/);
+ assert.match(output,/复制完整稿件/);assert.match(output,/下载 Word/);assert.doesNotMatch(output,/可直接采用/);
+ app.el('writing-local-text').value='我的人工修订';app.el('writing-local-text').oninput();await app.evaluate('renderWriting()');assert.equal(app.el('writing-local-text').value,'我的人工修订');
+});
+test('legacy drafts retain their original workflow label and do not offer unsupported Word export',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',workflow:'legacy',version_id:'v-old',created_at:'2026-09-25',checks:{errors:[]},content:{text:'旧稿标题\n\n旧版正文'}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/历史稿件，按原流程和口径保存/);assert.match(output,/旧版正文/);assert.doesNotMatch(output,/编辑未完成|data-word-draft/);
+});
+test('source details disclose partial reading, unchecked dates and omitted inputs',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',version_id:'v-partial',created_at:'2026-09-25',checks:{errors:[]},source_evidence:[{name:'公开机构',title:'资料',text_observed:true,text_truncated:true,date_observed:false,published_at:'2026-09-24'}],content:{text:'标题\n\n正文',pipeline:{status:'complete',input_coverage:{omitted:[{title:'长报告',reason:'input_capacity_whole_source_omitted'}]}}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/已读部分原文（内容截断）/);assert.match(output,/日期待核对/);assert.match(output,/长报告：输入容量不足，整篇未纳入/);
+});
+test('writing feedback is isolated by edition and old framework storage remains intact',async()=>{
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?writingEdition(c.url.includes('ed-two')?'ed-two':'ed-one'):undefined});
+ await app.evaluate("loadEdition('ed-one');localStorage.setItem(key('writing-editor'),'old outline')");
+ app.el('writing-feedback').value='产品一意见';app.el('writing-feedback').oninput();
+ await app.evaluate("loadEdition('ed-two')");assert.equal(app.el('writing-feedback').value,'');
+ await app.evaluate("loadEdition('ed-one')");assert.equal(app.el('writing-feedback').value,'产品一意见');assert.equal(app.evaluate("localStorage.getItem(key('writing-editor'))"),'old outline');
+});
+test('writing failures remain visible after page recovery without clearing selections',async()=>{
+ const e=directEdition();e.writing.runs=[{stage:'draft',status:'timed_out',error:'编辑超时，起草稿已保存'}];
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ assert.equal(app.el('writing-error').hidden,false);assert.match(app.el('writing-error').textContent,/起草稿已保存/);assert.deepEqual(app.read('basket.selected_fact_ids'),['fact-one']);
+});
+
+test('copy and Word controls use the clean delivery fields, not source traces',async()=>{
+ let copied;const pack={markdown:'标题\n\n正文\n\n（信息来源：公开机构，2026-09-25）',word_base64:Buffer.from('test-docx-bytes').toString('base64'),trace:{url:'https://example.org/private-trace'}};
+ const app=await harness({...writingOptions,onCopy:text=>copied=text,handler:c=>c.url==='/api/writing-export'?pack:undefined});
+ await app.evaluate('var downloadCapture;downloadWritingFile=(name,bytes,type)=>{downloadCapture={name,bytes:Array.from(bytes),type}}');
+ const click=dataset=>app.on('click',{target:{closest:()=>({dataset})}});
+ await click({copyDraft:'v-test'});assert.equal(copied,pack.markdown);assert.doesNotMatch(copied,/https?:/);
+ await click({wordDraft:'v-test'});assert.equal(Buffer.from(app.read('downloadCapture.bytes')).toString(),'test-docx-bytes');
+ assert.match(app.read('downloadCapture.name'),/\.docx$/);
+});
+
+
+test('empty writing workspace explains next step and disables generation',async()=>{
+ const app=await harness({writing:true});
+ assert.equal(app.el('writing-generate').disabled,true);
+ assert.match(app.el('writing-draft-result').innerHTML,/选好材料/);
+ assert.match(app.el('writing-state').textContent,/候选材料/);
+});
+test('WorkBuddy settings distinguish login and do not auto probe on load',async()=>{
+ const app=await harness({reader:true,workbuddy:true});
+ app.evaluate("state.host_status={workbuddy:{installed:true,login:'required',model:'unchecked',web:'unchecked'}};renderWorkBuddy()");
+ assert.match(app.el('workbuddy-state').textContent,/待登录/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+ assert.match(html,/<script defer src="\/workbuddy.js"><\/script>/);
+ assert.ok(html.includes('<option value="codex">'));assert.ok(html.includes('<option value="api">'));
+});
+
+
+test('agent progress reports processing and unlimited mode without claiming source verification',async()=>{
+ const e=directEdition();let release;
+ const app=await harness({...writingOptions,handler:c=>{
+  if(c.url.startsWith('/api/edition?'))return e;
+  if(c.url.startsWith('/api/job?'))return new Promise(r=>release=()=>r({edition_id:'ed-one',status:'completed',action:'writing-generate',progress:[]}));
+ }});
+ await app.evaluate("loadEdition('ed-one')");
+ await app.evaluate("state.reader_profile.settings.agent_direct=true;updateWritingButtons()");
+ assert.match(app.el('writing-research-note').textContent,/不限时/);
+ const running=app.evaluate('pollWriting("bound-run",'+JSON.stringify({status:'running',agent_direct:true,started_at:new Date().toISOString(),deadline_at:null,progress:[{stage:'writing_edit'},{stage:'agent_direct',agent_status:'processing'}]})+')');
+ assert.match(app.el('writing-progress').textContent,/智能体直连.*编辑.*处理中/);
+ assert.doesNotMatch(app.el('writing-progress').textContent,/最长|已核实/);
+ while(!release)await new Promise(r=>setImmediate(r));release();await running;
+});
+
+test('v4 merged drafts remain current workflow while preserving manual editorial gates',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',workflow:'direct-newsroom-v4-agent',version_id:'v4-current',created_at:'2026-09-25',checks:{errors:[]},content:{text:'合成标题\n\n合成正文',pipeline:{status:'complete'}}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('writing-draft-result').innerHTML;
+ assert.match(output,/等待你审阅/);assert.doesNotMatch(output,/历史稿件|可直接采用/);assert.match(output,/data-word-draft/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('preview accepts mixed newline conventions without blank paragraphs or executable markup',async()=>{
+ const app=await harness({writing:true});
+ const text='\r\n标题\r\n第一段\n\n第二段\r\n（信息来源：<机构>）\n';
+ const output=app.evaluate('writingDraftHTML('+JSON.stringify({text})+')');
+ assert.match(output,/<h3>标题<\/h3>/);
+ assert.equal((output.match(/<p /g)||[]).length,3);
+ assert.match(output,/class="draft-source">（信息来源：&lt;机构&gt;）/);
+ assert.doesNotMatch(output,/<p[^>]*><\/p>|<机构>/);
+});
+
+test('fixed footer folds only an intact automatic template and preserves its full source text',async()=>{
+ const app=await harness({writing:true});
+ const blocks=[{text:'固定公司介绍',kind:'manager_intro'},{text:'风险提示：保持原文',kind:'risk'}];
+ const content={text:'标题\n\n新闻正文\n\n固定公司介绍\n\n（信息来源：公司资料）\n\n风险提示：保持原文',template_blocks:blocks};
+ const output=app.evaluate('writingDraftHTML('+JSON.stringify(content)+')');
+ assert.match(output,/<details class="draft-template"><summary>/);
+ assert.ok(output.indexOf('新闻正文')<output.indexOf('draft-template'));
+ assert.match(output,/固定公司介绍|信息来源：公司资料|风险提示：保持原文/);
+ for(const fragment of ['固定公司介绍','信息来源：公司资料','风险提示：保持原文'])assert.ok(output.includes(fragment));
+ const changed={...content,human_edited:true};
+ assert.doesNotMatch(app.evaluate('writingDraftHTML('+JSON.stringify(changed)+')'),/class="draft-template"/);
+ const incomplete={...content,text:content.text.replace('固定公司介绍','编辑后的介绍')};
+ assert.doesNotMatch(app.evaluate('writingDraftHTML('+JSON.stringify(incomplete)+')'),/class="draft-template"/);
+ assert.equal(content.text,'标题\n\n新闻正文\n\n固定公司介绍\n\n（信息来源：公司资料）\n\n风险提示：保持原文');
+});
+
+test('stale and locally changed selections block draft delivery before any request',async()=>{
+ for(const savedStale of [true,false]){
+  const e=directEdition();e.writing.versions.push({stage:'draft',version_id:'v-guard',stale_selection:savedStale,created_at:'2026-09-25',content:{text:'标题\n\n正文',pipeline:{status:'complete'}},checks:{errors:[]}});
+  const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+  await app.evaluate("loadEdition('ed-one')");
+  if(!savedStale){app.el('mainline').value='尚未保存的主线';app.el('mainline').oninput();}
+  assert.match(app.el('writing-state').textContent,/选材已变更/);
+  assert.equal(app.el('writing-generate').classList.contains('primary'),true);
+  for(const dataset of [{copyDraft:'v-guard'},{wordDraft:'v-guard'}])await app.on('click',{target:{closest:()=>({dataset})}});
+  assert.ok(!app.calls.some(c=>c.url==='/api/writing-export'));
+  assert.match(app.el('message').textContent,/重新生成后导出/);
+  assert.deepEqual(app.read('basket.selected_fact_ids'),['fact-one']);
+  if(savedStale)assert.match(app.el('writing-draft-result').innerHTML,/data-copy-draft="v-guard" disabled/);
+ }
+});
+
+test('collapsed material options retain selection, main news and must-write controls',async()=>{
+ const e=edition();e.candidate_pool=[{event_id:'evt-one',title:'保留材料',summary:'<script>来源内容</script>',why:'测试产品关系',active:true,sources:[]}];
+ e.decision={...e.decision,selected_clue_ids:['evt-one'],selected_event_id:'evt-one',must_include_ids:['evt-one']};
+ const app=await harness({workflow:true,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ const output=app.el('pool-list').innerHTML;
+ assert.match(output,/data-clue="evt-one" checked/);
+ assert.match(output,/主新闻 · 必写/);
+ assert.match(output,/<details class="clue-options"><summary>材料内容与选项/);
+ assert.match(output,/data-main-pool="evt-one"/);assert.match(output,/data-pool-remove="evt-one"/);
+ assert.match(output,/&lt;script&gt;/);assert.doesNotMatch(output,/<script>/);
+ await app.evaluate("workflowChange({dataset:{mustMaterial:'evt-one'},checked:false})");
+ assert.deepEqual(app.read('basket.must_include_ids'),[]);assert.deepEqual(app.read('basket.selected_clue_ids'),['evt-one']);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('workspace navigation closes the settings menu and retains local writing feedback and choices',async()=>{
+ const app=await harness({...writingOptions,workspace:true,handler:c=>c.url.startsWith('/api/edition?')?directEdition():undefined});
+ await app.evaluate("loadEdition('ed-one')");
+ app.el('writing-feedback').value='保留这次编辑意见';app.el('writing-feedback').oninput();
+ app.el('workspace-menu').open=true;const before=app.calls.length;
+ for(const name of ['product','morning','materials'])await app.evaluate('showWorkspace('+JSON.stringify(name)+',false)');
+ assert.equal(app.el('workspace-menu').open,false);assert.equal(app.el('writing-feedback').value,'保留这次编辑意见');
+ assert.equal(app.calls.length,before+1); // history read is the sole request
+ assert.deepEqual(app.read('basket.selected_fact_ids'),['fact-one']);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+test('agent exploration shows manual stop and unlimited time instead of a fixed 480-second limit',async()=>{
+ let release;const app=await harness({workflow:true,exploration:true,handler:c=>c.url.startsWith('/api/job?')?new Promise(r=>release=()=>r({status:'cancelled',edition_id:'other',progress:[]})):undefined});
+ const running=app.evaluate('pollExploration("ui-unlimited",'+JSON.stringify({status:'running',agent_direct:true,started_at:new Date().toISOString(),deadline_at:null,progress:[]})+')');
+ assert.match(app.el('explore-progress').textContent,/不限时，可手动停止/);
+ assert.doesNotMatch(app.el('explore-progress').textContent,/480|已核实/);
+ while(!release)await new Promise(r=>setImmediate(r));release();await running;
+ assert.equal(app.el('explore-stop').hidden,true);
+});
+
+test('switching the product cannot deliver the prior draft as the current product',async()=>{
+ const e=directEdition();e.writing.versions.push({stage:'draft',version_id:'v-prior-product',content:{text:'原标题\n\n原正文',pipeline:{status:'complete'}},checks:{errors:[]}});
+ const app=await harness({...writingOptions,handler:c=>c.url.startsWith('/api/edition?')?e:undefined});
+ await app.evaluate("loadEdition('ed-one')");app.el('product').value='517120';app.el('product').onchange();
+ for(const dataset of [{copyDraft:'v-prior-product'},{wordDraft:'v-prior-product'}])await app.on('click',{target:{closest:()=>({dataset})}});
+ assert.ok(!app.calls.some(c=>c.url==='/api/writing-export'));
+ assert.match(app.el('message').textContent,/已切换产品/);
+ assert.deepEqual(app.read('basket.selected_fact_ids'),['fact-one']);
+});
+
+test('initial history loading locks the product picker until its saved state is ready',async()=>{
+ let dom,release;
+ const loading=harness({onDom:elements=>dom=elements,handler:c=>c.url.startsWith('/api/daily?')?new Promise(resolve=>release=()=>resolve(news('2026-09-15'))):undefined});
+ while(!release)await new Promise(r=>setImmediate(r));
+ assert.equal(dom.get('product').disabled,true);assert.equal(dom.get('research').disabled,true);
+ release();const app=await loading;
+ assert.equal(app.el('product').disabled,false);assert.equal(app.el('research').disabled,false);
+ assert.equal(app.read('busy'),false);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+
+test('entry choice keeps the manual basket and API configuration is not a local browser secret',async()=>{
+ const app=await harness({reader:true,execution:true});
+ await app.evaluate("loadEdition('ed-one')");app.evaluate("basket.selected_clue_ids=['manual-one'];persistDraft()");
+ const before=app.read('basket');app.evaluate('fillEntry()');
+ app.el('reader-host').value='api';app.el('reader-host').onchange();
+ assert.equal(app.el('api-config').hidden,false);assert.equal(app.el('reader-web').disabled,true);
+ app.route(call=>call.url==='/api/reader-profile'?{}:undefined);
+ await app.el('save-entry').onclick();
+ const saved=app.calls.findLast(c=>c.url==='/api/reader-profile');assert.equal(saved.body.host,'api');assert.equal(saved.body.web_search,false);
+ assert.deepEqual(app.read('basket'),before);
+ assert.equal([...app.storage.keys()].some(k=>k.includes('api-key')),false);
+});
+
+test('API connection check cannot run against an unsaved entry selection',async()=>{
+ const app=await harness({reader:true,execution:true});app.evaluate('fillEntry()');
+ app.el('reader-host').value='api';await app.el('check-entry').onclick();
+ assert.equal(app.calls.some(c=>c.url==='/api/connection-check'),false);
+ assert.match(app.el('entry-result').textContent,/先保存/);
+});
+
+test('initial busy state is released for the entry selector and failed archive reads remain visible',async()=>{
+ const app=await harness({writing:true,execution:true});assert.equal(app.el('open-execution').disabled,false);
+ app.route(call=>{if(call.url==='/api/writing-archive')throw Error('合成读取失败');});
+ // The retry element is dynamic in a real DOM; inspect the visible error before its handler binds.
+ try{await app.evaluate('loadArchive(true)');}catch{}
+ assert.match(app.el('archive-list').innerHTML,/合成读取失败/);assert.doesNotMatch(app.el('archive-list').innerHTML,/尚无完整成稿/);
 });

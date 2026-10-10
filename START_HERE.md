@@ -1,23 +1,13 @@
-# 从这里交给Codex
+> **2026-10-10 完整交付更新（优先于下方历史说明）：** 用户已授权将完整项目及现有 13 篇样稿、公司模板上传到原私有 GitHub 仓库的发行附件；密钥与历史业务数据仍不上传。桌面只保留“快讯AI看板 项目”为正式目录，旧副本经完整备份与校验后清理。交付维护主线为 main，下载使用 Releases 的 FastNews-Windows.zip。当前版本恢复编辑与独立核验分步，保留三入口、手工选材、版本历史和备份恢复；旧 v3/v4 任务按其原记录执行。账户回传、联网和稿件采用分别核验，不能相互代替。详见 [README](README.md) 与 [本轮验收](docs/READY_TO_USE_20261010.md)。
 
-这是一套开发交接资料，不是已开发的看板。请将整个目录放入本地项目工作区。
+# 快讯看板：从这里开始
 
-## 最短阅读顺序
+先读 README.md，确认拿到的是 **Git 源码** 还是 **完整发行包**。当前整合分支为 `codex/unify-delivery-20261010`，尚待 WorkBuddy 功能一致性验收。
 
-1. `AGENTS.md`：开发边界。
-2. `CODEX_MASTER_HANDOFF.md`：业务、整合架构、时间、评分、人工选择和实施总规格。
-3. `docs/IMPLEMENTATION_PLAN.md`：先执行M0/M1。
+1. 从 Git 克隆的源码：安装 Python 3.11+，运行 `python tools/setup_workspace.py`。资料与账户另行配置，首次安装不代表写作已可用。
+2. 完整发行包：完整解压。需要恢复旧数据时，在第一次启动前运行“恢复数据.cmd”。
+3. 在 WorkBuddy 或 Codex 打开当前文件夹，使用本项目的 fastnews-dashboard 技能；也可双击“一键启动.cmd”。不要让客户端重新制作一套网页。
+4. 页面选择 WorkBuddy、自接 API 或 Codex。客户端入口发起任务后，在对应项目对话说“处理看板任务”。
+5. 迁移和升级前先做数据备份。保留旧项目，禁止通过删库解决问题。
 
-实现采集时读取`config/sources.yaml`、`docs/SOURCE_AUDIT.md`；实现评估时读取`docs/SCORING_SPEC.md`、契约与相关prompt；实现数据库时读取`docs/DATA_CONTRACTS.md`和旧schema参照。不要每次把references所有历史稿同时读入。
-
-## 第一条消息，可直接发给Codex
-
-在当前仓库开发“华泰柏瑞快讯AI线索看板”。先读根目录AGENTS.md、CODEX_MASTER_HANDOFF.md和docs/IMPLEMENTATION_PLAN.md，检查现有代码后写一份简短实施计划，再完成M0/M1与对应离线测试。保留原26来源、9主题、4产品路由；新增配置只是试跑预设，不代表来源已接通或持仓已核实。先CLI、不先UI；默认零LLM晨扫；采集与写稿截点分开；保留事实级来源链、人工选题和预算控制。不自动决定、不自动写快讯、不伪造联网结果。缺搜索/模型key时用明确none或隔离fixture。每阶段说明改动、运行命令、测试结果及未接通项。
-
-## 资料包自检
-
-```bash
-python tools/validate_handoff.py
-```
-
-该命令只检查交接文件完整性，不采集新闻、不调用模型，不代表应用验收通过。
+开发维护读取 AGENTS.md、CODEX_MASTER_HANDOFF.md 和 docs/REPOSITORY_INTEGRATION_20261010.md。历史单入口限制、旧端口和早期框架确认要求不代表当前状态。

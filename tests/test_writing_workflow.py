@@ -91,7 +91,8 @@ class WritingWorkflowTests(unittest.TestCase):
         self.assertNotIn('trendforce', ids('513530'))
         self.assertNotIn('hkex_stock_connect_daily', ids('588710'))
         for plan in plans.values():
-            self.assertTrue({'sector_sites', 'keywords'}.issubset({q['lane'] for q in plan['queries']}))
+            self.assertTrue({'sector_sites', 'keywords'}.issubset({q['lane'] for q in plan['query_hints']}))
+            self.assertLessEqual(len(plan['queries']),8)
             self.assertLessEqual(len(plan['queries']) + plan['fallback_queries'], plan['max_queries'])
             self.assertEqual(plan['execution_status'], 'planned_not_executed')
 

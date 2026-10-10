@@ -1,5 +1,6 @@
 """Repository guards exercised on disposable Git histories, without remotes."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 import unittest
@@ -25,6 +26,25 @@ class RepositoryGuardTests(unittest.TestCase):
     def commit(self):
         self.git('add','-A');self.git('commit','-qm','synthetic fixture')
         return self.git('rev-parse','HEAD')
+
+    def test_foreign_repository_cannot_change_hook_repository_config(self):
+        original = (self.root / '.git/config').read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            foreign = Path(directory)
+            inherited = {'GIT_DIR': str(self.root / '.git'), 'GIT_WORK_TREE': str(self.root),
+                         'GIT_INDEX_FILE': str(self.root / '.git/index'),
+                         'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'user.name',
+                         'GIT_CONFIG_VALUE_0': 'must not cross the boundary'}
+            with patch.dict(os.environ, inherited):
+                environment = guard.isolated_environment()
+            self.assertNotIn('GIT_DIR', environment)
+            self.assertNotIn('GIT_CONFIG_COUNT', environment)
+            self.assertNotIn('GIT_CONFIG_VALUE_0', environment)
+            subprocess.run(['git', 'init', '-q'], cwd=foreign, env=environment, check=True)
+            subprocess.run(['git', 'config', '--local', 'user.name', 'Isolated fixture'],
+                           cwd=foreign, env=environment, check=True)
+            self.assertTrue((foreign / '.git').is_dir())
+            self.assertEqual((self.root / '.git/config').read_bytes(), original)
 
     def test_deleted_runtime_file_is_still_rejected_from_history(self):
         path=self.root/'data'/'private.txt';path.parent.mkdir();path.write_text('synthetic')

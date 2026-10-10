@@ -84,7 +84,7 @@ class ExplorationTests(unittest.TestCase):
         self.assertTrue(payload['known_events'])
         self.assertTrue(payload['previous_searches'])
         self.assertNotIn('manual_notes',payload)
-        self.assertEqual(payload['task_limits']['max_product_items'],5)
+        self.assertEqual(payload['task_limits']['max_product_items'],60)
 
     def test_repeated_titles_claim_paraphrases_and_snippets_are_not_incremental(self):
         original=raw();original['web_sources'][0]['material_kind']='search_snippet'
@@ -144,13 +144,13 @@ class ExplorationTests(unittest.TestCase):
         historical=build_input(self.conn,self.view(),'default','product','2026-09-15',earlier)
         self.assertEqual(historical['carried_background'],[])
 
-    def test_old_announcement_with_current_stage_keeps_recent_role(self):
+    def test_old_announcement_needs_a_dated_new_source_for_recent_role(self):
         value=raw('recent',date='2026-08-01')
         value['items'][0]['event_identity']['phase']='implementation'
         result=validate_report(value,build_input(self.conn,self.view(),'default','product','2026-09-15',self.edition),TRACE)
         item=result['items'][0]
-        self.assertEqual(item['editorial_role'],'recent')
-        self.assertEqual(item['time_role'],'news_with_background')
+        self.assertEqual(item['editorial_role'],'background')
+        self.assertEqual(item['time_role'],'background')
         self.assertFalse(item['title'].startswith('背景｜'))
         self.assertEqual(item['sources'][0]['first_published_at'],'2026-08-01')
 
@@ -176,7 +176,8 @@ class ExplorationTests(unittest.TestCase):
             generate_report(self.conn,self.view(),'default','product','2026-09-15',edition=self.edition,
                 runner=delayed,request_mode='explore',request_id='cancel-after-output',control=control)
         row=self.conn.execute('SELECT status,error_code,output_json FROM fn_reading_reports ORDER BY rowid DESC LIMIT 1').fetchone()
-        self.assertEqual(tuple(row),('failed','cancelled',None))
+        self.assertEqual(tuple(row)[:2],('failed','cancelled'))
+        self.assertIn('raw_model_output',json.loads(row[2]))
         self.assertEqual(len(product_reading.aggregate_reports(self.conn,'default',self.eid)['recent']),1)
 
     def test_restart_marks_running_report_interrupted(self):
