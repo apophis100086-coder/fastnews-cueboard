@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>华泰柏瑞 · 快讯看板</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/editorial.css"><script defer src="/app.js"></script><script defer src="/reader.js"></script><script defer src="/workflow.js"></script><script defer src="/exploration.js"></script><script defer src="/writing.js"></script><script defer src="/workspace.js"></script><script defer src="/visuals.js"></script><script defer src="/workbuddy.js"></script><script defer src="/execution.js"></script><script defer src="/storage.js"></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>华泰柏瑞 · 快讯看板</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/editorial.css"><script defer src="/app.js"></script><script defer src="/reader.js"></script><script defer src="/workflow.js"></script><script defer src="/exploration.js"></script><script defer src="/writing.js"></script><script defer src="/workspace.js"></script><script defer src="/visuals.js"></script><script defer src="/workbuddy.js"></script><script defer src="/execution.js"></script><script defer src="/storage.js"></script><script defer src="/sync.js"></script></head>
 <body>
 <a class="skip-link" href="#main-content">跳到工作区</a>
 <header class="app-header"><div class="brand-lockup"><div class="brand-name">华泰柏瑞<span>HUATAI PINEBRIDGE</span></div><div class="brand-divider"></div><div><h1>快讯看板</h1><p>晨报、产品跟踪与快讯写作</p></div></div><div class="header-status"><span id="mode"></span></div></header>
@@ -11,23 +11,26 @@
   <button id="tab-product" role="tab" aria-label="02 产品检索" aria-controls="product-workspace" aria-selected="false" data-workspace="product"><span class="step-number">02</span><span class="step-text">产品检索</span></button>
   <button id="tab-materials" role="tab" aria-label="03 选材与快讯" aria-controls="materials-workspace" aria-selected="false" data-workspace="materials"><span class="step-number">03</span><span class="step-text">选材与快讯<b id="nav-pool-count"></b></span></button>
  </div>
- <details class="workspace-menu" id="workspace-menu"><summary>来源与设置</summary><div class="menu-content">
+ <details class="workspace-menu" id="workspace-menu"><summary>设置与帮助</summary><div class="menu-content">
+ <section class="entry-strip" aria-label="当前使用入口"><div><strong id="entry-current">选择使用入口</strong><span id="entry-summary" class="muted"></span></div><button id="open-execution">使用入口</button><button id="open-storage">数据与备份</button></section><details class="getting-started" id="getting-started"><summary>怎么使用</summary><p>在当前项目对话中直接说“检索半导体设备的最新线索，保存到看板”。任务进度和结果会自动显示在本页。</p><p>也可点击看板按钮，再到客户端说“处理看板任务”。阅读结果后，由你加入候选、勾选材料并生成快讯。</p></details>
  <label>来源方案<select id="reader-profile" aria-label="来源方案"></select></label>
  <div class="menu-actions"><button id="source-workspace-link" data-workspace="sources">查看信息源</button><button id="manage-sources" aria-label="来源设置">管理方案</button></div>
  <p id="host-badge" class="muted">读取模型状态…</p>
 <details class="runtime-tools"><summary>用量、研究缺口与运行记录</summary><p>列表采集不调用模型。分类总报和产品推荐使用所选模型工具的登录与额度；具体用量以每次任务记录为准。Wind 尚未接入。</p><label><input id="public-text" type="checkbox"> 本次二轮研究读取已允许来源的公开正文（12 事件 / 20 页 / 每事件 4 页；不会自动产生事实）</label><pre id="usage">尚未运行本期研究</pre></details>
  </div></details>
 </nav>
-<section class="entry-strip" aria-label="当前使用入口"><div><strong id="entry-current">选择使用入口</strong><span id="entry-summary" class="muted"></span></div><button id="open-execution">使用入口</button><button id="open-storage">数据与备份</button></section><section id="entry-next" class="entry-next" hidden aria-live="polite"></section>
-<button id="reading-stop" hidden>停止本轮检索</button><div id="message" role="status" aria-live="polite"></div><section id="job" class="job-result hidden" aria-live="polite"></section>
+<div class="conversation-hint"><p id="conversation-hint">在 WorkBuddy 对话提出需求，进度与结果在这里查看。</p><span id="sync-status" role="status">正在连接看板…</span></div>
+<section id="task-activity" class="task-activity" aria-live="polite" hidden><div class="task-heading"><strong id="task-title"></strong><span id="task-status"></span><button id="reading-stop" hidden>停止本轮检索</button></div><ol id="task-steps" class="task-steps"></ol><p id="task-description"></p></section>
+<div id="sync-result" class="sync-result" hidden><span id="sync-result-label"></span><button id="show-synced-result">查看任务结果</button></div>
+<div id="message" role="status" aria-live="polite"></div><section id="entry-next" hidden></section>
+<details id="task-record" class="task-record" hidden><summary>任务详情</summary><section id="job" class="job-result hidden" aria-live="polite"></section></details>
 
-<details class="panel getting-started" id="getting-started"><summary>第一次使用：从这里开始</summary><div class="quick-start-grid"><div><strong>1. 选择使用入口</strong><p>WorkBuddy / Codex 先打开本项目文件夹；自接 API 在“使用入口”中填写连接。</p></div><div><strong>2. 查线索，再人工选材</strong><p>先读晨报，或直接选择产品检索。加入候选池后，勾选本次需要的材料。</p></div><div><strong>3. 生成、核对、导出</strong><p>智能体入口需在客户端说“处理看板任务”；看到结果后核对出处，再复制或下载 Word。</p></div></div><p class="muted">当前任务的下一步会显示在进度区。移交或升级前，可在“数据与备份”保存完整备份。</p></details>
 <section id="morning-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-morning"><section class="panel daily-panel" id="morning-panel" aria-label="按日期查看新闻">
  <div class="workspace-title"><div><h2>晨报速览</h2><p class="muted" id="digest-explainer">近两天资讯与近七日脉络，每条保留出处。</p></div></div>
  <div class="daily-controls"><label>新闻日期（北京时间）<input type="date" id="news-day"></label><button id="digest" class="primary">生成晨报</button>
  <details class="utility-menu"><summary>更多操作</summary><div class="menu-content"><div class="menu-actions"><button id="today">今天</button><button id="yesterday">昨天</button></div><button id="scan">仅更新新闻列表</button><button id="refresh">重读已存信息</button></div></details></div>
  <p class="muted action-hint">生成时先更新公开列表，再整理总览；仅更新列表不调用模型。</p>
- <p id="morning-progress" class="task-progress" role="status" aria-live="polite"></p>
+ <p id="morning-progress" hidden class="task-progress" role="status" aria-live="polite"></p>
  <div class="reading-overview" id="reading-overview" hidden><p id="topic-caption" class="muted"></p><div id="topic-chart"></div><button id="clear-topic" class="text-action" hidden>全部分类</button></div>
  <div id="morning-report" class="reading-report"><div class="empty"><strong>先生成一份晨报</strong><p>选好日期，阅读近两天市场消息与近期脉络。</p></div></div>
  <div class="morning-next"><span>读完总览后，围绕产品寻找线索。</span><button id="open-editor" class="text-action">去产品检索</button></div>
@@ -37,14 +40,14 @@
 </section>
 </section>
 <section id="product-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-product" hidden><section id="editor-panel" class="editor-panel">
-<div class="workspace-title"><div><h2>产品检索</h2><p class="muted">选择产品，寻找本次可写的线索与近期背景。</p></div><span class="muted">候选池 <span id="product-pool-count"></span></span></div>
+<div class="workspace-title"><div><h2>产品检索</h2><p class="muted">阅读检索结果，挑选你想写的材料。</p></div><span class="muted">候选池 <span id="product-pool-count"></span></span></div>
 <section class="panel research-panel" aria-label="本期设置">
  <div class="research-controls"><label>观察产品<select id="product"></select></label><div class="cutoff-display"><span>资讯截至（北京时间）</span><output id="cutoff-readable">正在读取…</output></div><button id="research" class="primary">检索该产品线索</button></div>
- <div class="research-settings"><details class="cutoff-settings"><summary>调整截点与期次</summary><div class="cutoff-actions"><button id="cutoff-now">截至现在</button><button id="cutoff-yesterday">截至昨天</button><button id="cutoff-news-day">采用晨报日期</button></div><div class="note-fields"><label>自定义新闻截点<input id="cutoff" aria-label="新闻使用截点，含时区"></label><label>本期日期<input type="date" id="day"></label></div>
+ <details class="research-options"><summary>检索设置与补充资料</summary><div class="research-settings"><details class="cutoff-settings"><summary>调整截点与期次</summary><div class="cutoff-actions"><button id="cutoff-now">截至现在</button><button id="cutoff-yesterday">截至昨天</button><button id="cutoff-news-day">采用晨报日期</button></div><div class="note-fields"><label>自定义新闻截点<input id="cutoff" aria-label="新闻使用截点，含时区"></label><label>本期日期<input type="date" id="day"></label></div>
  <details class="period-tools"><summary>历史期次与单独建期</summary><div class="period-controls"><button id="create">建立本期</button><label>已保存的期次<select id="editions"><option value="">请选择期次</option></select></label></div></details></details>
  <details class="advanced-search"><summary>检索选项与继续补搜</summary><div id="product-plan" class="search-plan"></div><label>本轮补充关键词（可选，逗号分隔）<input id="search-keywords" maxlength="410" placeholder="公开检索词，请勿填写私有资料"></label><div class="exploration-controls"><label>继续补搜的方向（可选）<input id="explore-question" maxlength="500" placeholder="例如：产业投资背景，或消息的后续进展"></label><div class="right"><button id="explore">继续探查</button><button id="explore-stop" hidden>停止本轮探查</button><span class="muted">沿用本期截点，可随时停止</span></div><p id="explore-progress" class="task-progress" role="status" aria-live="polite"></p></div></details>
- <details><summary>产品资料与历史稿导入</summary><p class="muted">产品结构与历史稿应先导入，再建立本期快照。行情截点留空表示未知。</p><label>各市场数据截点<textarea id="markets" rows="2" placeholder="每行一项 MARKET=YYYY-MM-DD@来源"></textarea></label><button id="open-import-top">导入产品资料 / 历史稿件</button></details></div>
- <p id="product-progress" class="task-progress" role="status" aria-live="polite"></p><div id="product-report" class="reading-report"><div class="empty"><strong>先选择要跟踪的产品</strong><p>开始检索后，这里会显示当前线索、近期背景及待补证材料。</p></div></div>
+ <details><summary>产品资料与历史稿导入</summary><p class="muted">产品结构与历史稿应先导入，再建立本期快照。行情截点留空表示未知。</p><label>各市场数据截点<textarea id="markets" rows="2" placeholder="每行一项 MARKET=YYYY-MM-DD@来源"></textarea></label><button id="open-import-top">导入产品资料 / 历史稿件</button></details></div></details>
+ <p id="product-progress" hidden class="task-progress" role="status" aria-live="polite"></p><div id="product-report" class="reading-report"><div class="empty"><strong>检索结果会出现在这里</strong><p>在当前项目对话中说出要跟踪的产品，或使用上方检索按钮。</p></div></div>
 </section>
 <details class="panel evidence-tools"><summary>已采集资料与原文核对（可选）</summary><p class="muted">需要逐条核对证据时使用：在左侧筛选本地资料，在右侧核对出处、导入原文、摘录事实；此处不是全网检索结果。日常可直接加入候选池并导出背景，不必完成这一步。</p><div class="workspace">
  <section class="panel candidates"><div class="section-head"><div><p class="eyebrow">01 / COMPARE</p><h2>已采集资料</h2></div></div><p id="edition-note" class="muted">选择产品和截点后，可直接检索。所有线索均由您手工选择。</p><div id="research-summary" aria-live="polite"></div><div class="filters"><select id="relevance" aria-label="产品相关性"><option value="core">产品观察线索</option><option value="background">宏观 / 行业背景</option><option value="all">全部事件池（含旧闻与未命中）</option><option value="selected">人工已选</option></select><select id="group" aria-label="时间分区"><option value="all">全部时间分区</option><option value="within_cutoff">截点内</option><option value="pending_time">时间待核实</option><option value="out_of_cutoff">截点外</option><option value="historical_evidence_incomplete">历史版本不完整</option></select><button id="open-import">补充线索</button></div><div id="events"></div></section>

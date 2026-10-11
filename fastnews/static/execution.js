@@ -4,18 +4,18 @@ const entryLabels={workbuddy:'WorkBuddy',codex:'Codex',api:'自接 API',none:'�
 function renderExecution(){
  if(!state||!$('entry-current'))return;
  const s=state.reader_profile?.settings||{},host=s.host||'none';
- if(!state.editions?.length&&!localStorage.getItem('fastnews:'+state.workspace_id+':help-seen')){$('getting-started').open=true;localStorage.setItem('fastnews:'+state.workspace_id+':help-seen','true');}
  $('entry-current').textContent=entryLabels[host]||host;
- $('entry-summary').textContent=host==='api'?(state.execution?.api?.model_status==='available'?'已收到模型响应':'待配置或检查响应'):host==='none'?'可浏览与管理已存资料':'在客户端打开本项目，接手看板任务';
+ $('entry-summary').textContent=host==='api'?(state.execution?.api?.model_status==='available'?'已收到模型响应':'待配置或检查响应'):host==='none'?'可浏览与管理已存资料':'当前项目使用此客户端';
+ if($('conversation-hint'))$('conversation-hint').textContent=['workbuddy','codex'].includes(host)?`在 ${entryLabels[host]} 的本项目对话提出需求，进度与结果在这里查看。`:'选择产品开始检索，阅读结果后再选材。';
  const pending=(state.execution?.pending||[]).filter(v=>v.status==='waiting'||v.status==='processing');
- $('entry-next').hidden=!pending.length;
+ $('entry-next').hidden=true;
  if(pending.length){const p=pending[0],label=entryLabels[p.host]||entryLabels[host];$('entry-next').textContent=p.status==='waiting'?`下一步：回到 ${label} 中的本项目对话，输入“处理看板任务”。本页会自动显示结果；也可停止任务。`:`${label} 已接手第 ${p.step} 步，正在处理。你可以继续查看已有材料。`;}
  $('open-execution').disabled=busy;
 }
 function updateEntryForm(){
  const host=$('reader-host').value,isApi=host==='api';
  $('api-config').hidden=!isApi;
- $('entry-instructions').textContent={workbuddy:'在 WorkBuddy 打开本项目文件夹。看板发起任务后，在该项目对话中说“处理看板任务”。',codex:'在 Codex 打开本项目文件夹。看板发起任务后，在该项目对话中说“处理看板任务”。',api:'保存服务商地址、模型与密钥后，任务会直接调用接口。无需回到客户端接手。',none:'只查看、选材、导入和保存已有资料；需要生成时再选择模型入口。'}[host];
+ $('entry-instructions').textContent={workbuddy:'在 WorkBuddy 打开本项目，直接提出检索或晨报需求。项目技能会创建任务并将结果保存到看板。也可先点看板按钮，再说“处理看板任务”。',codex:'在 Codex 打开本项目，直接提出检索或晨报需求。项目技能会创建任务并将结果保存到看板。也可先点看板按钮，再说“处理看板任务”。',api:'保存服务商地址、模型与密钥后，任务会直接调用接口。无需回到客户端接手。',none:'只查看、选材、导入和保存已有资料；需要生成时再选择模型入口。'}[host];
  const chat=$('api-protocol').value==='chat_completions';
  $('api-web').disabled=chat;if(chat)$('api-web').checked=false;
  $('reader-web').disabled=host==='none'||(isApi&&!$('api-web').checked);

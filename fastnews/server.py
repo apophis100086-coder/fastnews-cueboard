@@ -36,6 +36,8 @@ class LocalApplication:
         self.guard = threading.RLock()
         self.jobs = {}
         self.active_job = None
+        self.last_job = None
+        self.activity_instance = uuid.uuid4().hex
         self.controls = {}
         if not offline:
             from .workbuddy_connection import bootstrap
@@ -52,6 +54,57 @@ class LocalApplication:
 
     def connection(self):
         return connect(self.database, mode='fixture' if self.offline else 'live')
+
+    def activity(self):
+        """Small, read-only feed for pages opened before a conversation task."""
+        with self.guard:
+            job = self.jobs.get(self.active_job or self.last_job) or {}
+            progress = job.get('progress') or []
+            fields = ('job_id', 'action', 'status', 'edition_id', 'reader_profile',
+                      'product_code', 'date', 'started_at', 'error', 'origin')
+            public = {key: job.get(key) for key in fields} if job else None
+            if public is not None:
+                public['progress'] = deepcopy(progress[-1:])
+            revision = ':'.join(str(v) for v in (self.activity_instance,
+                job.get('job_id', ''), job.get('status', ''), len(progress)))
+            return {'workspace_id': self.database, 'revision': revision, 'job': public}
+
+    def start_conversation_task(self, data):
+        """Use the same saved reports and human gates as a page-started task."""
+        from .source_catalog import profile
+        host = data.get('host')
+        kind = data.get('kind')
+        if host not in {'workbuddy', 'codex'} or kind not in {'research', 'digest'}:
+            raise ValueError('请指定当前客户端和产品检索或晨报任务')
+        profile_id = data.get('reader_profile', 'default')
+        with self.guard, closing(self.connection()) as conn:
+            settings = profile(conn, profile_id)['settings']
+            if settings.get('host') != host or not is_agent(settings):
+                raise ValueError('当前看板入口与对话客户端不同，请在看板设置中选择对应入口')
+            if self.active_job:
+                job = self.jobs[self.active_job]
+                raise ValueError('已有任务正在处理，请接手当前任务或停止后重试：' + job['job_id'])
+            preflight(settings, Path(self.database).parent/'connections')
+            now = working_now(conn, self.offline).astimezone(ZoneInfo('Asia/Shanghai'))
+            day = data.get('date') or now.date().isoformat()
+            request = dict(reader_profile=profile_id, origin='conversation')
+            if kind == 'digest':
+                request.update(date=day, section='all', lookback_days=7)
+            else:
+                code = data.get('product_code')
+                product = self.config['products'].get(code)
+                if not product or not product.get('selectable', True):
+                    raise ValueError('请选择看板中登记的观察产品；不要猜测产品代码')
+                cutoff = data.get('news_cutoff') or now.isoformat()
+                from .search_plan import build_search_plan
+                build_search_plan(self.config, code, data.get('extra_keywords'))
+                edition = editorial.create_edition(conn, self.config, product_code=code,
+                    edition_date=day, news_cutoff=cutoff, market_cutoffs={})
+                request.update(edition_id=edition['edition_id'], product_code=code,
+                    use_host=True, extra_keywords=data.get('extra_keywords'))
+            started = self.mutate(kind, request)
+            return dict(started, edition_id=request.get('edition_id'),
+                        status='started', origin='conversation')
 
     def state(self, profile_id='default'):
         from .__main__ import source_status, capabilities
@@ -309,6 +362,7 @@ class LocalApplication:
                 self.jobs[job_id].update(status=getattr(exc,'code','failed'), error=error)
         finally:
             with self.guard:
+                self.last_job = job_id
                 if self.active_job==job_id:
                     self.active_job = None
                 self.controls.pop(job_id,None)
@@ -316,6 +370,8 @@ class LocalApplication:
     def mutate(self, action, data):
         if not isinstance(data, dict):
             raise ValueError('JSON object required')
+        if action == 'conversation-start':
+            return self.start_conversation_task(data)
         if action in {'explore','digest','research'}:
             from .task_control import TaskControl
             from .product_reading import policy
@@ -485,6 +541,7 @@ class LocalApplication:
                                 raise ValueError('继续探查需要选择已登录的模型并启用联网检索')
                 job_id = uuid.uuid4().hex
                 self.jobs[job_id] = {'job_id': job_id, 'action': action, 'date': data.get('date'),
+                                     'origin':data.get('origin','dashboard'),
                                      'edition_id':data.get('edition_id'),'reader_profile':data.get('reader_profile','default'),
                                      'request_id':data.get('request_id'),'status': 'running', 'progress': []}
                 if action in {'explore','digest','research'}:
@@ -653,10 +710,12 @@ def make_server(app, port=None):
                     names = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/editorial.css': ('editorial.css', 'text/css')}
                     filename, mime = names[request.path]
                     return self._send(200, (STATIC / filename).read_bytes(), mime + '; charset=utf-8')
-                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js','/exploration.js','/writing.js','/workbuddy.js','/execution.js','/storage.js'}:
+                if request.path in {'/reader.js', '/workflow.js', '/workspace.js', '/visuals.js','/exploration.js','/writing.js','/workbuddy.js','/execution.js','/storage.js','/sync.js'}:
                     return self._send(200,(STATIC/request.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
                 if request.path == '/api/state':
                     result = app.state(query.get('profile',['default'])[0])
+                elif request.path == '/api/activity':
+                    result = app.activity()
                 elif request.path == '/api/daily':
                     result = app.daily(query['date'][0],query.get('profile',['default'])[0])
                 elif request.path == '/api/edition':

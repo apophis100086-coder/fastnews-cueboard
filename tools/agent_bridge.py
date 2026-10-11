@@ -171,9 +171,47 @@ def cmd_wait(args):
     cmd_status(args)
 
 
+def dashboard_client():
+    from fastnews.dashboard_client import DashboardClient
+    from tools.open_dashboard import URL
+    return DashboardClient(URL, DB)
+
+
+def cmd_products(_args):
+    print(json.dumps(dashboard_client().products(), ensure_ascii=False, indent=2))
+
+
+def cmd_start(args):
+    result = dashboard_client().start(
+        'research' if args.command == 'start-research' else 'digest', args.host,
+        product=getattr(args, 'product', None), date=args.date,
+        cutoff=getattr(args, 'cutoff', None), keywords=getattr(args, 'keywords', None),
+        profile=args.profile)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_result(args):
+    print(json.dumps(dashboard_client().result(args.job_id), ensure_ascii=False, indent=2))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser('products', help='列出看板产品及当前日期截点').set_defaults(func=cmd_products)
+    for command in ('start-research', 'start-morning'):
+        p = sub.add_parser(command, help='从当前客户端对话发起看板任务')
+        p.add_argument('--host', required=True, choices=['workbuddy', 'codex'])
+        p.add_argument('--profile', default='default')
+        p.add_argument('--date')
+        if command == 'start-research':
+            p.add_argument('--product', required=True)
+            p.add_argument('--cutoff')
+            p.add_argument('--keywords', nargs='+')
+        p.set_defaults(func=cmd_start)
+    p = sub.add_parser('result', help='核对任务及看板实际保存结果')
+    p.add_argument('--job-id', required=True)
+    p.set_defaults(func=cmd_result)
 
     sub.add_parser("list-editions").set_defaults(func=cmd_list_editions)
 

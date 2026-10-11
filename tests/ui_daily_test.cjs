@@ -123,6 +123,7 @@ async function harness(options = {}) {
   if(options.workbuddy)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/workbuddy.js'),'utf8'),context,{filename:'workbuddy.js'});
   if(options.execution)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/execution.js'),'utf8'),context,{filename:'execution.js'});
   if(options.visuals)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/visuals.js'),'utf8'),context,{filename:'visuals.js'});
+  if(options.sync)vm.runInContext(fs.readFileSync(path.join(root,'fastnews/static/sync.js'),'utf8'),context,{filename:'sync.js'});
   return {
     el: id => elements.get(id), calls, state, storage,
     on: async (name, event) => {for(const fn of listeners.get(name)||[])await fn(event);},
@@ -970,4 +971,61 @@ test('initial busy state is released for the entry selector and failed archive r
  // The retry element is dynamic in a real DOM; inspect the visible error before its handler binds.
  try{await app.evaluate('loadArchive(true)');}catch{}
  assert.match(app.el('archive-list').innerHTML,/合成读取失败/);assert.doesNotMatch(app.el('archive-list').innerHTML,/尚无完整成稿/);
+});
+
+
+test('a completed conversation search is discovered and its product report appears without a click', async()=>{
+ const next=edition();next.edition.edition_id='ed-from-chat';next.edition.product_code='588710';
+ next.reading_report={report_id:'r-chat',host:'workbuddy',status:'complete',output:{items:[{title:'合成：对话回写结果',summary:'合成测试，不是真实新闻',sources:[]}]}};
+ const job={job_id:'chat-job',action:'research',status:'completed',origin:'conversation',edition_id:'ed-from-chat',product_code:'588710',reader_profile:'default',progress:[],result:{reading_report:next.reading_report,view:{product_code:'588710'}}};
+ const app=await harness({reader:true,workspace:true,sync:true,products:[{code:'513130',name:'原产品'},{code:'588710',name:'半导体设备'}]});
+ app.state.editions=[next.edition];
+ app.route(call=>call.url.startsWith('/api/activity')?{workspace_id:'vm-only',job}:call.url.startsWith('/api/job?')?job:call.url.startsWith('/api/edition?')?next:undefined);
+ await app.evaluate('checkDashboardUpdates()');
+ assert.equal(app.read('editionId'),'ed-from-chat');
+ assert.equal(app.el('product').value,'588710');
+ assert.equal(app.el('product-workspace').hidden,false);
+ assert.match(app.el('product-report').textContent,/对话回写结果/);
+ assert.equal(app.el('task-status').textContent,'结果已保存');
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+ const reads=app.calls.filter(c=>c.url.startsWith('/api/edition?')).length;
+ await app.evaluate('checkDashboardUpdates()');
+ assert.equal(app.calls.filter(c=>c.url.startsWith('/api/edition?')).length,reads);
+});
+
+test('incoming chat task does not replace unsaved material selections', async()=>{
+ const job={job_id:'chat-other',action:'research',status:'running',edition_id:'new-edition',reader_profile:'default',progress:[{message:'正在读取原文'}]};
+ const app=await harness({sync:true});
+ await app.evaluate("loadEdition('ed-one')");
+ await app.evaluate("basket.mainline_note='尚未保存的人工主线';persistDraft()");
+ app.route(call=>call.url.startsWith('/api/activity')?{workspace_id:'vm-only',job}:undefined);
+ const original=app.read('basket');
+ await app.evaluate('checkDashboardUpdates()');
+ assert.equal(app.read('editionId'),'ed-one');
+ assert.deepEqual(app.read('basket'),original);
+ assert.equal(app.el('sync-result').hidden,false);
+ assert.match(app.el('task-description').textContent,/读取原文/);
+ assert.ok(!app.calls.some(c=>c.url.startsWith('/api/job?')));
+});
+
+test('failed conversation task remains visible and never says saved', async()=>{
+ const job={job_id:'failed-chat',action:'research',status:'failed',reader_profile:'default',progress:[],error:'未取得合格来源'};
+ const app=await harness({sync:true});
+ app.route(call=>call.url.startsWith('/api/activity')?{workspace_id:'vm-only',job}:call.url.startsWith('/api/job?')?job:undefined);
+ await app.evaluate('checkDashboardUpdates()');
+ assert.equal(app.el('task-status').textContent,'本次未完成');
+ assert.match(app.el('task-description').textContent,/未取得合格来源/);
+ assert.ok(app.calls.every(c=>c.method==='GET'));
+});
+
+
+test('reloading after viewing results does not reopen an already seen job', async()=>{
+ const app=await harness({sync:true,workspace:true});
+ const job={job_id:'seen-chat',action:'research',status:'completed',reader_profile:'default',progress:[]};
+ app.storage.set('fastnews:vm-only:seen-job',JSON.stringify({id:job.job_id,status:job.status}));
+ app.storage.set('fastnews:vm-only:workspace','materials');
+ app.route(call=>call.url.startsWith('/api/activity')?{workspace_id:'vm-only',job}:undefined);
+ await app.evaluate('restoreWorkspace();checkDashboardUpdates()');
+ assert.equal(app.el('materials-workspace').hidden,false);
+ assert.ok(!app.calls.some(c=>c.url.startsWith('/api/job?')));
 });
