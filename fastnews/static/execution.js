@@ -62,3 +62,30 @@ async function followEntryJob(id){
 }
 $('check-entry').onclick=async()=>{try{if($('reader-host').value!==state.reader_profile.settings.host)throw Error('请先保存所选入口，再检查。');const r=await api('connection-check',{});await followEntryJob(r.job_id);}catch(e){$('entry-result').textContent=e.message;}};
 $('stop-entry').onclick=safe(async()=>{if(entryJob)await api('job-stop',{job_id:entryJob});});
+
+// 【本地增强】结果自动刷新：智能体接手并完成任务后，页面自动载入并呈现结果，无需手动刷新。
+(function(){
+ let lastSig='',timer=null;
+ const sig=st=>[(st.execution?.pending||[]).length,st.active_job?'1':'0',(st.editions||[]).map(e=>e.edition_id).join(',')].join('|');
+ async function tick(){
+  const a=document.activeElement,tag=a&&a.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;   // 正在输入时不打断
+  let st;
+  try{st=await api('state');}catch(e){return;}
+  const now=sig(st);
+  if(!lastSig){lastSig=now;return;}                            // 首次只记录基线
+  if(now===lastSig)return;
+  const before=lastSig.split('|'),wasActive=before[0]!=='0'||before[1]==='1';
+  lastSig=now;
+  const idle=(st.execution?.pending||[]).length===0&&!st.active_job;
+  if(!wasActive||!idle)return;                                 // 只在“刚刚从忙碌变为空闲”时刷新
+  try{
+   if(typeof refreshState==='function')await refreshState();
+   if(typeof loadDaily==='function')await loadDaily();
+   if(typeof editionId!=='undefined'&&editionId&&typeof loadEdition==='function')await loadEdition(editionId);
+   if(typeof message==='function')message('已自动载入最新结果。');
+  }catch(e){}
+ }
+ function start(){if(timer)return;timer=setInterval(tick,3000);}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();

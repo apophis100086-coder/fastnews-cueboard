@@ -1,6 +1,21 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>华泰柏瑞 · 快讯看板</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/editorial.css"><script defer src="/app.js"></script><script defer src="/reader.js"></script><script defer src="/workflow.js"></script><script defer src="/exploration.js"></script><script defer src="/writing.js"></script><script defer src="/workspace.js"></script><script defer src="/visuals.js"></script><script defer src="/workbuddy.js"></script><script defer src="/execution.js"></script><script defer src="/storage.js"></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>华泰柏瑞 · 快讯看板</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/editorial.css"><style>
+/* 【本地增强】线索可视化徽标与首屏精简（只加样式，不改业务逻辑） */
+.clue-badges{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px}
+.cb{display:inline-block;font-size:11.5px;line-height:1.75;padding:0 8px;border-radius:999px;border:1px solid #dde3ea;background:#f4f6f8;color:#4a5361;white-space:nowrap}
+.cb-primary{background:#eefaf2;border-color:#bfe6cf;color:#0a7d3c;font-weight:600}
+.cb-recent{background:#fdf1f2;border-color:#f3c9cd;color:#b3121a}
+.cb-bg{background:#eef2f7;border-color:#dde3ea;color:#4a5361}
+.cb-new{background:#fff8e1;border-color:#f0e0a8;color:#8a6d00}
+.cb-valid.is-ok{background:#eefaf2;border-color:#bfe6cf;color:#0a7d3c}
+.cb-valid.is-warn{background:#fff8e1;border-color:#f0e0a8;color:#8a6d00}
+.cb-valid.is-off{background:#f4f6f8;border-color:#dde3ea;color:#8a9099}
+.reading-item.is-primary{border-left:3px solid #0a7d3c}
+.reading-item.is-bg{border-left:3px solid #dde3ea}
+.entry-strip{padding-top:6px;padding-bottom:6px}
+.action-hint{display:none}
+</style><script defer src="/app.js"></script><script defer src="/reader.js"></script><script defer src="/workflow.js"></script><script defer src="/exploration.js"></script><script defer src="/writing.js"></script><script defer src="/workspace.js"></script><script defer src="/visuals.js"></script><script defer src="/workbuddy.js"></script><script defer src="/execution.js"></script><script defer src="/storage.js"></script></head>
 <body>
 <a class="skip-link" href="#main-content">跳到工作区</a>
 <header class="app-header"><div class="brand-lockup"><div class="brand-name">华泰柏瑞<span>HUATAI PINEBRIDGE</span></div><div class="brand-divider"></div><div><h1>快讯看板</h1><p>晨报、产品跟踪与快讯写作</p></div></div><div class="header-status"><span id="mode"></span></div></header>
@@ -21,7 +36,6 @@
 <section class="entry-strip" aria-label="当前使用入口"><div><strong id="entry-current">选择使用入口</strong><span id="entry-summary" class="muted"></span></div><button id="open-execution">使用入口</button><button id="open-storage">数据与备份</button></section><section id="entry-next" class="entry-next" hidden aria-live="polite"></section>
 <button id="reading-stop" hidden>停止本轮检索</button><div id="message" role="status" aria-live="polite"></div><section id="job" class="job-result hidden" aria-live="polite"></section>
 
-<details class="panel getting-started" id="getting-started"><summary>第一次使用：从这里开始</summary><div class="quick-start-grid"><div><strong>1. 选择使用入口</strong><p>WorkBuddy / Codex 先打开本项目文件夹；自接 API 在“使用入口”中填写连接。</p></div><div><strong>2. 查线索，再人工选材</strong><p>先读晨报，或直接选择产品检索。加入候选池后，勾选本次需要的材料。</p></div><div><strong>3. 生成、核对、导出</strong><p>智能体入口需在客户端说“处理看板任务”；看到结果后核对出处，再复制或下载 Word。</p></div></div><p class="muted">当前任务的下一步会显示在进度区。移交或升级前，可在“数据与备份”保存完整备份。</p></details>
 <section id="morning-workspace" class="workspace-screen" role="tabpanel" aria-labelledby="tab-morning"><section class="panel daily-panel" id="morning-panel" aria-label="按日期查看新闻">
  <div class="workspace-title"><div><h2>晨报速览</h2><p class="muted" id="digest-explainer">近两天资讯与近七日脉络，每条保留出处。</p></div></div>
  <div class="daily-controls"><label>新闻日期（北京时间）<input type="date" id="news-day"></label><button id="digest" class="primary">生成晨报</button>
@@ -88,6 +102,7 @@
 <details class="panel" id="source-panel"><summary>逐个来源查看原因与最近检查时间</summary><p class="muted">原有26个来源保留。增加网站入口不会自动变成已接通采集器；自定义 RSS / Atom 可尝试读取公开列表。</p><div id="sources" class="source-grid"></div></details>
 </section>
 
+<details class="panel getting-started" id="getting-started"><summary>第一次使用：从这里开始</summary><div class="quick-start-grid"><div><strong>1. 选择使用入口</strong><p>WorkBuddy / Codex 先打开本项目文件夹；自接 API 在“使用入口”中填写连接。</p></div><div><strong>2. 查线索，再人工选材</strong><p>先读晨报，或直接选择产品检索。加入候选池后，勾选本次需要的材料。</p></div><div><strong>3. 生成、核对、导出</strong><p>智能体入口需在客户端说“处理看板任务”；看到结果后核对出处，再复制或下载 Word。</p></div></div><p class="muted">当前任务的下一步会显示在进度区。移交或升级前，可在“数据与备份”保存完整备份。</p></details>
 <footer><span>华泰柏瑞 · 快讯线索看板</span><span>线索有出处 · 选题由你决定</span></footer>
 </main>
 <dialog id="import-dialog"><form id="import-form"><div class="section-head"><h2>添加本地材料</h2><button type="button" id="close-import">关闭</button></div><p class="muted">文件和粘贴内容保存在本机。普通文本不会自动成为事实；JSON 可提供带出处的结构化事实。</p><label>材料类型<select id="import-kind"><option value="evidence">线索 / 来源正文</option><option value="product">产品结构（JSON）</option><option value="history">历史稿件</option></select></label><label>关联当前查看事件<input type="checkbox" id="link-event"></label><label>文件<input type="file" id="file" accept=".json,.txt,.md"></label><label>或粘贴文本<textarea id="paste" rows="7"></textarea></label><label>标题<input id="import-title"></label><label>已知公开日期或时刻（可留空）<input id="import-time" placeholder="YYYY-MM-DD 或含时区的时间"></label><label>原始 URL（可留空，不会自动访问）<input id="import-url" type="url"></label><label>资料声明来源（可留空）<input id="declared-source" placeholder="例如用户导出的 Wind 文件；保留实际输入身份"></label><button class="primary" type="submit">导入本地材料</button></form></dialog>

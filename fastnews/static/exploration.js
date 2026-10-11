@@ -1,5 +1,18 @@
 'use strict';
 // Only the result region changes when a background exploration completes.
+// 【本地增强】为每条线索增加可视化徽标（不改变任何业务数据，只做呈现）。
+const CLUE_NEWNESS={new_event:'新事件',new_stage:'新阶段',new_evidence:'新证据',repeated:'重复材料'};
+const CLUE_VALIDITY={active:'仍有效',superseded:'已被替代',uncertain:'待确认'};
+function clueBadges(item){
+ const out=[];
+ if(item.primary_recommendation)out.push('<span class="cb cb-primary">主要推荐</span>');
+ out.push(item.editorial_role==='background'?'<span class="cb cb-bg">产业背景</span>':'<span class="cb cb-recent">近期增量</span>');
+ if(item.newness_hint)out.push('<span class="cb cb-new">'+h(CLUE_NEWNESS[item.newness_hint]||'')+'</span>');
+ if(item.validity_state)out.push('<span class="cb cb-valid '+(item.validity_state==='active'?'is-ok':item.validity_state==='uncertain'?'is-warn':'is-off')+'">'+h(CLUE_VALIDITY[item.validity_state]||'')+'</span>');
+ const count=(item.claims||[]).length;
+ if(count)out.push('<span class="cb cb-claim">待核对陈述 '+count+'</span>');
+ return out.length?'<div class="clue-badges">'+out.join('')+'</div>':'';
+}
 function productCluesHTML(clues,report){
  if(!clues?.runs?.length)return reportHTML(report,'product');
  const dates=item=>{
@@ -8,7 +21,7 @@ function productCluesHTML(clues,report){
   const periods=[...new Set(sources.filter(s=>s.data_period_start||s.data_period_end).map(s=>'统计期 '+(s.data_period_start||'待核对')+' 至 '+(s.data_period_end||'待核对')))];
   return h([...(published.length?published:['公开时间待核实']),...periods].join(' · '));
  };
- const card=(item,index)=>`<article class="reading-item ${item.latest_increment?'clue-new':''}"><div class="reading-number">${String(index+1).padStart(2,'0')}</div><div>${item.latest_increment?`<span class="pill">${item.incremental_type==='new_evidence'?'新增依据':'本轮新增'}</span>`:''}<h4>${h(item.title)}</h4><p>${h(item.summary)}</p><p class="match-reason">产品关系：${h(item.why)}</p>${item.why_now?`<p class="clue-now">现在为何关注：${h(item.why_now)}</p>`:''}<p class="muted">${dates(item)}${item.date_state==='pending_time'?' · 截点可用性待核对':''}</p><div class="reading-links">${(item.sources||[]).map(s=>httpLink(s.url,s.source_name||s.title)+' <span class="muted">'+h(materialLabel(s))+'</span>').join(' · ')}</div><details class="clue-judgment"><summary>当前用途与有效性</summary><p>${h(({active:'截至本期仍有研究用途',superseded:'已有后续变化，请核对',uncertain:'有效性待确认'})[item.validity_state]||'旧报告尚未重新判断')}：${h(item.validity_reason||'请回查来源')}</p>${item.related_research_identity?'<p>此条关联已有事件的后续阶段，具体日期与来源见下方。</p>':''}</details>${item.recommendation_reason?`<p class="muted">取舍理由：${h(item.recommendation_reason)}</p>`:''}${evidenceDetails(item)}${reportPoolButton({report_id:item.report_id},item)}</div></article>`;
+ const card=(item,index)=>`<article class="reading-item ${item.latest_increment?'clue-new':''} ${item.editorial_role==='background'?'is-bg':''} ${item.primary_recommendation?'is-primary':''}"><div class="reading-number">${String(index+1).padStart(2,'0')}</div><div>${clueBadges(item)}${item.latest_increment?`<span class="pill">${item.incremental_type==='new_evidence'?'新增依据':'本轮新增'}</span>`:''}<h4>${h(item.title)}</h4><p>${h(item.summary)}</p><p class="match-reason">产品关系：${h(item.why)}</p>${item.why_now?`<p class="clue-now">现在为何关注：${h(item.why_now)}</p>`:''}<p class="muted">${dates(item)}${item.date_state==='pending_time'?' · 截点可用性待核对':''}</p><div class="reading-links">${(item.sources||[]).map(s=>httpLink(s.url,s.source_name||s.title)+' <span class="muted">'+h(materialLabel(s))+'</span>').join(' · ')}</div><details class="clue-judgment"><summary>当前用途与有效性</summary><p>${h(({active:'截至本期仍有研究用途',superseded:'已有后续变化，请核对',uncertain:'有效性待确认'})[item.validity_state]||'旧报告尚未重新判断')}：${h(item.validity_reason||'请回查来源')}</p>${item.related_research_identity?'<p>此条关联已有事件的后续阶段，具体日期与来源见下方。</p>':''}</details>${item.recommendation_reason?`<p class="muted">取舍理由：${h(item.recommendation_reason)}</p>`:''}${evidenceDetails(item)}${reportPoolButton({report_id:item.report_id},item)}</div></article>`;
  const primary=[...(clues.recent||[]),...(clues.background||[])].filter(i=>i.primary_recommendation).sort((a,b)=>Number(b.last_report_id===clues.latest_report_id)-Number(a.last_report_id===clues.latest_report_id)).slice(0,3);
  const primaryHTML=primary.length?'<section class="product-clue-group"><h3>主要选题方向 · 供人工比较</h3>'+primary.map(card).join('')+'</section>':'<p class="muted">本轮未形成明确的主要推荐，仍可从下方材料自行选用。</p>';
  const group=(key,title,cap)=>{const items=(clues[key]||[]).filter(i=>!primary.includes(i));return `<section class="product-clue-group"><div class="section-head"><h3>${title} <small>${items.length} 条</small></h3><span class="muted">不凑数 · 人工选用</span></div>${items.slice(0,cap).map(card).join('')||'<p class="empty">本期暂未形成这一类线索，可继续探查补漏。</p>'}${items.length>cap?`<details data-extra-clues="${key}"><summary>展开其余 ${items.length-cap} 条${items.slice(cap).some(i=>i.latest_increment)?'（含本轮新增）':''}</summary>${items.slice(cap).map((item,i)=>card(item,i+cap)).join('')}</details>`:''}</section>`;};
