@@ -1,7 +1,15 @@
 #!/bin/sh
 set -eu
 cd "$(git rev-parse --show-toplevel)"
-if [ -x .venv/Scripts/python.exe ]; then
+# Prefer the bundled runtime when present: the venv redirector can take over a
+# second to start on some machines, which makes the timing-sensitive collection
+# tests fail even though the code is unchanged. The full pre-push checks run
+# either way; this only picks the interpreter.
+if [ -x runtime/python/python.exe ]; then
+    exec runtime/python/python.exe tools/check_repository.py --pre-push
+elif [ -x runtime/bin/python ]; then
+    exec runtime/bin/python tools/check_repository.py --pre-push
+elif [ -x .venv/Scripts/python.exe ]; then
     exec .venv/Scripts/python.exe tools/check_repository.py --pre-push
 elif [ -x .venv/bin/python ]; then
     exec .venv/bin/python tools/check_repository.py --pre-push
