@@ -150,7 +150,10 @@ def cmd_status(_args):
     from tools.open_dashboard import check_service,URL
     from fastnews.agent_runner import pending_requests
     status=check_service()
-    result={'service':status,'url':URL,'pending':pending_requests()}
+    result={'service':status,'url':URL,'workspace':str(ROOT),'pending':pending_requests()}
+    manifest=ROOT/'PACKAGE_MANIFEST.json'
+    if manifest.is_file():
+        result['package_commit']=json.loads(manifest.read_text(encoding='utf-8')).get('source_commit')
     if status=='ready':
         opener=build_opener(ProxyHandler({}))
         with opener.open(URL+'api/state',timeout=3) as response:state=json.load(response)

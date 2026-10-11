@@ -1,15 +1,18 @@
 """Offline launcher boundary tests; no subprocesses or external HTTP requests."""
 import io
+import errno
 import json
 import os
 from pathlib import Path
 import subprocess
+import socket
 import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
 from tools import open_dashboard as launcher
+from fastnews.workspace import dashboard_address
 
 
 class LauncherTests(unittest.TestCase):
@@ -73,20 +76,20 @@ class LauncherTests(unittest.TestCase):
         spawn.assert_called_once_with()
         wait.assert_called_once_with(child=spawn.return_value)
 
-    def test_unrelated_port_owner_is_not_touched(self):
+    def test_unrelated_port_owner_starts_separate_workspace_service(self):
         with patch.object(launcher, 'check_service', return_value='occupied_by_another_service'), \
                 patch.object(launcher, 'spawn_server') as spawn, \
-                patch.object(launcher, 'wait_until_ready', return_value=False):
-            with self.assertRaisesRegex(RuntimeError, str(launcher.PORT)):
-                launcher.ensure_running()
-        spawn.assert_not_called()
+                patch.object(launcher, 'wait_until_ready', return_value=True) as wait:
+            launcher.ensure_running()
+        spawn.assert_called_once_with()
+        wait.assert_called_once_with(child=spawn.return_value)
 
     def test_concurrent_start_can_become_ready(self):
         with patch.object(launcher, 'check_service', return_value='occupied_by_another_service'), \
                 patch.object(launcher, 'spawn_server') as spawn, \
                 patch.object(launcher, 'wait_until_ready', return_value=True):
             launcher.ensure_running()
-        spawn.assert_not_called()
+        spawn.assert_called_once_with()
 
     def test_failed_start_is_reported(self):
         with patch.object(launcher, 'check_service', return_value='stopped'), \
@@ -113,6 +116,53 @@ class LauncherTests(unittest.TestCase):
                 patch.object(launcher.time, 'monotonic', side_effect=[0, 1, 26]), \
                 patch.object(launcher.time, 'sleep'):
             self.assertFalse(launcher.wait_until_ready())
+
+    def test_address_follows_only_own_valid_loopback_runtime_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'config').mkdir()
+            (root / 'config/workspace.yaml').write_text('port: 8797\n', encoding='utf-8')
+            (root / 'data').mkdir()
+            record = root / 'data/dashboard-runtime.json'
+            valid = dict(workspace_id=str(root / 'data/fastnews.db'), url='http://127.0.0.1:51000/')
+            record.write_text(json.dumps(valid), encoding='utf-8')
+            self.assertEqual(dashboard_address(root), (51000, valid['url']))
+            invalid = [dict(valid, workspace_id=str(root / 'other.db')),
+                       dict(valid, url='http://example.com:51000/'),
+                       dict(valid, url='http://127.0.0.1:51000/?other=1'),
+                       dict(valid, url='http://user@127.0.0.1:51000/'),
+                       dict(valid, url='http://127.0.0.1:80/'), None, [], {}]
+            for value in invalid:
+                record.write_text(json.dumps(value), encoding='utf-8')
+                self.assertEqual(dashboard_address(root), (8797, 'http://127.0.0.1:8797/'))
+            record.write_text('{partial', encoding='utf-8')
+            self.assertEqual(dashboard_address(root)[0], 8797)
+
+    def test_wait_discovers_address_published_by_child(self):
+        with patch.object(launcher, 'dashboard_address', return_value=(51001, 'http://127.0.0.1:51001/')), \
+                patch.object(launcher, 'PORT', 8797), patch.object(launcher, 'URL', 'http://127.0.0.1:8797/'), \
+                patch.object(launcher, 'check_service', return_value='ready'):
+            self.assertTrue(launcher.wait_until_ready())
+            self.assertEqual(launcher.URL, 'http://127.0.0.1:51001/')
+
+    def test_busy_port_binding_uses_another_loopback_listener(self):
+        with socket.socket() as old:
+            old.bind(('127.0.0.1', 0))
+            old.listen()
+            original = old.getsockname()
+            server = launcher.bind_workspace_server(Mock(), original[1])
+            try:
+                self.assertEqual(server.server_address[0], '127.0.0.1')
+                self.assertNotEqual(server.server_port, original[1])
+                self.assertEqual(old.getsockname(), original)
+            finally:
+                server.server_close()
+
+    def test_non_collision_bind_error_is_not_hidden(self):
+        with patch('fastnews.server.make_server', side_effect=OSError(errno.EINVAL, 'synthetic')) as bind:
+            with self.assertRaises(OSError):
+                launcher.bind_workspace_server(Mock(), 8797)
+        bind.assert_called_once()
 
     def test_background_child_has_absolute_paths_and_no_parent_console(self):
         with patch.object(launcher.subprocess, 'Popen') as popen:
