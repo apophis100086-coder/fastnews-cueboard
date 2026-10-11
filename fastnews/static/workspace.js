@@ -1,6 +1,6 @@
 'use strict';
 // Change visibility only: forms, drafts and selections remain mounted.
-function showWorkspace(name, scroll=true){
+function showWorkspace(name, scroll=true, persist=true){
  if(!['morning','product','materials','sources'].includes(name))return;
  if($('workspace-menu'))$('workspace-menu').open=false;
  for(const id of ['morning','product','materials','sources']){
@@ -20,6 +20,7 @@ function showWorkspace(name, scroll=true){
   pool.dataset.viewInitialized='true';
  }
  if(name==='materials'&&typeof loadArchive==='function')loadArchive();
+ if(persist&&state?.workspace_id)localStorage.setItem('fastnews:'+state.workspace_id+':workspace',name);
  if(scroll)$(name+'-workspace').scrollIntoView({behavior:'smooth',block:'start'});
 }
 document.querySelectorAll('[data-workspace]').forEach(button=>button.addEventListener('click',()=>showWorkspace(button.dataset.workspace)));
@@ -28,7 +29,12 @@ document.querySelectorAll('[role="tab"]').forEach(button=>button.addEventListene
  let next;if(event.key==='ArrowRight')next=(index+1)%3;else if(event.key==='ArrowLeft')next=(index+2)%3;else if(event.key==='Home')next=0;else if(event.key==='End')next=2;else return;
  event.preventDefault();showWorkspace(tabs[next],false);$('tab-'+tabs[next]).focus();
 }));
-showWorkspace('morning',false);
+showWorkspace('morning',false,false);
+
+function restoreWorkspace(){
+ const saved=localStorage.getItem('fastnews:'+state.workspace_id+':workspace');
+ if(['morning','product','materials','sources'].includes(saved))showWorkspace(saved,false);
+}
 document.addEventListener('keydown',event=>{
  if(event.key!=='Escape')return;
  for(const menu of document.querySelectorAll('.workspace-menu[open], .utility-menu[open]')){

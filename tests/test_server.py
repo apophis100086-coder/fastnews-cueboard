@@ -15,6 +15,17 @@ from fastnews.server import LocalApplication, make_server
 
 
 class ServerTests(unittest.TestCase):
+    def test_activity_endpoint_is_read_only_and_obeys_local_origin_boundary(self):
+        status, body, _ = self.request('GET', '/api/activity')
+        self.assertEqual(status, 200)
+        self.assertEqual(body['workspace_id'], self.app.database)
+        self.assertIsNone(body['job'])
+        self.assertNotIn('csrf_token', body)
+        self.assertEqual(self.request('GET', '/api/activity', headers={'Origin':'https://example.org'})[0], 403)
+        self.assertEqual(self.request('POST', '/api/conversation-start',
+                         {'kind':'research','host':'workbuddy','product_code':'588710'},
+                         headers={'X-Fastnews-CSRF':None})[0], 403)
+
     def test_research_rejects_changed_product_instead_of_using_old_edition(self):
         status, body, _ = self.request('POST','/api/research',{'edition_id':self.eid,'product_code':'513130'})
         self.assertEqual(status,400)

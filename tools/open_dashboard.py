@@ -1,6 +1,7 @@
 """Start the local dashboard independently of a terminal, or reuse it."""
 from contextlib import closing
 import argparse
+import errno
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -15,10 +16,14 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from fastnews.workspace import settings, bootstrap_profile
-PORT = settings(ROOT)['port']
-URL = f'http://127.0.0.1:{PORT}/'
+from fastnews.workspace import dashboard_address, bootstrap_profile
+PORT, URL = dashboard_address(ROOT)
 LOGGER = logging.getLogger('fastnews.launcher')
+
+
+def refresh_address():
+    global PORT, URL
+    PORT, URL = dashboard_address(ROOT)
 
 
 def executable_image():
@@ -126,6 +131,7 @@ def spawn_server():
 def wait_until_ready(timeout=25, child=None):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        refresh_address()
         if check_service() == 'ready':
             return True
         # Exit 0 can mean a concurrent launcher already owns the instance lock.
@@ -136,35 +142,45 @@ def wait_until_ready(timeout=25, child=None):
 
 
 def ensure_running():
+    refresh_address()
     status = check_service()
     if status == 'ready':
         return
-    if status != 'stopped':
-        if wait_until_ready(timeout=4):
-            return
-        raise RuntimeError(f'{PORT} 端口已被其他程序占用，或看板未能响应。请查看启动日志。')
     child = spawn_server()
     if not wait_until_ready(child=child):
         raise RuntimeError('看板未能在 25 秒内启动。请查看 data/logs/dashboard.log。')
 
 
+def bind_workspace_server(app, preferred_port):
+    """Ask the OS for another local port if an unrelated service owns the preference."""
+    from fastnews.server import make_server
+    try:
+        return make_server(app, port=preferred_port)
+    except OSError as exc:
+        # Windows reports an exclusive or reserved port as WSAEACCES (10013).
+        if (not preferred_port or (exc.errno not in (errno.EADDRINUSE, errno.EACCES)
+                and getattr(exc, 'winerror', None) not in (10048, 10013))):
+            raise
+        return make_server(app, port=0)
+
+
 def serve():
+    global PORT, URL
     with InstanceLock(ROOT / 'data' / 'dashboard.lock') as acquired:
         if not acquired:
             LOGGER.info('Another dashboard instance is running or starting.')
             return 0
+        refresh_address()
         status = check_service()
         if status == 'ready':
             LOGGER.info('Dashboard already ready; reused existing server.')
             return 0
-        if status != 'stopped':
-            raise RuntimeError(f'{PORT} 端口已被其他程序占用，未启动或停止任何程序。')
         os.chdir(ROOT)
         sys.path.insert(0, str(ROOT))
         from fastnews.config import load_config
         from fastnews.db import sync_registry
         from fastnews.source_catalog import configured_view
-        from fastnews.server import LocalApplication, make_server
+        from fastnews.server import LocalApplication
         from fastnews.shared_api import bootstrap as bootstrap_shared_api
         try:bootstrap_shared_api(ROOT)
         except ValueError:LOGGER.warning('Shared API preset could not be imported; configure it in the entry settings.')
@@ -175,14 +191,19 @@ def serve():
             sync_registry(conn, configured_view(conn, app.config))
         from fastnews.agent_runner import recover_requests
         recover_requests(ROOT/'data/agent-exchange')
-        server = make_server(app, port=PORT)
+        preferred_port = PORT if status == 'stopped' else 0
+        server = bind_workspace_server(app, preferred_port)
+        PORT = server.server_port
+        URL = f'http://127.0.0.1:{PORT}/'
         runtime_path = ROOT / 'data' / 'dashboard-runtime.json'
         try:
-            runtime_path.write_text(json.dumps({
+            pending_record = runtime_path.with_suffix('.tmp')
+            pending_record.write_text(json.dumps({
                 'pid': os.getpid(), 'url': URL, 'workspace_id': app.database,
                 'python': executable_image(), 'python_launcher': sys.executable,
                 'started_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
             }, ensure_ascii=False, indent=2), encoding='utf-8')
+            pending_record.replace(runtime_path)
             LOGGER.info('Dashboard ready: pid=%s url=%s', os.getpid(), URL)
             # Startup only serves saved data. No collection, LLM, or browser action.
             server.serve_forever()

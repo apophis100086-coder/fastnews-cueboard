@@ -76,7 +76,7 @@ async function refreshWritingResults(job){
 async function pollWriting(id,initial){
  writingJob={job_id:id};setBusy(true);$('writing-stop').hidden=false;
  try{let job=initial;while(true){
-  job=job||await api('job?id='+encodeURIComponent(id));writingJob=job;
+  job=job||await api('job?id='+encodeURIComponent(id));writingJob=job;if(typeof observeDashboardJob==='function')observeDashboardJob(job);
   const elapsed=job.started_at?Math.max(0,Math.round((Date.now()-Date.parse(job.started_at))/1000)):0;
   const total=job.deadline_at&&job.started_at?Math.max(1,Math.round((Date.parse(job.deadline_at)-Date.parse(job.started_at))/1000)):900;
   const s=[...(job.progress||[])].reverse().find(p=>/^writing_(audit|edit|compose|research|verify)/.test(p.stage||''))?.stage||'',stage=s.includes('audit')?'核验':s.includes('edit')?'编辑':s.includes('compose')?'起草':'补充资料';
