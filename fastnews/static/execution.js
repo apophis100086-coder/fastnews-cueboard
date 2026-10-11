@@ -86,6 +86,7 @@ $('stop-entry').onclick=safe(async()=>{if(entryJob)await api('job-stop',{job_id:
    if(typeof message==='function')message('已自动载入最新结果。');
   }catch(e){}
  }
- function start(){if(timer)return;timer=setInterval(tick,3000);}
+ function start(){if(timer)return;if(typeof setInterval!=='function')return;timer=setInterval(tick,3000);}
+ if(typeof document==='undefined')return;
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
