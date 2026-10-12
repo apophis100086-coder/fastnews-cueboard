@@ -20,6 +20,7 @@ function showWorkspace(name, scroll=true){
   pool.dataset.viewInitialized='true';
  }
  if(name==='materials'&&typeof loadArchive==='function')loadArchive();
+ try{if(typeof sessionStorage!=='undefined')sessionStorage.setItem('fastnews:workspace',name);}catch(e){}
  if(scroll)$(name+'-workspace').scrollIntoView({behavior:'smooth',block:'start'});
 }
 document.querySelectorAll('[data-workspace]').forEach(button=>button.addEventListener('click',()=>showWorkspace(button.dataset.workspace)));
@@ -28,7 +29,9 @@ document.querySelectorAll('[role="tab"]').forEach(button=>button.addEventListene
  let next;if(event.key==='ArrowRight')next=(index+1)%3;else if(event.key==='ArrowLeft')next=(index+2)%3;else if(event.key==='Home')next=0;else if(event.key==='End')next=2;else return;
  event.preventDefault();showWorkspace(tabs[next],false);$('tab-'+tabs[next]).focus();
 }));
-showWorkspace('morning',false);
+let initialWorkspace='morning';
+try{if(typeof sessionStorage!=='undefined')initialWorkspace=sessionStorage.getItem('fastnews:workspace')||'morning';}catch(e){}
+showWorkspace(initialWorkspace,false);
 document.addEventListener('keydown',event=>{
  if(event.key!=='Escape')return;
  for(const menu of document.querySelectorAll('.workspace-menu[open], .utility-menu[open]')){
